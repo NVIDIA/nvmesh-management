@@ -165,7 +165,6 @@ const Components = () => {
 				handleCancel={() => onCancelCreateEditComponent()}
 				onSubmit={component => onSubmitComponent(component)}/>
 			<h1>Components</h1>
-			<hr/>
 
 			<div className="action-container">
 				<button className="btn btn-info mgmt-btn-info"

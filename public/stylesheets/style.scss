@@ -368,7 +368,7 @@ a[disabled] {
 
 	#capacityChartLabelsContainer {
 		position: absolute;
-		top: 6%;
+		top: 0;
 		left: 0;
 		right: 0;
 		bottom: 0;
@@ -1315,11 +1315,11 @@ a[disabled] {
 				background: style_consts.$skinmid;
 				padding: 0;
 				overflow:hidden;
-				transition: height style_consts.$menuTransitionTime ease-out;
-				height: 0px;
+				transition: max-height style_consts.$menuTransitionTime ease-out;
+				max-height: 0px;
 
 				&.open {
-					height:auto;
+					max-height:500px;
 				}
 
 				[disabled="disabled"] {
@@ -1446,11 +1446,9 @@ a[disabled] {
 
 .content-wrapper {
 	background-color: white;
-	z-index: 800;
 	-webkit-transition: -webkit-transform .3s;
 	-moz-transition: -moz-transform .3s;
 	-o-transition: -o-transform .3s;
-	transition: transform .3s;
 	-webkit-transition: margin-left .3s;
 	-o-transition: margin-left .3s;
 	transition: margin-left .3s;

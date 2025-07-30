@@ -65,8 +65,6 @@ const About = () => {
 
 	return <>
 		<h1>About</h1>
-		<hr />
-		<br />
 
 		<div className="row center">
 			<div className="col-lg-4 col-lg-offset-4 text-center">

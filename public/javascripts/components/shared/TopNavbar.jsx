@@ -4,7 +4,7 @@ import { AppContext } from '../pages/App.jsx';
 
 const { useContext } = React;
 
-const TopNavbar = () => {
+const TopNavbar = ({ onToggleSidebar }) => {
 	const { currUser } = useContext(AppContext);
 	const userInitials = currUser.email.substring(0, 1).toUpperCase();
 	const { systemInfo } = useContext(AppContext);
@@ -20,7 +20,7 @@ const TopNavbar = () => {
 				</span>
 			</a>
 			<nav className="navbar navbar-static-top flex" role="navigation">
-				<a href="#" className="sidebar-toggle" data-toggle="offcanvas" role="button">
+				<a className="sidebar-toggle" onClick={() => onToggleSidebar()} role="button">
 					<span className="sr-only">Toggle Navigation</span>
 				</a>
 				<div className="top-navbar-main">
@@ -52,7 +52,7 @@ const TopNavbar = () => {
 						</li>
 						<li className="user user-menu">
 							<a href="#" className="username">
-								<span className="user-avatar">{userInitials}</span>
+								<span className="user-avatar mr-5">{userInitials}</span>
 								<span className="user-email">{currUser.email}</span>
 							</a>
 						</li>

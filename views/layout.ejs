@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html ng-app="managementApp">
+<html>
 	<head>
 		<title>Excelero</title>
 		<link rel="stylesheet" href="/stylesheets/selectize.default.css">
@@ -14,269 +14,35 @@
 		<link rel="stylesheet" href="/stylesheets/treeGrid.css">
 		<link href='https://fonts.googleapis.com/css?family=Work+Sans' rel='stylesheet' type='text/css'>
 
-		<!-- Latest compiled and minified JavaScript -->
-
+		<!-- External scripts -->
 		<script src="/javascripts/jquery-2.1.4.min.js"></script>
 		<script src="/javascripts/jquery-ui.min.js"></script>
 		<script src="/javascripts/bootstrap.min.js"></script>
-		<script src="/javascripts/angular.js"></script>
-		<script src="/javascripts/angular.ui.bootstrap.js"></script>
-		<script src="/javascripts/angular-cookies.min.js"></script>
 		<script src="/javascripts/react.development.js"></script>
 		<script src="/javascripts/react-dom.development.js"></script>
 		<script src="/javascripts/react-hook-form.js"></script>
 		<script src="/javascripts/selectize.min.js"></script>
-		<script type="text/javascript" src="/javascripts/tree-grid-directive.js"></script>
 		<script type="text/javascript" src="/javascripts/pjax.js"></script>
-		<script type="text/javascript" src="/javascripts/jquery.twbsPagination.min.js"></script>
-		<script type="text/javascript" src="/javascripts/jquery.easing.1.3.js"></script>
-		<script type="text/javascript" src="/javascripts/js.cookie.js"></script>
 		<script type="text/javascript" src="/javascripts/d3.js"></script>
 		<script type="text/javascript" src="/javascripts/c3.js"></script>
 		<script type="text/javascript" src="/javascripts/socket.io-4.5.4.js"></script>
-		<script type="text/javascript" src="/javascripts/site.js"></script>
-		<script type="text/javascript" src="/javascripts/angular-progress-arc.min.js"></script>
-
-		<script type="text/javascript" src="/javascripts/consts.js"></script>
-		<script type="text/javascript" src="/javascripts/profileScheme.js"></script>
-		<script type="text/javascript" src="/javascripts/controllers/managementController.js"></script>
-		<script type="module" src="/javascripts/controllers/reactController.js"></script>
-		<script type="text/javascript" src="/javascripts/controllers/serverController.js"></script>
-		<script type="text/javascript" src="/javascripts/controllers/volumesController.js"></script>
-		<script type="text/javascript" src="/javascripts/controllers/volumeSecurityGroupsController.js"></script>
-		<script type="text/javascript" src="/javascripts/clientConsts.js"></script>
 		<script type="text/javascript" src="/javascripts/moment-with-locales.js"></script>
 		<script type="text/javascript" src="/javascripts/daterangepicker.js"></script>
 
-		<!-- Services -->
-		<script type="text/javascript" src="/javascripts/services/confirmationsService.js"></script>
-		<script type="text/javascript" src="/javascripts/services/alertService.js"></script>
-		<script type="text/javascript" src="/javascripts/services/diskService.js"></script>
-		<script type="text/javascript" src="/javascripts/services/utilsService.js"></script>
-		<script type="text/javascript" src="/javascripts/services/paginationService.js"></script>
-		<script type="text/javascript" src="/javascripts/services/multiSelectService.js "></script>
-		<script type="text/javascript" src="/javascripts/services/nextPageService.js"></script>
-		<script type="text/javascript" src="/javascripts/services/navigationService.js"></script>
-		<script type="text/javascript" src="/javascripts/services/keysPressedService.js"></script>
-		<script type="text/javascript" src="/javascripts/services/modalElementFocusService.js"></script>
-
-		<!-- Directives -->
-		<script type="text/javascript" src="/javascripts/directives/ngRepeatFinished.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/alerts.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/statusGauge.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/diskDisplay.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/nicDisplay.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/textOrEmailValidator.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/bootstrapModalAutofocus.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/toggle.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/multiSelectTable.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/multiSelectBalloon.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/isIndeterminate.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/angular-selectize.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/singleItemAction.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/allocationChart.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/diskSegmentToolTip.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/sortableRow.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/selectTableColumns.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/domainSelector.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/durationPicker.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/volumeRaidOptions.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/volumeSpaceAllocationBar.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/volumeClassLimiters.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/volumeTargetAndDriveLimiters.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/volumeLimiters.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/volumeDiagramLayout.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/volumeDiagramTargetsView.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/volumeDiagram.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/pagingSummary.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/configProfilePickerModal.js"></script>
-
-		<script type="text/javascript" src="/javascripts/Chart.min.js"></script>
-		<script type="text/javascript" src="/javascripts/Chart.custom.js"></script>
-
-		<script type="text/javascript" src="/javascripts/directives/sortedTilesDiagram.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/multiSelectComponents/multiSelectServers.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/multiSelectComponents/multiSelectSegments.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/multiSelectComponents/multiSelectClients.js"></script>
-		<script type="text/javascript" src="/javascripts/directives/multiSelectComponents/multiSelectKeys.js"></script>
-
-		<script type="text/javascript" src="/javascripts/app.min.js"></script>
+		<!-- Internal scripts -->
+		<script type="text/javascript" src="/javascripts/site.js"></script>
+		<script type="text/javascript" src="/javascripts/consts.js"></script>
+		<script type="text/javascript" src="/javascripts/profileScheme.js"></script>
+		<script type="text/javascript" src="/javascripts/clientConsts.js"></script>
+		<script type="module" src="/javascripts/index.js"></script>
+		<script type="module" src="/javascripts/controllers/reactController.js"></script>
 	</head>
-	<body ng-controller="managementController as managementCtrl" ng-keydown="managementCtrl.keyDown($event)" ng-keyup="managementCtrl.keyUp($event)" ng-cloak>
+	<body>
 		<div id="modal-root"></div>
 		<div id="fading-alerts-root" class="fading-alerts-container"></div>
 
 		<div class="wrapper">
-			<div id="customerName" class="modal fade" role="dialog" data-backdrop="static" data-keyboard="false">
-				<div class="modal-dialog">
-					<div class="modal-content">
-						<div class="modal-header">
-							<h3 class="modal-title text-center">Insert Customer Name</h3>
-							<h4 class="modal-title text-center" ng-if="managementCtrl.userToChange.isAdmin">This is used for logging purposes</h4>
-						</div>
-						<div class="modal-body">
-							<div class="form-group">
-								<label class="control-label">Customer Name</label>
-								<input name="customerName" maxlength="32" class="form-control" type="text" ng-model="managementCtrl.customerName" placeholder="Name">
-							</div>
-							<div class="form-group inner-addon right-addon">
-							</div>
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-primary" ng-disabled="!managementCtrl.customerName.length" ng-click="managementCtrl.saveCustomerName()">Confirm</button>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<div id="clusterID" class="modal fade" role="dialog" data-backdrop="static" data-keyboard="false">
-				<div class="modal-dialog">
-					<div class="modal-content">
-						<div class="modal-header">
-							<h3 class="modal-title text-center">Insert the cluster ID</h3>
-						</div>
-						<div class="modal-body">
-							<div class="form-group">
-								<label class="control-label">Cluster ID</label>
-								<input name="clusterID" maxlength="30" class="form-control" type="text" ng-model="managementCtrl.clusterID" placeholder="Cluster ID">
-							</div>
-							<div class="form-group inner-addon right-addon">
-							</div>
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-primary" ng-disabled="!managementCtrl.clusterID.length" ng-click="managementCtrl.saveClusterID()">Confirm</button>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<div id="clusterIDReconfirm" class="modal fade" role="dialog" data-backdrop="static" data-keyboard="false">
-				<div class="modal-dialog">
-					<div class="modal-content">
-						<div class="modal-header">
-							<h3 class="modal-title text-center">Cluster ID confirmation</h3>
-						</div>
-						<div class="modal-body">
-							<h4 class="modal-title">Is "{{managementCtrl.clusterID}}" your cluster ID?</h4>
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-primary" ng-click="managementCtrl.saveClusterID(true)">Confirm</button>
-							<button type="button" class="btn btn-primary"  ng-click="managementCtrl.changeClusterID()">Change cluster ID</button>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<div id="firstLoginModal" class="modal fade" role="dialog" data-backdrop="static" data-keyboard="false">
-				<div class="modal-dialog">
-					<div class="modal-content">
-						<div class="modal-header">
-							<h3 class="modal-title text-center">{{ managementCtrl.userToChange.isAdmin ? "First time?" : "Change Password" }}</h3>
-							<h4 class="modal-title text-center" ng-if="managementCtrl.userToChange.isAdmin">Please change the admin password</h4>
-						</div>
-						<div class="modal-body">
-							<div class="form-group">
-								<label class="control-label">Password</label>
-								<input id="password" name="password" maxlength="32" class="form-control" type="password" value="{{ managementCtrl.password }}" ng-model="managementCtrl.password" placeholder="Password">
-							</div>
-							<div class="form-group inner-addon right-addon" ng-class="{'has-error': managementCtrl.confirmationPassword && managementCtrl.password && managementCtrl.password !== managementCtrl.confirmationPassword}">
-								<label class="control-label">Re-type password</label>
-								<i class="ion ion-alert-circled" ng-show="managementCtrl.confirmationPassword && managementCtrl.password && managementCtrl.password !== managementCtrl.confirmationPassword"></i>
-								<input name="confirmationPassword" class="form-control" title="{{ managementCtrl.confirmationPassword && managementCtrl.password && managementCtrl.password !== managementCtrl.confirmationPassword ? 'Password entries do no match' : '' }}" type="password" value="{{ managementCtrl.confirmationPassword }}" ng-model="managementCtrl.confirmationPassword" placeholder="Re-type password">
-							</div>
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-primary" ng-disabled="!managementCtrl.password || managementCtrl.password !== managementCtrl.confirmationPassword" ng-click="managementCtrl.changePassword()">Change</button>
-							<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<div class="modal" id="noConnectionToServerModal" data-backdrop="static" data-keyboard="false" tabindex="-1" role="dialog">
-				<div class="modal-dialog vertical-align-center" role="document">
-					<div class="modal-content">
-					<div class="modal-header">
-						<h3 class="modal-title text-center">Lost connection to server </h3>
-					</div>
-					<div class="modal-body">
-						<br />
-						<p>Could not connect to Management Server</p>
-						<br />
-					</div>
-					<div class="modal-footer">
-					</div>
-					</div>
-				</div>
-			</div>
-
-			<header class="main-header">
-				<a href="/" class="logo">
-					<span class="logo-lg">
-						<img width="130px" src="/images/NVMesh-white.svg" />
-					</span>
-					<span class="logo-mini">
-						<img src="/images/logo_w_small.svg" />
-					</span>
-				</a>
-				<nav class="navbar navbar-static-top" role="navigation">
-					<a href="#" class="sidebar-toggle" data-toggle="offcanvas" role="button">
-						<span class="sr-only">Toggle Navigation</span>
-					</a>
-					<div class="navbar-custom-menu">
-						<ul class="nav navbar-nav">
-							<li>
-								<a href="mailto:support-nvmesh@nvidia.com?subject=NVMesh Support Request&body=Please describe your issue below:">Support</a>
-							</li>
-							<li>
-								<a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="true">Docs<span class="caret"></span></a>
-								<ul class="dropdown-menu nav">
-									<li>
-										<a target="_blank" href="{{ managementCtrl.userManualURL }}" data-pjax="false">User Guide</a>
-									</li>
-									<li>
-										<a target="_blank" href="{{ managementCtrl.restAPIURL }}" data-pjax="false">REST API</a>
-									</li>
-									<li>
-										<a target="_blank" href="https://www.excelero.com/release-notes" data-pjax="false">Release Notes</a>
-									</li>
-								</ul>
-							</li>
-							<li class="user user-menu">
-								<a href="#" class="username" data-letters="">
-									<span class="user-avatar">{{managementCtrl.user.email.substr(0,1).toUpperCase()}}</span>
-									<span class="user-email">{{managementCtrl.user.email}}</span>
-								</a>
-							</li>
-							<li>
-								<a href="/login/logout" data-pjax="false">Logout</a>
-							</li>
-						</ul>
-					</div>
-				</nav>
-				<h3 class="header-cluster-name">{{$root.clusterID}}</h3>
-			</header>
-			<aside class="main-sidebar">
-				<section class="sidebar">
-					<ul class="sidebar-menu">
-						<li ng-repeat="link in managementCtrl.links">
-							<a ng-hide="{{ link.adminOnly && !managementCtrl.user.isAdmin }}" ng-click="managementCtrl.toggleSubMenu($event, link)" ng-href="{{ link.url  }}">
-								<i class="{{'fa ' + link.icon}}"></i>
-								<span>{{ link.caption }}</span>
-								<i ng-if="link.subItems" class="fa pull-right fa-chevron-left sub-menu-arrow"></i>
-							</a>
-							<ul>
-								<li ng-repeat="subLink in link.subItems" title="{{ subLink.title }}" ng-disabled="{{ subLink.disabled }}">
-									<a ng-hide="{{ subLink.adminOnly && !managementCtrl.user.isAdmin }}" ng-href="{{ subLink.url }}" ng-disabled="{{ subLink.disabled }}">
-										<i class="{{'fa ' + subLink.icon}}"></i>
-										<span>{{ subLink.caption }}</span>
-									</a>
-								</li>
-							</ul>
-						</li>
-					</ul>
-				</section>
-			</aside>
+			<div id="root"></div>
 			<div class="content-wrapper">
 				<section class="content">
 					<%- body %>
@@ -286,20 +52,6 @@
 
 		<script type='text/javascript'>
 			var user = <%- JSON.stringify(user) %>;
-			angular.module('managementApp').constant('$context', {
-				user: user,
-				getNodeID: function(id) { return "nodeID_" + id + "@"; },
-				getTargetID: function(id) { return "targetID_" + id + "@"; },
-				getClientID: function(id) {	return "clientID_" + id + "@"; },
-				getDiskID: function(id) { return "diskID_" + id + "@"; },
-				getNicID: function(id) { return "nicID_" + id + "@"; },
-				getVolumeID: function(id) {	return "volumeID_" + id + "@"; },
-				getDiskSegmentID: function(id) { return "diskSegmentID_" + id + "@"; },
-				getLogID: function(id) { return "logID_" + id + "@"; },
-				getPlatformID: function(id) { return "platformID_" + id + "@"; },
-				getUpgradeAgentID: function(id) { return "upgradeAgentID_" + id + "@"; },
-				getComponentID: function(id) { return "componentID_" + id + "@"; }
-			});
 		</script>
 	</body>
 </html>

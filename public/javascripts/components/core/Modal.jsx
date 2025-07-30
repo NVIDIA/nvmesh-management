@@ -10,6 +10,7 @@ const Modal = ({
 	centerVertically = false,
 	disableBackdropClose = false,
 	attachToRoot = false,
+	noCloseButton = false,
 	className = '',
 	modalClassName = '',
 	backdropClassName = ''
@@ -42,14 +43,14 @@ const Modal = ({
 			<div className={`modal-dialog ${className}`}>
 				<div className="modal-content">
 					<div className="modal-header">
-						<button
+						{!noCloseButton && <button
 							type="button"
 							className="close"
 							onClick={onClose}
 							aria-label="Close"
 						>
 							&times;
-						</button>
+						</button>}
 						<h3 className="modal-title text-center">{title}</h3>
 					</div>
 					{children}

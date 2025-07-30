@@ -7,9 +7,7 @@
  * Proprietary and confidential
  ****************************************************************************/
 
-/* global angular, ReactDOM, React, consts */
-
-const managementApp = angular.module('managementApp');
+/* global ReactDOM, React, consts */
 
 const pagesFolder = '../components_js/pages';
 
@@ -55,28 +53,24 @@ const componentsRegistry = {
 	[consts.componentsPages.configurationProfiles]: `${pagesFolder}/configProfiles/ConfigProfiles.js`
 };
 
-managementApp.controller('reactController', function($scope) {
-	$scope.options = {};
-
-	const reactAppElement = document.getElementById('reactApp');
-	const root = ReactDOM.createRoot(reactAppElement);
-	const componentName = reactAppElement.getAttribute('component');
-	const additionalData = reactAppElement.getAttribute('data');
-	// Dynamically import App and the requested component in parallel
-	Promise.all([
-		import(`${pagesFolder}/App.js`),
-		import(componentsRegistry[componentName])
-	])
-		.then(([AppModule, ComponentModule]) => {
-			const App = AppModule.default;
-			const Component = ComponentModule.default;
-			if (componentName === consts.componentsPages.serviceUnavailable) {
-				root.render(React.createElement(Component, { data: additionalData }));
-			} else {
-				root.render(React.createElement(App, null, React.createElement(Component)));
-			}
-		})
-		.catch(err => {
-			console.error('Error loading components:', err);
-		});
-});
+const reactAppElement = document.getElementById('reactApp');
+const root = ReactDOM.createRoot(reactAppElement);
+const componentName = reactAppElement.getAttribute('component');
+const additionalData = reactAppElement.getAttribute('data');
+// Dynamically import App and the requested component in parallel
+Promise.all([
+	import(`${pagesFolder}/App.js`),
+	import(componentsRegistry[componentName])
+])
+	.then(([AppModule, ComponentModule]) => {
+		const App = AppModule.default;
+		const Component = ComponentModule.default;
+		if (componentName === consts.componentsPages.serviceUnavailable) {
+			root.render(React.createElement(Component, { data: additionalData }));
+		} else {
+			root.render(React.createElement(App, null, React.createElement(Component)));
+		}
+	})
+	.catch(err => {
+		console.error('Error loading components:', err);
+	});

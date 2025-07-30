@@ -1,12 +1,18 @@
-/* global React */
+/* global React, $ */
 
 import { AppContext } from '../pages/App.jsx';
 
-const { useContext, useState, useMemo } = React;
+const { useContext, useState, useMemo, useEffect } = React;
 
 const Sidebar = () => {
 	const hasMongoClusterManagerRole = false; // TODO: add this to the context
 	const [openSubmenus, setOpenSubmenus] = useState(new Set());
+	const [currentPageUrl, setCurrentPageUrl] = useState(window.location.pathname);
+
+	const hasSubItemActive = (link) => {
+		if (!link.subItems) return false;
+		return link.subItems.some(subItem => currentPageUrl.startsWith(subItem.url));
+	};
 
 	const links = useMemo(() => [{
 		url: '/',
@@ -177,6 +183,18 @@ const Sidebar = () => {
 		caption: 'About',
 	}], [hasMongoClusterManagerRole]);
 
+	useEffect(() => {
+		const link = links.find(hasSubItemActive);
+		if (link) {
+			setOpenSubmenus(new Set([link.caption]));
+		}
+
+		$(document).on('pjax:start', () => {
+			setCurrentPageUrl(window.location.pathname);
+		});
+
+	}, []);
+
 	const toggleSubMenu = (event, link) => {
 		if (!link.subItems) return;
 
@@ -204,6 +222,7 @@ const Sidebar = () => {
 							key={link.caption}
 							link={link}
 							isOpen={openSubmenus.has(link.caption)}
+							isActive={currentPageUrl === link.url || hasSubItemActive(link)}
 							onToggleSubMenu={toggleSubMenu}/>
 					))}
 				</ul>
@@ -215,25 +234,29 @@ const Sidebar = () => {
 const MenuLink = ({
 	link,
 	isOpen,
+	isActive,
 	onToggleSubMenu
 }) => {
 	const { currUser } = useContext(AppContext);
-	const isCurrentPage = window.location.pathname === link.url;
+	const currentPageUrl = window.location.pathname;
 
 	return (
-		<li key={link.caption} className={isCurrentPage ? 'selected' : ''}>
+		<li key={link.caption} className={isActive ? 'selected' : ''}>
 			{(!link.adminOnly || currUser.isAdmin) && (
 				<a onClick={(event) => onToggleSubMenu(event, link)} href={link.url}>
 					<i className={`fa ${link.icon}`}></i>
 					<span>{link.caption}</span>
 					{link.subItems &&
-						<i className={`fa pull-right fa-chevron-left sub-menu-arrow ${(isOpen || isCurrentPage) ? 'rotated' : ''}`}></i>}
+						<i className={`fa pull-right fa-chevron-left sub-menu-arrow ${isOpen ? 'rotated' : ''}`}></i>}
 				</a>
 			)}
 
-			{link.subItems && <ul className={(isOpen || isCurrentPage) ? 'open' : ''}>
+			{link.subItems && <ul className={`${isOpen ? 'open' : ''}`}>
 				{link.subItems.map((subLink) => (
-					<li key={subLink.caption} title={subLink.title} disabled={subLink.disabled}>
+					<li key={subLink.caption} 
+						title={subLink.title} 
+						disabled={subLink.disabled} 
+						className={currentPageUrl === subLink.url ? 'selected' : ''}>
 						{(!subLink.adminOnly || currUser.isAdmin) && (
 							<a href={subLink.url} disabled={subLink.disabled}>
 								<i className={`fa ${subLink.icon}`}></i>

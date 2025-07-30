@@ -56,7 +56,7 @@ const Upgrade = () => {
 		setUpgrade({ ...upgrade, completedSteps });
 		return upgrade;
 	};
-
+	
 	const registerToEvents = (upgrade) => {
 		const getUpgradeEventName = (event) => SocketService.getUpgradeID(upgrade._id) + event.name;
 
