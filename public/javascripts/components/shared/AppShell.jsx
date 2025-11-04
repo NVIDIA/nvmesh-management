@@ -8,6 +8,7 @@ import CustomerNameModal from './CustomerNameModal.jsx';
 import { ManagementService } from '../services/api/management.service.js';
 import { useAlerts } from '../core/Alert.jsx';
 import { extractErrorMsg } from '../utils.js';
+import PageProgressBar from '../core/PageProgressBar.jsx';
 
 const { useState, useEffect, useRef } = React;
 
@@ -115,6 +116,7 @@ const AppShell = ({ children }) => {
 
 	return (
 		<>
+			<PageProgressBar/>
 			<div className={`${isSidebarOpen ? 'sidebar-collapse' : ''}`}>
 				<div className="wrapper">
 					<TopNavbar onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}/>

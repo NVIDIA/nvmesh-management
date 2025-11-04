@@ -1502,9 +1502,9 @@ a[disabled] {
 	position: fixed;
 	z-index: 2147483647;
 	top: 0;
-	left: -6px;
+	left: 0;
 	width: 1%;
-	height: 2px;
+	height: 3px;
 	background: #AB0940;
 	-moz-border-radius: 1px;
 	-webkit-border-radius: 1px;
@@ -1513,7 +1513,7 @@ a[disabled] {
 	-ms-transition: width 500ms ease-out,opacity 400ms linear;
 	-o-transition: width 500ms ease-out,opacity 400ms linear;
 	-webkit-transition: width 500ms ease-out,opacity 400ms linear;
-	transition: width 500ms ease-out,opacity 400ms linear;
+	transition: width 500ms ease-out, opacity 400ms linear;
 
 	dd, dt {
 		position: absolute;

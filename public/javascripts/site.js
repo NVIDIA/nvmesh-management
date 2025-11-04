@@ -106,21 +106,6 @@ SOCKET = new SocketHandler();
 			$('.content').animate({ left: '2000px' }, function(){ });
 		});
 
-		$(document).on('pjax:send', function() {
-			//Add progress bar
-			if ($('#progress').length === 0) {
-				$('body').append($('<div><dt/><dd/></div>').attr('id', 'progress'));
-				$('#progress').width((50 + Math.random() * 30) + '%');
-			}
-		});
-
-		$(document).on('pjax:complete', function() {
-		//End loading animation
-			$('#progress').width('101%').delay(200).fadeOut(400, function() {
-				$(this).remove();
-			});
-		});
-
 		$(document).on('pjax:end', function() {
 			$('.content').finish().animate({ left: 0 }, 200);
 
