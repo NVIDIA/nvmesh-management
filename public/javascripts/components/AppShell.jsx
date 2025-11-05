@@ -1,27 +1,21 @@
 /* global React */
 
-import TopNavbar from './TopNavbar.jsx';
-import Sidebar from './Sidebar.jsx';
-import Modal from '../core/Modal.jsx';
-import ClusterIDModal from './ClusterIDModal.jsx';
-import CustomerNameModal from './CustomerNameModal.jsx';
-import { ManagementService } from '../services/api/management.service.js';
-import { useAlerts } from '../core/Alert.jsx';
-import { extractErrorMsg } from '../utils.js';
-import PageProgressBar from '../core/PageProgressBar.jsx';
+import TopNavbar from './shared/TopNavbar.jsx';
+import Sidebar from './shared/Sidebar.jsx';
+import Modal from './core/Modal.jsx';
+import PageProgressBar from './core/PageProgressBar.jsx';
+import Router from './Router.jsx';
+import { AlertsProvider } from './core/Alert.jsx';
+import PageContent from './PageContent.jsx';
 
 const { useState, useEffect, useRef } = React;
 
 const IS_ALIVE_INTERVAL = 5000; // 5 seconds
 const IS_ALIVE_MAX_FAILURES = 3;
 
-const AppShell = ({ children }) => {
-	const { successAlert, errorAlert } = useAlerts();
+const AppShell = () => {
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 	const [showConnectionModal, setShowConnectionModal] = useState(false);
-	const [showClusterIDModal, setShowClusterIDModal] = useState(false);
-	const [showCustomerNameModal, setShowCustomerNameModal] = useState(false);
-	
 	const failureCounterRef = useRef(0);
 	const timeoutRef = useRef(null);
 	const abortControllerRef = useRef(null);
@@ -72,16 +66,6 @@ const AppShell = ({ children }) => {
 	};
 
 	useEffect(() => {
-		const fetchClusterID = async() => {
-			const clusterID = await ManagementService.getClusterInfo();
-			if (!clusterID?.id) {
-				setShowClusterIDModal(true);
-			}
-		};
-		fetchClusterID();
-	}, []);
-
-	useEffect(() => {
 		// Start the periodic checking
 		checkIfAlive().finally(() => {
 			scheduleNextCheck();
@@ -98,33 +82,9 @@ const AppShell = ({ children }) => {
 		};
 	}, []);
 
-	const updateClusterID = async(clusterID) => {
-		const res = await ManagementService.updateClusterID(clusterID);
-		if (res.success) {
-			successAlert('Cluster ID Saved');
-		} else {
-			const errorMsg = extractErrorMsg(res.error);
-			errorAlert(`Failed to save Cluster ID - ${errorMsg}`);
-		}
-		setShowClusterIDModal(false);
-	};
-
-	// eslint-disable-next-line no-unused-vars
-	const saveCustomerName = async(customerName) => {
-
-	};
-
 	return (
 		<>
 			<PageProgressBar/>
-			<div className={`${isSidebarOpen ? 'sidebar-collapse' : ''}`}>
-				<div className="wrapper">
-					<TopNavbar onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}/>
-					<Sidebar/>
-				</div>
-			</div>
-
-			{children}
 
 			{/* No Connection Modal */}
 			<Modal
@@ -141,17 +101,20 @@ const AppShell = ({ children }) => {
 				</div>
 			</Modal>
 
-			<ClusterIDModal
-				isOpen={showClusterIDModal}
-				handleCancel={() => setShowClusterIDModal(false)}
-				onSubmit={clusterID => updateClusterID(clusterID)}
-			/>
+			<div className={`wrapper ${isSidebarOpen ? 'sidebar-collapse' : ''}`}>
+				<TopNavbar onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}/>
+				<Sidebar/>
 
-			<CustomerNameModal
-				isOpen={showCustomerNameModal}
-				handleCancel={() => setShowCustomerNameModal(false)}
-				onSubmit={customerName => saveCustomerName(customerName)}
-			/>
+				<div className="content-wrapper">
+					<section className="content">
+						<AlertsProvider>
+							<PageContent>
+								<Router/>
+							</PageContent>
+						</AlertsProvider>
+					</section>
+				</div>
+			</div>
 		</>
 	);
 };

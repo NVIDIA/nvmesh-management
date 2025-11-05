@@ -7,6 +7,7 @@ const logger = require('../logger');
 
 const enforceAuthentication = (req, res, next) => {
 	const httpsServerAuthenticationMethod = config.get('server.auth.authenticationMethod');
+	const isAcceptHTML = req.headers.accept?.toLowerCase().includes('html');
 
 	switch (httpsServerAuthenticationMethod) {
 		case consts.HTTPSServerAuthenticationMethods.CREDENTIALS: {
@@ -14,7 +15,7 @@ const enforceAuthentication = (req, res, next) => {
 			req.session.messages = 'You need to login to view this page';
 
 			// Pass the requested URL to redirect back here after login
-			if (req.originalUrl !== '/')
+			if (isAcceptHTML && req.originalUrl !== '/')
 				redirectUrl += `?redirectTo=${encodeURIComponent(req.originalUrl)}`;
 
 			res.redirect(redirectUrl);

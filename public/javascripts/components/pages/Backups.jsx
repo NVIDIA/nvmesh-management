@@ -2,7 +2,7 @@
 
 import FiltSortTable from '../filtsort-table/FiltSortTable.jsx';
 import { BackupsService } from '../services/api/backups.service.js';
-import { useAppContext } from './App.jsx';
+import { useAppContext } from '../App.jsx';
 import CapacityService from '../services/capacity.service.js';
 import { SocketService, events } from '../services/socket.service.js';
 

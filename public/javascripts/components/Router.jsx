@@ -1,17 +1,12 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/* global React, consts, $ */
 
-/* global ReactDOM, React, consts */
+import { SocketService } from './services/socket.service.js';
+import { useAlerts } from './core/Alert.jsx';
 
-const pagesFolder = '../components_js/pages';
+const { useState, useEffect } = React;
 
-// Registry mapping page keys to their module paths
+const pagesFolder = './pages';
+
 const componentsRegistry = {
 	[consts.componentsPages.kafka]: `${pagesFolder}/Kafka.js`,
 	[consts.componentsPages.logs]: `${pagesFolder}/Logs.js`,
@@ -53,24 +48,46 @@ const componentsRegistry = {
 	[consts.componentsPages.configurationProfiles]: `${pagesFolder}/configProfiles/ConfigProfiles.js`
 };
 
-const reactAppElement = document.getElementById('reactApp');
-const root = ReactDOM.createRoot(reactAppElement);
-const componentName = reactAppElement.getAttribute('component');
-const additionalData = reactAppElement.getAttribute('data');
-// Dynamically import App and the requested component in parallel
-Promise.all([
-	import(`${pagesFolder}/App.js`),
-	import(componentsRegistry[componentName])
-])
-	.then(([AppModule, ComponentModule]) => {
-		const App = AppModule.default;
-		const Component = ComponentModule.default;
-		if (componentName === consts.componentsPages.serviceUnavailable) {
-			root.render(React.createElement(Component, { data: additionalData }));
-		} else {
-			root.render(React.createElement(App, null, React.createElement(Component)));
+
+const Router = () => {
+	const [DynamicComponent, setDynamicComponent] = useState(null);
+	const { clearAlerts } = useAlerts();
+
+	useEffect(() => {
+		// Render the component according to pjax component name
+		async function renderComponent() {
+			const reactAppElement = document.getElementById('reactApp');
+			if (!reactAppElement) {
+				return;
+			}
+			const componentName = reactAppElement.getAttribute('component');
+
+			try {
+				const ComponentModule = await import(componentsRegistry[componentName]);
+				setDynamicComponent(() => ComponentModule.default);
+			} catch (err) {
+				console.error('Error loading dynamic component:', err);
+				setDynamicComponent(() => <div>Error loading page</div>);
+			}
 		}
-	})
-	.catch(err => {
-		console.error('Error loading components:', err);
-	});
+
+		renderComponent();
+
+		$(document).on('pjax:start', () => {
+			setDynamicComponent(null);
+			SocketService.removeAllHandlers();
+			clearAlerts();
+		});
+		$(document).on('pjax:end', renderComponent);
+	}, []);
+
+	return (
+		<>
+			{DynamicComponent && (
+				<DynamicComponent />
+			)}
+		</>
+	);
+};
+
+export default Router;

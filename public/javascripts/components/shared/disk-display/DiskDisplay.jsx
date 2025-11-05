@@ -1,7 +1,7 @@
 /* global React, consts, $ */
 
 import CapacityService from '../../services/capacity.service.js';
-import { useAppContext } from '../../pages/App.jsx';
+import { useAppContext } from '../../App.jsx';
 import { DisksService } from '../../services/api/disks.service.js';
 import { useAlerts } from '../../core/Alert.jsx';
 import { useConfirmationDialog } from '../ConfirmationDialog.jsx';

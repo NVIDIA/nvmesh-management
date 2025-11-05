@@ -8,7 +8,7 @@ import { useConfirmationDialog } from '../../shared/ConfirmationDialog.jsx';
 import CreateEditUserModal from './CreateEditUserModal.jsx';
 import ChangePasswordModal from './ChangePasswordModal.jsx';
 import ConcurrentSessionsModal from './ConcurrentSessionsModal.jsx';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import NewButton from '../../shared/NewButton.jsx';
 
 const { useRef, useState, useEffect } = React;

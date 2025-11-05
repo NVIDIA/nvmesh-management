@@ -364,6 +364,10 @@ function doAfterDatabasesArePopulatedAndConnected() {
 					res.setHeader('Strict-Transport-Security', 'max-age=31536000');
 
 				const renderData = {};
+				if (req.headers['x-pjax'])
+					renderData.layout = false;
+
+				renderData.user = { email: req.user.email, isAdmin: req.user.role === consts.userRoles.ADMIN };
 				renderData.isReact = true;
 				renderData.componentName = consts.componentsPages.pageNotFound;
 

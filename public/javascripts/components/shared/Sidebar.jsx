@@ -1,11 +1,11 @@
 /* global React, $ */
 
-import { AppContext } from '../pages/App.jsx';
+import { AppContext } from '../App.jsx';
 
 const { useContext, useState, useMemo, useEffect } = React;
 
 const Sidebar = () => {
-	const hasMongoClusterManagerRole = false; // TODO: add this to the context
+	const { systemInfo } = useContext(AppContext);
 	const [openSubmenus, setOpenSubmenus] = useState(new Set());
 	const [currentPageUrl, setCurrentPageUrl] = useState(window.location.pathname);
 
@@ -164,8 +164,8 @@ const Sidebar = () => {
 			url: '/mongoDB',
 			icon: 'fa fa-database',
 			caption: 'MongoDB',
-			disabled: !hasMongoClusterManagerRole,
-			title: !hasMongoClusterManagerRole ? 'N/A due to missing mongoDB cluster permissions' : null
+			disabled: !systemInfo.hasMongoClusterManagerRole,
+			title: !systemInfo.hasMongoClusterManagerRole ? 'N/A due to missing mongoDB cluster permissions' : null
 		},
 		{
 			url: '/kafka',
@@ -181,7 +181,7 @@ const Sidebar = () => {
 		url: '/about',
 		icon: 'fa fa-info',
 		caption: 'About',
-	}], [hasMongoClusterManagerRole]);
+	}], [systemInfo.hasMongoClusterManagerRole]);
 
 	useEffect(() => {
 		const link = links.find(hasSubItemActive);

@@ -1,7 +1,7 @@
 /* global React, consts */
 
 import Input from '../../core/Input.jsx';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import CapacityService from '../../services/capacity.service.js';
 import Select from '../../core/Select.jsx';
 

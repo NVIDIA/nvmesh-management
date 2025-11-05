@@ -11,7 +11,7 @@ import DriveHealthIcon from '../drives/DriveHealthIcon.jsx';
 import DriveEvictedIcon from '../drives/DrivesEvictedIcon.jsx';
 import CapacityDisplay from '../drives/CapacityDisplay.jsx';
 import CapacityService from '../../services/capacity.service.js';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 
 const { useState, useRef } = React;
 const { useForm } = ReactHookForm;

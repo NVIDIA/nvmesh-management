@@ -1,11 +1,11 @@
 /* global React, user, consts */
 
-import { AlertsProvider, useAlerts } from '../core/Alert.jsx';
-import { ConfirmationDialogsProvider } from '../shared/ConfirmationDialog.jsx';
-import { extractErrorMsg } from '../utils.js';
-import { GeneralSettingsService } from '../services/api/general-settings.service.js';
-import { UsersService } from '../services/api/users.service.js';
-import ManagementService from '../services/api/management.service.js';
+import { ConfirmationDialogsProvider } from './shared/ConfirmationDialog.jsx';
+import { extractErrorMsg } from './utils.js';
+import { GeneralSettingsService } from './services/api/general-settings.service.js';
+import { UsersService } from './services/api/users.service.js';
+import ManagementService from './services/api/management.service.js';
+import AppShell from './AppShell.jsx';
 
 const { createContext, useContext, useState, useEffect } = React;
 
@@ -18,7 +18,6 @@ export const AppContextProvider = ({ children }) => {
 	const [currUser, setCurrUser] = useState(user);
 	const [userUnitType, setUserUnitType] = useState(null);
 	const [systemInfo, setSystemInfo] = useState(null);
-	const { errorAlert } = useAlerts();
 
 	const loadGeneralSettings = async() => {
 		const response = await GeneralSettingsService.load();
@@ -27,7 +26,7 @@ export const AppContextProvider = ({ children }) => {
 			loadUnitType(response.results.defaultUnitType);
 		} else {
 			const errorMsg = extractErrorMsg(response.error);
-			errorAlert(`Failed to load general settings - ${errorMsg}`);
+			console.error(`Failed to load general settings - ${errorMsg}`);
 		}
 	};
 
@@ -73,6 +72,7 @@ export const AppContextProvider = ({ children }) => {
 			loadGeneralSettings,
 			defaultDomain,
 			loadDefaultDomain,
+			loadSystemInfo,
 			currUser,
 			setCurrUser,
 			unitType: userUnitType,
@@ -84,16 +84,14 @@ export const AppContextProvider = ({ children }) => {
 	);
 };
 
-const App = ({ children }) => {
+const App = () => {
 
 	return (
-		<AlertsProvider>
-			<AppContextProvider>
-				<ConfirmationDialogsProvider>
-					{children}
-				</ConfirmationDialogsProvider>
-			</AppContextProvider>
-		</AlertsProvider>
+		<AppContextProvider>
+			<ConfirmationDialogsProvider>
+				<AppShell />
+			</ConfirmationDialogsProvider>
+		</AppContextProvider>
 	);
 };
 export default App;

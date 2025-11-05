@@ -12,7 +12,8 @@ const isServiceAvailable = (req, res, next) => {
 		const sysMessage = new SystemMessage(systemMessages.SERVICE_SHUTTING_DOWN);
 
 		if (isAcceptHTML) {
-			return renderServiceUnavailable(res, sysMessage);
+			const renderData = renderServiceUnavailable(req, sysMessage);
+			return res.render('unavailable', renderData);
 		}
 
 		return res.status(503).json(sysMessage.createApiResponse());
@@ -22,9 +23,9 @@ const isServiceAvailable = (req, res, next) => {
 		const sysMessage = new SystemMessage(systemMessages.SERVICE_UPGRADE_MODE);
 
 		if (isAcceptHTML) {
-			return renderServiceUnavailable(res, sysMessage);
+			const renderData = renderServiceUnavailable(req, sysMessage);
+			return res.render('unavailable', renderData);
 		}
-
 
 		return res.status(503).json(sysMessage.createApiResponse());
 	}
@@ -32,13 +33,14 @@ const isServiceAvailable = (req, res, next) => {
 	next();
 };
 
-function renderServiceUnavailable(res, sysMessage) {
+function renderServiceUnavailable(req, sysMessage) {
 	const renderData = {};
+	renderData.layout = false;
+
 	renderData.isReact = true;
 	renderData.componentName = consts.componentsPages.serviceUnavailable;
 	renderData.additionalData = sysMessage.systemMessage.message;
-
-	return res.render('react', renderData);
+	return renderData;
 }
 
 module.exports = isServiceAvailable;

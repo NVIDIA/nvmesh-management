@@ -30,28 +30,27 @@
 		<script type="text/javascript" src="/javascripts/daterangepicker.js"></script>
 
 		<!-- Internal scripts -->
-		<script type="text/javascript" src="/javascripts/site.js"></script>
 		<script type="text/javascript" src="/javascripts/consts.js"></script>
 		<script type="text/javascript" src="/javascripts/profileScheme.js"></script>
 		<script type="text/javascript" src="/javascripts/clientConsts.js"></script>
 		<script type="module" src="/javascripts/index.js"></script>
-		<script type="module" src="/javascripts/controllers/reactController.js"></script>
 	</head>
 	<body>
+		<!-- top level modals container -->
 		<div id="modal-root"></div>
+		<!-- top level alerts container -->
 		<div id="fading-alerts-root" class="fading-alerts-container"></div>
 
-		<div class="wrapper">
-			<div id="root"></div>
-			<div class="content-wrapper">
-				<section class="content">
-					<%- body %>
-				</section>
-			</div>
+		<!-- React root -->
+		<div id="root"></div>
+
+		<!-- Pjax -->
+		<div id="component">
+			<%- body %>
 		</div>
 
 		<script type='text/javascript'>
-			var user = <%- JSON.stringify(user) %>;
+			const user = <%- JSON.stringify(user) %>;
 		</script>
 	</body>
 </html>

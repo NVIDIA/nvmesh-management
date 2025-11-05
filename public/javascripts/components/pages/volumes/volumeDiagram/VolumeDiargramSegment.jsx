@@ -1,6 +1,6 @@
 /* global React, consts */
 
-import { AppContext } from '../../App.jsx';
+import { AppContext } from '../../../App.jsx';
 import CapacityService from '../../../services/capacity.service.js';
 import { OverlayTrigger, Popover } from '../../../core/Popover.jsx';
 

@@ -1,4 +1,4 @@
-/* global React, consts, INTERVALS */
+/* global React, consts */
 
 import FiltSortTable from '../../filtsort-table/FiltSortTable.jsx';
 import { ClientsService } from '../../services/api/clients.service.js';
@@ -9,7 +9,7 @@ import ConfigurationProfileModal from '../../shared/ConfigurationProfileModal.js
 import AttachDetachModal from './AttachDetachModal.jsx';
 import { ConfigurationProfilesService } from '../../services/api/configuration-profiles.service.js';
 import { SocketService, events } from '../../services/socket.service.js';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import ConfigProfileView from '../configProfiles/ConfigProfileView.jsx';
 
 const { useRef, useState, useEffect, useMemo } = React;
@@ -216,8 +216,10 @@ const Clients = () => {
 
 	useEffect(() => {
 		const reloadTableInterval = setInterval(() => reloadTable(false), 3000);
-		INTERVALS.push(reloadTableInterval);
-		SocketService.addHandler(events.newClientEvent.name, reloadTable);
+		SocketService.addHandler(events.newClientEvent.name, () => reloadTable(false));
+		return () => {
+			clearInterval(reloadTableInterval);
+		};
 	}, []);
 
 	const reloadTable = (deselectMissingRows = true) => {

@@ -1,4 +1,4 @@
-/* global React, INTERVALS, consts */
+/* global React, consts */
 
 import FiltSortTable from '../../filtsort-table/FiltSortTable.jsx';
 import { useAlerts } from '../../core/Alert.jsx';
@@ -7,7 +7,7 @@ import { VolumesService } from '../../services/api/volumes.service.js';
 import { extractErrorMsg, extractResults } from '../../utils.js';
 import NewButton from '../../shared/NewButton.jsx';
 import CreateEditVolumeModal from './createEditModal/CreateEditVolumeModal.jsx';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import CapacityService from '../../services/capacity.service.js';
 import { AllocationService } from '../../services/allocation.service.js';
 import { DropdownButton, DropdownButtonItem } from '../../core/DropdownButton.jsx';
@@ -164,7 +164,7 @@ const Volumes = () => {
 
 	useEffect(() => {
 		const interval = setInterval(() => reloadTable(false), 3000);
-		INTERVALS.push(interval);
+		return () => clearInterval(interval);
 	}, []);
 
 	const reloadTable = (deselectMissingRows = true) => {

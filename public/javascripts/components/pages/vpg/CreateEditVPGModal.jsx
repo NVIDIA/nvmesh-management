@@ -12,7 +12,7 @@ import { VolumeSecurityGroupsService } from '../../services/api/volumeSecurityGr
 import Toggle from '../../core/Toggle.jsx';
 import VolumeCapacityInput from '../volume/VolumeCapacityInput.jsx';
 import CapacityService from '../../services/capacity.service.js';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import { VolumeProvisioningGroupsService } from '../../services/api/volumeProvisioningGroups.service.js';
 import { debounce, copyDefinedProperties } from '../../utils.js';
 import VolumeAllocationBar from '../volume/VolumeAllocationBar.jsx';

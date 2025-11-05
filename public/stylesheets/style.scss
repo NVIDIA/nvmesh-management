@@ -30,7 +30,7 @@
 	box-sizing: border-box;
 }
 
-body, html {
+body, html, #root {
 	height: 100%;
 }
 
@@ -1226,6 +1226,12 @@ a[disabled] {
 		text-align: center;
 
 		.cluster-name {
+			position: fixed;
+			text-align: center;
+			width: 450px;
+			left: 0;
+			right: 0;
+			margin: auto;
 			font-size: 24px;
 			color: white;
 			line-height: 50px;
@@ -1504,7 +1510,7 @@ a[disabled] {
 	top: 0;
 	left: 0;
 	width: 1%;
-	height: 3px;
+	height: 2px;
 	background: #AB0940;
 	-moz-border-radius: 1px;
 	-webkit-border-radius: 1px;
@@ -3134,9 +3140,14 @@ textarea {
 }
 
 .service-unavailable-container {
+	position: absolute;
+	top: 0;
+	background-color: #fff;
+	height: 100%;
+	width: 100%;
+	z-index: 9999999999;
 	display: flex;
 	flex-direction: column;
-	height: 80vh;
 	align-items: center;
 	justify-content: center;
 	color: style_consts.$normal;

@@ -1,7 +1,7 @@
 /* global React, c3, STATUS_COLORS */
 
 import CapacityService from '../../services/capacity.service.js';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import { toPercent } from '../../utils.js';
 
 const { useEffect, useRef } = React;

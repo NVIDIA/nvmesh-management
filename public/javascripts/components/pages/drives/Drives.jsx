@@ -1,6 +1,6 @@
 /* global React, consts */
 
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import { useAlerts } from '../../core/Alert.jsx';
 import { useConfirmationDialog } from '../../shared/ConfirmationDialog.jsx';
 import FiltSortTable from '../../filtsort-table/FiltSortTable.jsx';

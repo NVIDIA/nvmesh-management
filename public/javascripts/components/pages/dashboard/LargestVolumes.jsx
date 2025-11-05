@@ -2,7 +2,7 @@
 
 import CapacityService from '../../services/capacity.service.js';
 import { toPercent } from '../../utils.js';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 
 const LargestVolumes = ({ volumes, totalCapacity }) => {
 	const { unitType } = useAppContext();

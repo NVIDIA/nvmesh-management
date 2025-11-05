@@ -4,7 +4,7 @@ import Input from '../../../core/Input.jsx';
 import FormControl from '../../../core/FormControl.jsx';
 import Modal from '../../../core/Modal.jsx';
 import VolumeCapacityInput from '../../volume/VolumeCapacityInput.jsx';
-import { useAppContext } from '../../App.jsx';
+import { useAppContext } from '../../../App.jsx';
 import CapacityService from '../../../services/capacity.service.js';
 import { VolumeSecurityGroupsService } from '../../../services/api/volumeSecurityGroups.service.js';
 import { TargetClassesService } from '../../../services/api/targetClasses.service.js';

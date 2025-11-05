@@ -1,9 +1,46 @@
-/* global SOCKET */
+/* global io */
+
+class SocketHandler {
+	constructor() {
+		this.socket = new io();
+		this.registeredEvents = {};
+	}
+
+	addHandler(eventName, handler) {
+		if (eventName in this.registeredEvents) {
+			this.removeHandler(eventName, true);
+		} else {
+			this.socket.emit('registerToEvent', { name: eventName });
+		}
+		this.registeredEvents[eventName] = 1;
+		this.socket.on(eventName, handler);
+	}
+
+	removeHandler(eventName, fromGUIOnly) {
+		this.socket.removeAllListeners(eventName);
+		if (this.registeredEvents[eventName]) {
+			if (!fromGUIOnly)
+				this.socket.emit('unregisterFromEvents', [eventName]);
+			delete this.registeredEvents[eventName];
+		}
+	}
+
+	removeAllHandlers() {
+		for (const event in this.registeredEvents) {
+			this.socket.removeAllListeners(event);
+		}
+		this.socket.emit('unregisterFromEvents', Object.keys(this.registeredEvents));
+		this.registeredEvents = {};
+	}
+}
+
+/* eslint-disable-next-line */
+const socketHandler = new SocketHandler();
 
 export const SocketService = {
-	addHandler: (eventName, handler) => SOCKET.addHandler(eventName, handler),
-	removeHandler: (eventName, fromGUIOnly) => SOCKET.removeHandler(eventName, fromGUIOnly),
-	removeAllHandlers: () => SOCKET.removeAllHandlers(),
+	addHandler: (eventName, handler) => socketHandler.addHandler(eventName, handler),
+	removeHandler: (eventName, fromGUIOnly) => socketHandler.removeHandler(eventName, fromGUIOnly),
+	removeAllHandlers: () => socketHandler.removeAllHandlers(),
 	getNodeID: id => 'nodeID_' + id + '@',
 	getTargetID: id => 'targetID_' + id + '@',
 	getClientID: id => 'clientID_' + id + '@',
@@ -69,6 +106,7 @@ export const events = {
 	newVolumeEvent: { name: 'newVolumeEvent' },
 	newLogEvent: { name: 'newLogEvent' },
 	logChangedEvent: { name: 'logChangedEvent' },
+	allLogsAcknowledgedEvent: { name: 'allLogsAcknowledgedEvent' },
 	newPlatformEvent: { name: 'newPlatformEvent' },
 	platformRemovedEvent: { name: 'platformRemovedEvent' },
 	platformChangedEvent: { name: 'platformChangedEvent' },

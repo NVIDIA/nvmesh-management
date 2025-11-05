@@ -2,7 +2,7 @@
 
 import { AllocationService } from '../../services/allocation.service.js';
 import CapacityService from '../../services/capacity.service.js';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 
 const getRedundancyUnitsCount = (pRaidOptions) => {
 	if (AllocationService.isMirrored(pRaidOptions.RAIDLevel)) {

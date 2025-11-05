@@ -2,7 +2,7 @@
 
 import FiltSortTable from '../../filtsort-table/FiltSortTable.jsx';
 import { LogsService } from '../../services/api/logs.service.js';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import { levelToClass } from '../Logs.jsx';
 import TextWithDynamicLinks from '../../shared/TextWithDynamicLinks.jsx';
 import { useAlerts } from '../../core/Alert.jsx';

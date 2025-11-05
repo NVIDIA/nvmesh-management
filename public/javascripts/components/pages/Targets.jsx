@@ -1,4 +1,4 @@
-/* global React, consts, INTERVALS */
+/* global React, consts */
 
 import FiltSortTable from '../filtsort-table/FiltSortTable.jsx';
 import { TargetsService } from '../services/api/targets.service.js';
@@ -9,7 +9,7 @@ import ConfigurationProfileModal from '../shared/ConfigurationProfileModal.jsx';
 import { ConfigurationProfilesService } from '../services/api/configuration-profiles.service.js';
 import { SocketService, events } from '../services/socket.service.js';
 import AssignZoneModal from '../shared/AssignZoneModal.jsx';
-import { useAppContext } from './App.jsx';
+import { useAppContext } from '../App.jsx';
 import ConfigProfileView from './configProfiles/ConfigProfileView.jsx';
 const { useRef, useState, useEffect } = React;
 
@@ -65,7 +65,7 @@ const Targets = () => {
 
 	useEffect(() => {
 		const interval = setInterval(() => reloadTable(false), 3000);
-		INTERVALS.push(interval);
+		return () => clearInterval(interval);
 	}, []);
 
 	const reloadTable = (deselectMissingRows = true) => {

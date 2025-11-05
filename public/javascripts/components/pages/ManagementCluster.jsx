@@ -1,4 +1,4 @@
-/* global React, consts, moment, INTERVALS */
+/* global React, consts, moment */
 
 import FiltSortTable from '../filtsort-table/FiltSortTable.jsx';
 import { ManagementClusterService } from '../services/api/management-cluster.service.js';
@@ -49,11 +49,13 @@ const ManagementCluster = () => {
 
 	useEffect(() => {
 		const interval = setInterval(() => reloadTable(false), 5000);
-		INTERVALS.push(interval);
 
 		SocketService.addHandler(events.newManagementInClusterEvent.name, () => {
-			reloadTable();
+			reloadTable(false);
 		});
+		return () => {
+			clearInterval(interval);
+		};
 	}, []);
 
 	const reloadTable = (deselectMissingRows = true) => {

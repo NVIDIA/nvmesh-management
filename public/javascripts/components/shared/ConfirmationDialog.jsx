@@ -2,7 +2,7 @@
 
 import Modal from '../core/Modal.jsx';
 import Input from '../core/Input.jsx';
-import { useAppContext } from '../pages/App.jsx';
+import { useAppContext } from '../App.jsx';
 const { useState, createContext, useContext } = React;
 
 const ConfirmationDialogModal = ({

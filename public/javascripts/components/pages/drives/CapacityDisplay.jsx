@@ -1,6 +1,6 @@
 /* global React*/
 
-import { useAppContext } from '../../pages/App.jsx';
+import { useAppContext } from '../../App.jsx';
 import CapacityService from '../../services/capacity.service.js';
 
 const CapacityDisplay = ({

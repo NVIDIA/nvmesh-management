@@ -12,7 +12,7 @@ import { useAlerts } from '../core/Alert.jsx';
 import { GeneralSettingsService } from '../services/api/general-settings.service.js';
 import { NvmeshMetadataService } from '../services/api/nvmesh-metadata.service.js';
 import { UsersService } from '../services/api/users.service.js';
-import { useAppContext } from './App.jsx';
+import { useAppContext } from '../App.jsx';
 
 const {
 	useState,
@@ -44,7 +44,7 @@ const UNIT_TYPE_CACHE_KEY = 'unitType';
 const GeneralSettings = () => {
 	const [clusterID, setClusterID] = useState('');
 	const { successAlert, errorAlert } = useAlerts();
-	const { generalSettings, setUnitType } = useAppContext();
+	const { generalSettings, setUnitType, loadSystemInfo, loadGeneralSettings } = useAppContext();
 	const [phoneHomeUser, setPhoneHomeUser] = useState();
 	const [customerName, setCustomerName] = useState('');
 	const [userUnitType, setUserUnitType] = useState(localStorage.getItem(UNIT_TYPE_CACHE_KEY) || 'default');
@@ -77,6 +77,8 @@ const GeneralSettings = () => {
 
 		if (settingsRes[0].success) {
 			successAlert('General Settings updated successfully');
+			loadSystemInfo();
+			loadGeneralSettings();
 		} else {
 			const errorMsg = extractErrorMsg(settingsRes[0].error);
 			errorAlert(`Failed to update General Settings - ${errorMsg}`);

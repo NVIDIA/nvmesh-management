@@ -1,7 +1,7 @@
 /* global React, consts */
 
 import { AccordionPanel, Panel } from '../../../core/AccordionPanel.jsx';
-import { AppContext } from '../../App.jsx';
+import { AppContext } from '../../../App.jsx';
 import CapacityService from '../../../services/capacity.service.js';
 import { statusToCaption, statusToHealth } from '../Volumes.jsx';
 import VolumeDiagramSegment from './VolumeDiargramSegment.jsx';

@@ -1,6 +1,6 @@
 /* global React, consts */
 
-import { AppContext } from '../pages/App.jsx';
+import { AppContext } from '../App.jsx';
 
 const { useContext } = React;
 

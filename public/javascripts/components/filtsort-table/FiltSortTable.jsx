@@ -161,7 +161,10 @@ const FiltSortTable = forwardRef(function FiltSortTable({
 			...(selectedFilter || {})
 		};
 		const totalRes = await loadTotal(requestFilter);
-		setTotal(totalRes);
+		if (totalRes.success !== false) {
+			setTotal(totalRes);
+		}
+
 	};
 
 	const columnsToShow = useMemo(() => {

@@ -3,7 +3,7 @@
 import { MongoDBService } from '../services/api/mongoDB.service.js';
 import FiltSortTable from '../filtsort-table/FiltSortTable.jsx';
 import CapacityService from '../services/capacity.service.js';
-import { useAppContext } from './App.jsx';
+import { useAppContext } from '../App.jsx';
 
 const {
 	useState,

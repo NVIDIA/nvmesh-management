@@ -6,7 +6,7 @@ import { useConfirmationDialog } from '../../shared/ConfirmationDialog.jsx';
 import NewButton from '../../shared/NewButton.jsx';
 import { ConfigurationProfilesService } from '../../services/api/configuration-profiles.service.js';
 import { SocketService, events } from '../../services/socket.service.js';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import { extractErrorMsg, extractResults } from '../../utils.js';
 import CreateEditConfigProfileModal from './CreateEditConfigProfile.jsx';
 import ExpandableList from '../../core/ExpandableList.jsx';

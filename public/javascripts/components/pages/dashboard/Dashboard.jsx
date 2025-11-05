@@ -9,7 +9,7 @@ import TilesDiagram from './TilesDiagram.jsx';
 import AlertsTable from './AlertsTable.jsx';
 import { SocketService, events } from '../../services/socket.service.js';
 import { VolumesService } from '../../services/api/volumes.service.js';
-import { useAppContext } from '../App.jsx';
+import { useAppContext } from '../../App.jsx';
 import { useAlerts } from '../../core/Alert.jsx';
 import { getBaseVersion } from '../../utils.js';
 import { UpgradesService } from '../../services/api/upgrades.service.js';
