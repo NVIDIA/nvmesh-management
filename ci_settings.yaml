@@ -3,5 +3,6 @@ build-with:
   nvmesh: "master"
   interop-db: "master"
   upgrader: "master"
+  nvmesh-csi-driver: "master"
 phases: ["MGMT", "NEWSCALE", "UM_MINI"]
 py: 3.6

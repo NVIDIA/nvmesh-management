@@ -4,3 +4,4 @@ testers/NvmeshMetadataTester.py   # filter: NvmeshMetadataTester and not BaseTes
 testers/DriveClassTester.py # filter: DriveClassTester and not BaseTester
 testers/TargetClassTester.py # filter: TargetClassTester and not BaseTester
 testers/KeyTester.py # filter: KeyTester and not BaseTester
+csi_tester.py
