@@ -11,6 +11,7 @@ import PageContent from './PageContent.jsx';
 const { useState, useEffect, useRef } = React;
 
 const IS_ALIVE_INTERVAL = 5000; // 5 seconds
+const IS_ALIVE_TIMEOUT = 5000; // 5 seconds
 const IS_ALIVE_MAX_FAILURES = 3;
 
 const AppShell = () => {
@@ -29,8 +30,17 @@ const AppShell = () => {
 		// Create new abort controller for this request
 		abortControllerRef.current = new AbortController();
 
+		const timeoutId = setTimeout(() => {
+			abortControllerRef.current.abort();
+		}, IS_ALIVE_TIMEOUT);
+
 		try {
-			const response = await fetch('/isAlive', { credentials: 'same-origin', redirect: 'follow' });
+			const response = await fetch('/isAlive', { 
+				credentials: 'same-origin', 
+				redirect: 'follow',
+				signal: abortControllerRef.current.signal 
+			});
+
 			if (response.redirected) {
 				window.location.href = response.url;
 				return;
@@ -46,13 +56,17 @@ const AppShell = () => {
 			setShowConnectionModal(false);
 		} catch (error) {
 			if (error.name === 'AbortError') {
+				setShowConnectionModal(true);
 				return;
 			}
+
 			failureCounterRef.current++;
 
 			if (failureCounterRef.current >= IS_ALIVE_MAX_FAILURES) {
 				setShowConnectionModal(true);
 			}
+		} finally {
+			clearTimeout(timeoutId);
 		}
 
 	};

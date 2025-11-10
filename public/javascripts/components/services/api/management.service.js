@@ -26,15 +26,6 @@ export const ManagementService = {
 	async getAboutInfo() {
 		return await apiService.get('/aboutInfo');
 	},
-
-	async getClusterInfo() {
-		return await apiService.get('/nvmeshMetadata/clusterID');
-	},
-
-	async updateClusterID(clusterID) {
-		return await apiService.post('/nvmeshMetadata/updateClusterID', { clusterID });
-	},
-
 };
 
 export default ManagementService;

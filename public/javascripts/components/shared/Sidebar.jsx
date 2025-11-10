@@ -189,10 +189,15 @@ const Sidebar = () => {
 			setOpenSubmenus(new Set([link.caption]));
 		}
 
-		$(document).on('pjax:start', () => {
+		const handlePjaxStart = () => {
 			setCurrentPageUrl(window.location.pathname);
-		});
+		};
 
+		$(document).on('pjax:start', handlePjaxStart);
+
+		return () => {
+			$(document).off('pjax:start', handlePjaxStart);
+		};
 	}, []);
 
 	const toggleSubMenu = (event, link) => {
@@ -253,10 +258,10 @@ const MenuLink = ({
 
 			{link.subItems && <ul className={`${isOpen ? 'open' : ''}`}>
 				{link.subItems.map((subLink) => (
-					<li key={subLink.caption} 
-						title={subLink.title} 
-						disabled={subLink.disabled} 
-						className={currentPageUrl === subLink.url ? 'selected' : ''}>
+					<li key={subLink.caption}
+					    title={subLink.title}
+					    disabled={subLink.disabled}
+					    className={currentPageUrl === subLink.url ? 'selected' : ''}>
 						{(!subLink.adminOnly || currUser.isAdmin) && (
 							<a href={subLink.url} disabled={subLink.disabled}>
 								<i className={`fa ${subLink.icon}`}></i>

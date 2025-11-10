@@ -814,7 +814,7 @@ consts.defaultFormat = {
 consts.userManualURL = 'https://www.excelero.com/nvmesh-user-guide';
 consts.releaseNotesURL = 'https://www.excelero.com/release-notes';
 consts.restAPIURL = '/docs/index.html';
-consts.defaultExceleroEmail = 'customer.stats+customerName@excelero.com';
+consts.defaultExceleroEmail = 'customer.stats+customername@excelero.com';
 
 consts.HANDLE_TIMEDOUT_COMPONENT_INTERVAL = 5 * 1000; // 5 seconds
 

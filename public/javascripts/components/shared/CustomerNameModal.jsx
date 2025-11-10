@@ -15,7 +15,6 @@ const CustomerName = ({
 	return (
 		<>
 			<div className="modal-body">
-				<h4 className="text-center" style={{ marginBottom: '20px' }}>This is used for logging purposes</h4>
 				<FormControl label="Customer Name"
 				             name="customerName">
 					<Input id="customerName"

@@ -15,6 +15,16 @@ function getInputType(dataType) {
 	}
 }
 
+function parseDateTime(s) {
+	s = s.trim();
+	var date = moment(s, ['MM/DD/YYYY hh:mm A', 'MM/DD/YYYY HH:mm A', 'MM/DD/YYYY HH:mm', 'MM/DD/YYYY h:mm A'], true);
+	if (!date.isValid()) {
+		// fallback: try letting moment auto-parse
+		date = moment(s);
+	}
+	return date;
+}
+
 function getValue(dataType, $input) {
 	switch (dataType) {
 		case 'boolean':
@@ -28,14 +38,16 @@ function getValue(dataType, $input) {
 				$lt: tomorrow
 			};
 		case 'dateRange':
-			var value = $input.val(); //value="01/01/2015 - 01/31/2015"
-			var valueArr = value.split('-');
-			var from = new Date(valueArr[0]);
-			var to = new Date(valueArr[1]);
+			var value = $input.val(); // "12/06/2025 02:00 AM - 12/08/2025 14:59 PM"
+			if (!value) return null;
+			value = value.split(' - ');
+
+			var from = parseDateTime(value[0]);
+			var to = parseDateTime(value[1]);
 
 			return {
-				$gt: from,
-				$lt: to
+				$gt: from.isValid() ? from.toDate() : null,
+				$lt: to.isValid() ? to.toDate() : null
 			};
 		case 'choice':
 			return $input.val();

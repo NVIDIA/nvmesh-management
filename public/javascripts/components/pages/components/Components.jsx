@@ -1,4 +1,4 @@
-/* global React, SOCKET, EVENTS, getComponentID */
+/* global React */
 
 import FiltSortTable from '../../filtsort-table/FiltSortTable.jsx';
 import CreateEditComponentModal from './CreateEditComponentModal.jsx';
@@ -7,6 +7,7 @@ import { useConfirmationDialog } from '../../shared/ConfirmationDialog.jsx';
 import { useAlerts } from '../../core/Alert.jsx';
 import useQueryParams from '../../useQueryParams.hook.js';
 import { extractErrorMsg, extractResults } from '../../utils.js';
+import { events, SocketService } from '../../services/socket.service.js';
 
 const { useRef, useState, useEffect } = React;
 
@@ -24,6 +25,10 @@ const Components = () => {
 		if (createParam) {
 			newComponent(createParam);
 		}
+
+		SocketService.addHandler(events.newComponentEvent.name, () => {
+			reloadTable();
+		});
 	}, []);
 
 	const columns = [
@@ -69,10 +74,6 @@ const Components = () => {
 			tableRef.current.reloadTotal();
 		}
 	};
-
-	SOCKET.addHandler(EVENTS.newComponentEvent.name, () => {
-		reloadTable();
-	});
 
 	const createComponent = async(component) => {
 		const responses = await ComponentsService.create([component]);
@@ -148,8 +149,8 @@ const Components = () => {
 	const loadRows = async(filter, sort, currentPage, count) => {
 		const components = await ComponentsService.loadComponentVersions(filter, sort, currentPage, count);
 		components.forEach(component => {
-			const componentEventName = getComponentID(component.ID) + EVENTS.componentChangedEvent.name;
-			SOCKET.addHandler(componentEventName, ({ payload }) => {
+			const componentEventName = SocketService.getComponentID(component.ID) + events.componentChangedEvent.name;
+			SocketService.addHandler(componentEventName, ({ payload }) => {
 				if (tableRef.current) {
 					tableRef.current.updateRow(payload.ID, Object.assign(component, payload));
 				}

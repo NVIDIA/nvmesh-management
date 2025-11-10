@@ -19,21 +19,20 @@ const PageProgressBar = () => {
 
 		// Start incrementing progress
 		progressInterval.current = setInterval(() => {
-			// Asymptotic increase - slows down as it approaches 95%
-			// Progress increases quickly at first, then slows down
-			let increment = (95 - currentProgress) * 0.1;
+			setCurrentProgress(prevProgress => {
+				// Asymptotic increase - slows down as it approaches 95%
+				let increment = (95 - prevProgress) * 0.1;
 
-			// Ensure minimum increment for smooth animation
-			if (increment < 0.5) {
-				increment = 0.5;
-			}
+				// Ensure minimum increment for smooth animation
+				if (increment < 0.5) {
+					increment = 0.5;
+				}
 
-			setCurrentProgress(currentProgress + increment);
+				const newProgress = prevProgress + increment;
 
-			// Cap at 95% until page actually loads
-			if (currentProgress > 95) {
-				setCurrentProgress(95);
-			}
+				// Cap at 95% until page actually loads
+				return newProgress > 95 ? 95 : newProgress;
+			});
 
 		}, 200);
 	};
