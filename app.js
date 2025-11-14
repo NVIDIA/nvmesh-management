@@ -197,11 +197,13 @@ process.on('SIGQUIT', () => {
 });
 
 function reloadCertificates() {
+	logger.sysDEBUG('Received signal SIGHUP - reloading TLS certificates');
+
 	const server = app.get('httpsServer');
 	const webSocketServer = app.get('httpsWebSocketServer');
 
 	if (!server || !webSocketServer) {
-		new SystemAdminMessage(systemMessages.APP_CERT_RELOAD_NO_SERVERS).log();
+		new SystemMessage(systemMessages.APP_CERT_RELOAD_NO_SERVERS).log();
 		return;
 	}
 
@@ -227,19 +229,16 @@ function reloadCertificates() {
 		webSocketServer.setSecureContext(haServerOptions);
 		logger.sysDEBUG('WebSocket server certificates reloaded successfully');
 
-		new SystemAdminMessage(systemMessages.APP_CERT_RELOAD_SUCCESS).log();
+		new SystemMessage(systemMessages.APP_CERT_RELOAD_SUCCESS).log();
 	} catch (err) {
-		new SystemAdminMessage(systemMessages.APP_CERT_RELOAD_FAILED)
+		new SystemMessage(systemMessages.APP_CERT_RELOAD_FAILED)
 			.addInfo(Entities.Exception, err.message)
 			.addInfo(Entities.Stack, err.stack)
 			.log();
 	}
 }
 
-process.on('SIGHUP', function() {
-	logger.sysDEBUG('Received signal SIGHUP');
-	reloadCertificates();
-});
+process.on('SIGHUP', reloadCertificates);
 
 function getServerOptions(configName, isMTLS) {
 	const serverTLSConfig = config.get(configName);
