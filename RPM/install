@@ -58,8 +58,7 @@ create_user_and_group () {
 runcommand "Creating user and group" "create_user_and_group" 1
 runcommand "Chowning config file" "chown $RUNNING_USER:$GROUP $MANAGEMENTCONFFILE" 1
 runcommand "Chowning backups directory" "chown $RUNNING_USER:$GROUP $BACKUPSDIR" 1
-runcommand "Chowning identity directory" "chown $RUNNING_USER:$GROUP $MANAGEMENTIDDIR" 1
-runcommand "Chowning /var/log/nvmesh/mgmtStats directory" "chown $RUNNING_USER:$GROUP $MGMT_STATS_DIR" 1
+runcommand "Chowning identity directory" "chown -R $RUNNING_USER:$GROUP $MANAGEMENTIDDIR" 1
 
 echo "Done!"
 exit 0

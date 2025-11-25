@@ -241,19 +241,74 @@ process.on('SIGHUP', function() {
 	reloadCertificates();
 });
 
+function createSubCertDirIfNeeded(configName) {
+	let innerDirName = configName.split('.')[0];
+
+	if (!['websocket', 'server'].includes(innerDirName)) {
+		new SystemMessage(systemMessages.APP_CERT_DIRECTORY_UNKNOWN).log();
+		process.exit(1);
+	}
+
+	let activeCertSubDir = path.join(consts.ACTIVE_CERT_DIR, innerDirName);
+
+	try {
+		fs.mkdirSync(activeCertSubDir, { recursive: true });
+	} catch (err) {
+		new SystemMessage(systemMessages.APP_CREATE_SUB_CERT_DIRECTORY_FAILED)
+			.addInfo(Entities.Exception, err.message)
+			.addInfo(Entities.Stack, err.stack)
+			.addInfo(Entities.Path, activeCertSubDir)
+			.log();
+		process.exit(1);
+	}
+
+	return activeCertSubDir;
+}
+
+function copyAndReadSyncCertFile(activeCertSubDir, certPath) {
+	let copiedCertPath = path.join(activeCertSubDir, path.basename(certPath));
+	let certContent;
+
+	try {
+		fs.copyFileSync(certPath, copiedCertPath);
+	} catch (err) {
+		new SystemMessage(systemMessages.APP_COPY_CERT_FAILED)
+			.addInfo(Entities.Exception, err.message)
+			.addInfo(Entities.Stack, err.stack)
+			.addInfo(Entities.Path, certPath)
+			.log();
+		process.exit(1);
+	}
+
+	try {
+		certContent = fs.readFileSync(copiedCertPath);
+	} catch (err) {
+		new SystemMessage(systemMessages.APP_READ_CERT_FAILED)
+			.addInfo(Entities.Exception, err.message)
+			.addInfo(Entities.Stack, err.stack)
+			.addInfo(Entities.Path, copiedCertPath)
+			.log();
+		process.exit(1);
+	}
+
+	return certContent;
+}
+
 function getServerOptions(configName, isMTLS) {
 	const serverTLSConfig = config.get(configName);
 
+	let activeCertSubDir = createSubCertDirIfNeeded(configName);
+
 	let options = {
-		key: fs.readFileSync(serverTLSConfig.key),
-		cert: fs.readFileSync(serverTLSConfig.cert)
+		key: copyAndReadSyncCertFile(activeCertSubDir, serverTLSConfig.key),
+		cert: copyAndReadSyncCertFile(activeCertSubDir, serverTLSConfig.cert)
 	};
 
 	if (serverTLSConfig.limitToSSLCipherSuites.length)
 		options.ciphers = serverTLSConfig.limitToSSLCipherSuites;
 
 	if (isMTLS) {
-		options.ca = fs.readFileSync(serverTLSConfig.ca);
+		options.ca = copyAndReadSyncCertFile(activeCertSubDir, serverTLSConfig.ca);
 		options.rejectUnauthorized = true; // if certificate is not signed by the CA then drop the connection
 		options.requestCert = true; // client have to send its own Cert
 	}

@@ -45,7 +45,7 @@ mkdir -pv %{buildroot}/var/log/nvmesh
 mkdir -pv %{buildroot}/var/log/nvmesh/mgmtStats
 mkdir -pv %{buildroot}/var/run/nvmesh/nvmeshmgr
 mkdir -pv %{buildroot}/var/opt/nvmesh/backups
-mkdir -pv %{buildroot}/var/opt/nvmesh/mgr
+mkdir -pv %{buildroot}/var/opt/nvmesh/mgr/.active_cert
 mkdir -pv %{buildroot}/lib/systemd/system
 mkdir -pv %{buildroot}/usr/bin
 mkdir -pv %{buildroot}/opt/nvmesh/interop-db

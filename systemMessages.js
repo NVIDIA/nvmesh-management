@@ -141,6 +141,26 @@ var systemMessages = {
 		id: 1008,
 		sysLogLevel: consts.loggingLevel.INFO
 	},
+	APP_CERT_DIRECTORY_UNKNOWN: {
+		message: 'Unkown cert directory provided, shutting down.',
+		id: 1009,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	APP_CREATE_SUB_CERT_DIRECTORY_FAILED: {
+		message: 'Failed to create sub certificates directory, shutting down.',
+		id: 1010,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	APP_COPY_CERT_FAILED: {
+		message: 'Failed to copy certificate, shutting down.',
+		id: 1011,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	APP_READ_CERT_FAILED: {
+		message: 'Failed to read certificate, shutting down.',
+		id: 1012,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	APP_GENERAL_SETTINGS_LOAD_FAILED: {
 		message: 'Failed to load general settings; therefore, shutting down; see additional info for error information, fix and restart.',
 		id: 1015,
