@@ -30,6 +30,7 @@ pidfilename=management.pid
 outfilename=management.out
 backupsdir=/var/opt/nvmesh/backups
 managementiddir=/var/opt/nvmesh/mgr
+activeCertDir=/var/run/nvmesh/tls/nvmeshmgr
 max_log_backups=5
 
 . /opt/nvmesh/management/services/services_common
@@ -37,6 +38,8 @@ max_log_backups=5
 mkdir -p $lockpath
 mkdir -p $pidpath
 mkdir -p $managementiddir
+mkdir -p $activeCertDir
+
 
 if [ ! -d $runLinkDir ] && [ ! -L $runLinkDir ]; then
 	ln -s $runDir $runLinkDir
@@ -44,6 +47,7 @@ fi
 
 chown $RUNNING_USER:$GROUP $backupsdir
 chown $RUNNING_USER:$GROUP $managementiddir
+chown $RUNNING_USER:$GROUP $activeCertDir
 
 finish() {
   echo "Exiting nvmeshmgr script"

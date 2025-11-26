@@ -15,7 +15,7 @@ consts.PHONE_HOME_USER = 'phoneHome@excelero.com';
 consts.defaultItemsPerPage = 10;
 consts.installDir = '/opt/nvmesh/management';
 consts.INTEROP_DB_RELATIVE_PATH = '../interop-db/InteropDB';
-consts.ACTIVE_CERT_DIR = '/var/opt/nvmesh/mgr/.active_cert';
+consts.ACTIVE_CERT_DIR = '/var/run/nvmesh/tls/nvmeshmgr';
 
 // Use config to only update existing volumes, not attaching new volumes and not changing type of existing volume
 consts.MAGIC_CONFIG_UPDATE_TOKEN = 'F0AAAAAAAAAAAAA';
