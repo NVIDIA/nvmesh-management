@@ -30,10 +30,12 @@ scope.createComponents = (components, callback) => {
 
 	async.eachSeries(components, (component, cb) => {
 		interopDB.createComponentVersion(component, (results) => {
-			let response = (!results.success
-				? new SystemAdminMessage(systemMessages.COMPONENT_SAVE_REQUEST_FAILED).addInfo(Entities.Error, new InteropDBError(results.error))
+			let response = !results.success
+				? new SystemAdminMessage(systemMessages.COMPONENT_SAVE_REQUEST_FAILED)
+					.addInfo(Entities.Error, new InteropDBError(results.error))
+					.addInfo(Entities.Component.ID, component.ID)
 				: new SystemAdminMessage(systemMessages.COMPONENT_SAVED)
-			).addInfo(Entities.Component.ID, component.ID);
+					.addInfo(Entities.Component.ID, results.data.ID);
 
 			responses.push(response);
 

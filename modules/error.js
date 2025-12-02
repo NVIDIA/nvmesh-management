@@ -60,6 +60,7 @@ scope.Entities = {
 	Content: 'content',
 	UseSSL: 'useSSL',
 	IP: 'IP',
+	Report: 'report',
 	Iport: 'Iport',
 	SystemInfo: 'systemInfo',
 	ManagementDefaultDomain: 'managementDefaultDomain',
@@ -323,7 +324,12 @@ scope.Entities = {
 	OperatingSystem: {
 		ID: 'operatingSystemID',
 		version: 'operatingSystemVersion',
-		distributionType: 'operatingSystemDistributionType'
+		distributionType: 'operatingSystemDistributionType',
+		name: 'operatingSystemName'
+	},
+	ArchType: {
+		ID: 'archTypeID',
+		name: 'archTypeName',
 	},
 	Component: {
 		ID: 'componentID',
@@ -362,7 +368,7 @@ scope.Entities = {
 	Release: {
 		ID: 'releaseID',
 		name: 'releaseName',
-		version: 'releaseVersion'
+		version: 'releaseVersion',
 	},
 	InteropDB: {
 		version: 'InteropDBVersion',
@@ -548,8 +554,12 @@ scope.SystemMessage = class SystemMessage {
 		return this.resolveLinks()[key];
 	}
 
+	isError() {
+		return [this.systemMessage.logLevel, this.systemMessage.sysLogLevel].includes(consts.loggingLevel.ERROR);
+	}
+
 	createApiResponse(primaryIDKey, primaryUUIDKey) {
-		const isError = [this.systemMessage.logLevel, this.systemMessage.sysLogLevel].includes(consts.loggingLevel.ERROR);
+		const isError = this.isError();
 		const resolvedAdditionalInfo = this.resolveLinks();
 
 		return utils.createApiResponse(
@@ -644,5 +654,16 @@ scope.InteropDBError = class InteropDBError extends scope.SystemMessage {
 		const code = err.parent?.code || err.original?.code;
 		if (code)
 			this.addInfo(scope.Entities.InteropDB.Error.code, code);
+
+		this.addInfo(scope.Entities.SQLITE.errors, err.errors);
+	}
+
+	getUnwantedAdditionalKeys() {
+		return super.getUnwantedAdditionalKeys().concat([scope.Entities.SQLITE.errors]);
+	}
+
+	get isUniqueViolationError() {
+		const errors = this.getAdditionalInfoByKey(scope.Entities.SQLITE.errors);
+		return Array.isArray(errors) && errors.some(e => e.type === consts.sqliteErrors.UNIQUE_VIOLATION);
 	}
 };
