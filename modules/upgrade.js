@@ -222,8 +222,6 @@ const shouldSkipComponent = (component, componentVersion, destinationVersionRele
 
 	if (generalSettings.forceUpgradeUpToDateComponents) return false;
 
-	if (!componentVersion) return true;
-	
 	if (isComponentVersionAlreadyInRelease(component, componentVersion, destinationVersionRelease)) {
 		logger.sysDEBUG(`NDU - Skipping upgrade for machine: ${hostname}, component: ${component}-${componentVersion} `
 			+ `because it is already in destination release ${destinationVersionRelease.version}`);
@@ -265,7 +263,7 @@ scope.getUpgradeSteps = (upgrade, cb) => {
 						const sourceVersion = getBaseVersion(mgmtVersion);
 						const upgradeType = consts.upgradeTypes.MANAGEMENT;
 
-						if (shouldSkipComponent(component, mgmtVersion, destinationVersionRelease, machine.hostname)) {
+						if (!mgmtVersion || shouldSkipComponent(component, mgmtVersion, destinationVersionRelease, machine.hostname)) {
 							return cb(null, []);
 						}
 
@@ -277,7 +275,7 @@ scope.getUpgradeSteps = (upgrade, cb) => {
 						const sourceVersion = getBaseVersion(upgradeAgentVersion);
 						const upgradeType = consts.upgradeTypes.UPGRADE_AGENT;
 
-						if (shouldSkipComponent(component, upgradeAgentVersion, destinationVersionRelease, machine.hostname)) {
+						if (!upgradeAgentVersion || shouldSkipComponent(component, upgradeAgentVersion, destinationVersionRelease, machine.hostname)) {
 							return cb(null, []);
 						}
 
@@ -296,7 +294,7 @@ scope.getUpgradeSteps = (upgrade, cb) => {
 						const sourceVersion = getBaseVersion(componentVersion);
 						const upgradeType = machine.isClientOnly ? consts.upgradeTypes.CLIENT_ONLY : consts.upgradeTypes.CLIENT_AND_TARGET;
 
-						if (shouldSkipComponent(consts.components.CLIENT, componentVersion, destinationVersionRelease, machine.hostname)) {
+						if (!componentVersion || shouldSkipComponent(consts.components.CLIENT, componentVersion, destinationVersionRelease, machine.hostname)) {
 							return cb(null, []);
 						}
 
