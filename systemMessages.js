@@ -401,6 +401,123 @@ var systemMessages = {
 		id: 1077,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	RELEASE_PROVISION_REQUEST: {
+		message: 'REST API Request: Provision Releases',
+		id: 10770,
+		header: getAuditHeader(consts.entity.release, consts.operation.provision),
+		logLevel: consts.loggingLevel.INFO,
+		sysLogLevel: consts.loggingLevel.INFO,
+		isAudit: true,
+	},
+	PROVISION_RELEASE_SUCCESS: {
+		message: 'Release provisioned successfully',
+		header: 'Release Provisioned',
+		id: 10771,
+		sysLogLevel: consts.loggingLevel.INFO,
+		logLevel: consts.loggingLevel.INFO
+	},
+	PROVISION_RELEASE_FAILED: {
+		message: 'Release provision failed',
+		header: 'Release Provision Failed',
+		id: 10772,
+		sysLogLevel: consts.loggingLevel.ERROR,
+		logLevel: consts.loggingLevel.ERROR
+	},
+	MISSING_DISTRIBUTION_TYPES: {
+		message: 'Distribution type not found',
+		id: 10773,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	MISSING_PLATFORM_DEPENDENCIES: {
+		message: 'Platform dependency not found',
+		id: 10774,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	MISSING_PLATFORMS_DEPENDENCIES: {
+		message: 'Platforms dependencies not found',
+		id: 10775,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	FAILED_TO_CREATE_ENTITIES: {
+		message: 'Failed to create InteropDB entities',
+		id: 10776,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	FAILED_CREATE_UPDATE_RELEASE: {
+		message: 'Failed to create or update release',
+		id: 10777,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	MISSING_ARTIFACTS_IN_RELEASE: {
+		message: 'Artifacts not found in release',
+		id: 10778,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	MISSING_PLATFORMS_IN_ARTIFACT: {
+		message: 'Platforms not found in artifact',
+		id: 10779,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	MISSING_PLATFORMS_IN_ARTIFACTS: {
+		message: 'Platforms not found in artifacts',
+		id: 10780,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	MORE_THAN_ONE_ARTIFACT_BASE_VERSION_FOR_COMPONENT: {
+		message: 'More than one artifact base version for the same component',
+		id: 10781,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	MISSING_RELEASES: {
+		message: 'Releases not found',
+		id: 10782,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	COMPONENT_VERSION_NOT_FOUND: {
+		message: 'Component version not found',
+		id: 10783,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	ENRICH_VERSIONS_FOR_RELEASE_FAILED: {
+		message: 'Failed to enrich versions for release',
+		id: 10784,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	COMPONENT_VERSION_NOT_FOUND_IN_NEWLY_CREATED_COMPONENTS: {
+		message: 'Component version not found in newly created components',
+		id: 10785,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	ADD_NVMESH_PACKAGE_COMPATIBILITIES_FAILED: {
+		message: 'Failed to add nvmesh package compatibilities',
+		id: 10786,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	FAILED_TO_UPDATE_COMPONENTS: {
+		message: 'Failed to update components',
+		id: 10787,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	COMPONENT_VERSION_NOT_FOUND_IN_RELEASE: {
+		message: 'Component version not found in release',
+		id: 10789,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	PREPARED_UPGRADE_SCENARIO_NOT_FOUND: {
+		message: 'Prepared upgrade scenario not found',
+		id: 10790,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	FAILED_TO_PREPARE_UPGRADE_SCENARIOS_FOR_UPDATE: {
+		message: 'Failed to prepare upgrade scenarios for update',
+		id: 10791,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	FAILED_TO_UPDATE_UPGRADE_SCENARIOS: {
+		message: 'Failed to update upgrade scenarios',
+		id: 10792,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
 	OBJ_NOTIFIER_FAILED_TO_READ_BACKUPS_DIR: {
 		message: 'Failed to read backups from directory.',
 		id: 1081,

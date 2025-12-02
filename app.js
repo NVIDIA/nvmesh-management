@@ -314,7 +314,7 @@ function doAfterDatabasesArePopulatedAndConnected() {
 
 		app.locals.user = 'placeholder';
 
-		app.set('APIVersion', '15');
+		app.set('APIVersion', '16');
 
 		utils.readVersionFile((err, version) => {
 			if (err || !version.changeID) {

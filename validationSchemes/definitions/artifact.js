@@ -4,11 +4,7 @@ const schema = {
 	$id: consts.MANAGEMENT_DEFINITIONS + '/artifact.js',
 	type: 'object',
 	properties: {
-		name: {
-			type: 'string',
-			maxLength: 1024,
-			pattern: '^[a-zA-Z0-9_.*-]*$'
-		},
+		name: { $ref: consts.MANAGEMENT_DEFINITIONS + '/artifactName.js' },
 		platforms: {
 			type: 'array',
 			items: { $ref: consts.MANAGEMENT_DEFINITIONS + '/platform.js' }

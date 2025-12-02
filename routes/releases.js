@@ -12,10 +12,11 @@ const express = require('express');
 const consts = require('../consts.js');
 const utils = require('../utils.js');
 const systemMessages = require('../systemMessages.js');
-const { Entities } = require('../modules/error.js');
+const { Entities, Differentiators } = require('../modules/error.js');
 const { createAuditRequestLog } = require('../modules/log.js');
 const validateProjection = require('../middlewares/validateProjection.js');
 const releaseModule = require('../modules/release.js');
+const releaseProvisionerModule = require('../modules/releaseProvisioner.js');
 
 const router = express.Router();
 
@@ -294,5 +295,92 @@ router.get('/count', (req, res) => {
 	});
 });
 
+/**
+ * @apiVersion 1.0.0
+ * @api {post} /releases/provision Provision a new release
+ * @apiName ProvisionRelease
+ * @apiGroup releases
+ * @apiDescription Provisions a release from a manifest. This complex operation can perform the following actions:
+ *
+ * - **Platform Creation**: Creates new platforms, including their OS, kernel, OFED, and architecture definitions.
+ * - **Artifact Association**: Creates and associates artifacts with new or existing platforms.
+ * - **Release Management**: Creates a new release or updates an existing one by linking the specified artifacts.
+ * - **Component Compatibility Inheritance**: Inherits NVMesh package compatibilities from a previous release (`inheritRelationsFrom`).
+ *   For each component in the new release, this process establishes its compatibility with other `NVMESH_PACKAGE` components based on the following logic:
+ *   - The system first identifies the corresponding component in the release specified by `inheritRelationsFrom` (release `n-1`).
+ *     If no corresponding component is found, the inheritance for that component is skipped.
+ *   - It then adds compatibility with the latest version of related `NVMESH_PACKAGE` components from release `n-1`.
+ *   - Subsequently, it attempts to add compatibility with the new version (`n`) of those components if they are part of the current provisioning manifest.
+ *   - If a component's new version (`n`) is not in the manifest, the system will instead add compatibility with the second-to-last known version (`n-2`),
+ *     if available from the `n-1` component's compatibility list.
+ *
+ *   For each component in the previous release, this process will add compatibility with the new version (`n`) of that component.
+ * - **Upgrade Scenario Inheritance**: Inherits and adapts upgrade scenarios from the `inheritRelationsFrom` release.
+ *   - For a hotfix release, scenarios targeting the previous release (e.g., `* -> n-1`) are adapted to target the new release (`* -> n`).
+ *   - For a standard release, scenarios for the previous release (`n-1 -> n-1`) are adapted for the new release (`n-1 -> n` and `n -> n`).
+ *
+ * **Note:** This endpoint will not update any other existing entities, with the exception of:
+ *  - linking new artifacts to an existing release
+ *  - linking new artifacts to an existing platform
+ *  - updating the version of previous release nvmesh components to be compatible with the new release nvmesh components
+ *
+ * @apiParam {string} releaseName Version of the release to provision. Can be a new or an existing release.
+ * @apiParam {string} inheritRelationsFrom Version of an existing release to inherit component relationships and upgrade scenarios from.
+ * @apiParam {boolean} [createPlatforms=false] If true, new platform definitions and dependencies will be created.
+ * @apiParam {object[]} platforms Array of platform objects. If `createPlatforms` is true, platforms are created; otherwise,
+ * existing platforms are updated with artifacts.
+ * @apiParam {string} platforms.name The name of the platform.
+ * @apiParam {string[]} platforms.artifacts Array of artifact names to associate with this platform.
+ * @apiParam {object} [platforms.os] Operating system definition. This object is required if `createPlatforms` is true.
+ * @apiParam {string} [platforms.os.distributionType] OS distribution type (e.g., 'ubuntu', 'rocky'). Required if `os` is provided.
+ * @apiParam {string} [platforms.os.version] OS version. Required if `os` is provided.
+ * @apiParam {string} [platforms.kernel] Kernel version for the platform. Required if `createPlatforms` is true.
+ * @apiParam {string} [platforms.ofed] OFED version for the platform. Required if `createPlatforms` is true.
+ * @apiParam {string} [platforms.arch] Platform architecture. Required if `createPlatforms` is true.
+ *
+ * @apiParamExample {json} Request Body Example:
+ * {
+ *     "releaseName": "3.4.0",
+ *     "inheritRelationsFrom": "3.3.2",
+ *     "createPlatforms": false,
+ *     "platforms": [
+ *         {
+ *             "name": "GFN1",
+ *             "os": {
+ *                 "distributionType": "rocky",
+ *                 "version": "8.10"
+ *             },
+ *             "kernel": "4.18.0-553.51.1.el8.1746466718.fd884b6339.x86_64",
+ *             "ofed": "24.10-2.1.8.0.101",
+ *             "arch": "x86_64",
+ *             "artifacts": [
+ *                 "nvmesh-client-3.4.0-237.el8_10.1.1089.x86_64.rpm",
+ *                 "nvmesh-target-3.4.0-237.el8_10.1.1089.x86_64.rpm"
+ *             ]
+ *         }
+ *     ]
+ * }
+ *
+ * @apiSuccessExample {json} Success-Response:
+ * {
+ *     "_id": null,
+ *     "uuid": null,
+ *     "success": true,
+ *     "error": null,
+ *     "payload": null
+ * }
+ */
+router.post('/provision', (req, res) => {
+	const manifest = req.body;
+
+	const incomingRequestSystemAdminMessage = createAuditRequestLog(req, systemMessages.RELEASE_PROVISION_REQUEST)
+		.addInfo(Entities.Release.name, manifest.releaseName, Differentiators.Destination)
+		.addInfo(Entities.Release.name, manifest.inheritRelationsFrom, Differentiators.Source);
+
+	utils.handleRESTAndLog(
+		[incomingRequestSystemAdminMessage],
+		cb => releaseProvisionerModule.provision(manifest, cb),
+		systemAdminMessage => res.json(systemAdminMessage.createApiResponse(Entities.Release.name)));
+});
 
 module.exports = router;

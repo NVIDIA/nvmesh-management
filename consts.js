@@ -162,6 +162,10 @@ consts.mongoErrors = {
 	NO_REPLICATION_ENABLED: 76
 };
 
+consts.sqliteErrors = {
+	UNIQUE_VIOLATION: 'unique violation'
+};
+
 consts.kafkaErrors = {
 	UNKNOWN_TOPIC_OR_PARTITION: 3
 };
@@ -980,6 +984,10 @@ consts.entity = {
 	documentUpgradeInterceptor: 'Document Upgrade Interceptor',
 	release: 'Release',
 	artifact: 'Artifact',
+	archType: 'Arch Type',
+	distributionType: 'Distribution Type',
+	componentType: 'Component Type',
+	upgradeType: 'Upgrade Type',
 	upgradeStep: 'Upgrade Step',
 	upgradeScenario: 'Upgrade Scenario',
 	upgradeStepScenario: 'Upgrade Step Scenario'
@@ -1010,7 +1018,8 @@ consts.operation = {
 	setEmulationMode: 'Set Emulation Mode',
 	execute: 'Execute',
 	markAsCompleted: 'Mark As Completed',
-	skipFailedMachine: 'Skip Failed Machine'
+	skipFailedMachine: 'Skip Failed Machine',
+	provision: 'Provision'
 };
 
 consts.componentsPages = {
@@ -1122,8 +1131,13 @@ consts.components = {
 	MANAGEMENT: 'nvmesh-management',
 	TARGET: 'nvmesh-target',
 	UPGRADE_AGENT: 'nvmesh-upgrade-agent',
-	INTEROP_DB: 'nvmesh-interopdb'
+	INTEROP_DB: 'nvmesh-interopdb',
+	EXPORTER: 'nvmesh-exporter',
+	BASE: 'nvmesh-base',
+	UTILS: 'nvmesh-utils'
 };
+
+consts.HOTFIX_RELEASE_SUBSTRING = 'HF';
 
 consts.thirdPartyLibs = {
 	LIBRDKAFKA: 'librdkafka'
