@@ -31,6 +31,10 @@ usage:
 --dist-tag		    distribution tag to include in the RPM name
 
 --ubuntu		    create deb package for ubuntu
+
+--skip-dependency-generation  skip internal dependency generation (fast build - only for dev purposes)
+
+--skip-stripping              skip stripping and post-install scripts (fast build - only for dev purposes)
 EOF
 }
 
@@ -80,6 +84,9 @@ buildRPMSetupTree() {
     fi
 }
 
+skipDependencyGeneration=false
+skipStripping=false
+
 pkgDeb() {
     if $isUbuntu || [[ "$DISTRIBUTION_INFO" =~ "Ubuntu" ]]; then
         echo "Building Ubuntu deb package..."
@@ -93,7 +100,10 @@ pkgDeb() {
             ATARGET=
         fi
 
+        start_alien=$(date +%s)
         alien --generate -k --scripts ~/"rpmbuild/RPMS/$ARCH/$packagePrefix"* $ATARGET
+        end_alien=$(date +%s)
+        echo "Alien generation took $((end_alien - start_alien)) seconds."
 
         packDir=$packagePrefix-$rpm_version
 
@@ -103,11 +113,21 @@ pkgDeb() {
                 sed -i -E "s/^[ ]*Depends:\s.*$/&, $requiresUbuntu/g" $packDir/debian/control
             fi
 
+            if [ "$skipStripping" == "true" ] && [ $rpm == $mgmt ]; then
+                echo "Excluding node_modules from dh_strip_nondeterminism..."
+                printf "\noverride_dh_strip_nondeterminism:\n\tdh_strip_nondeterminism -Xnode_modules\n" >> $packDir/debian/rules
+            fi
+
             echo "Setting gzip compression..."
             sed -i -E "s/dh_builddeb$/dh_builddeb -- -Zgzip/g" $packDir/debian/rules
 
             cd $packDir
+
+            start_dpkg=$(date +%s)
             dpkg-buildpackage -uc -us
+            end_dpkg=$(date +%s)
+            echo "dpkg-buildpackage took $((end_dpkg - start_dpkg)) seconds."
+
             cd ..
             rm -rf $packDir
             cp *.deb ../
@@ -183,6 +203,12 @@ case $key in
 	buildNum="$2"
 	shift
 	;;
+    --skip-dependency-generation)
+        skipDependencyGeneration=true
+        ;;
+    --skip-stripping)
+        skipStripping=true
+        ;;
     *)
         # unknown option
         echo "Unknown option $key"
@@ -316,7 +342,7 @@ for rpm in "${rpmsToCreate[@]}"; do
 
         rsync -av --exclude='.git/' ../interop-db/ ./interop-db
         rsync -aRPq --exclude=*~ $management_transfer_list ~/"rpmbuild/SOURCES/$packagePrefix"
-        rm -rf ./interop-db/ 
+        rm -rf ./interop-db/
 
         #making sure all the upgrade scripts have executable permissions before packaging them
         echo "Chmoding upgrade scripts..."
@@ -354,12 +380,29 @@ for rpm in "${rpmsToCreate[@]}"; do
 
     rm -fr ~/"rpmbuild/RPMS/$ARCH/$packagePrefix"*
 
+    if [ "$skipDependencyGeneration" == "true" ] && [ $rpm == $mgmt ]; then
+        echo "Skipping dependency generation enabled."
+        skipDepGenInt=1
+    else
+        skipDepGenInt=0
+    fi
+
+    if [ "$skipStripping" == "true" ] && [ $rpm == $mgmt ]; then
+        echo "Skipping stripping enabled."
+        skipStripInt=1
+    else
+        skipStripInt=0
+    fi
+
+    echo "Starting rpmbuild for $rpm..."
+    start_rpmbuild=$(date +%s)
+
     if [ $rpm == $utils ]; then
 	    rpmbuild -ba ~/rpmbuild/SPECS/nvmesh-$rpm.spec --define "commit_id $commitID" --define "change_id $changeID" --define "branch $branchName" --define "version $rpm_version" --define "release $rpm_release" --define "requires $requires"
         rpm_creation_retval=$?
         utilsPackageFile=$(find ~/rpmbuild/RPMS/$ARCH/$packagePrefix*)
     elif [ $rpm == $mgmt ]; then
-        rpmbuild -ba ~/rpmbuild/SPECS/nvmesh-$rpm.spec --define "commit_id $commitID" --define "change_id $changeID" --define "branch $branchName" --define "version $rpm_version" --define "release $rpm_release" --define "requires $requires"
+        rpmbuild -ba ~/rpmbuild/SPECS/nvmesh-$rpm.spec --define "commit_id $commitID" --define "change_id $changeID" --define "branch $branchName" --define "version $rpm_version" --define "release $rpm_release" --define "requires $requires" --define "skip_dependency_generation $skipDepGenInt" --define "skip_stripping $skipStripInt"
         rpm_creation_retval=$?
         mgmtPackageFile=$(find ~/rpmbuild/RPMS/$ARCH/$packagePrefix*)
     elif [ $rpm == $nhc ]; then
@@ -367,6 +410,9 @@ for rpm in "${rpmsToCreate[@]}"; do
         rpm_creation_retval=$?
         nhcPackageFile=$(find ~/rpmbuild/RPMS/$ARCH/$packagePrefix*)
     fi
+
+    end_rpmbuild=$(date +%s)
+    echo "rpmbuild for $rpm took $((end_rpmbuild - start_rpmbuild)) seconds."
 
     cp ~/"rpmbuild/RPMS/$ARCH/$packagePrefix"* .
 

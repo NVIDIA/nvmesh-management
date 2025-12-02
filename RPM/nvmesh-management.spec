@@ -7,6 +7,18 @@ License:			Commercial Non OSI
 URL:				http://www.nvidia.com
 Source0:			%{name}
 
+%if %{skip_dependency_generation}
+    # Disable Dependency Generation
+    %define _use_internal_dependency_generator 0
+    %define __find_requires %{nil}
+    %define __find_provides %{nil}
+%endif
+
+%if %{skip_stripping}
+    # Disable OS Post-Install Scripts (strip/compress/byte-compile)
+    %global __os_install_post %{nil}
+%endif
+
 Requires:			%{requires}
 
 %description
@@ -23,6 +35,10 @@ Requires:			%{requires}
 cp -rf %{_sourcedir}/%{name} %{_builddir}/
 
 %build
+%if %{skip_stripping}
+    # Disable default stripping
+    %define __strip /bin/true
+%endif
 
 %pre
 # Ignore node_modules from shebang mangling.
@@ -52,6 +68,11 @@ echo "commit=\"%{commit_id}\"" >> %{buildroot}/opt/nvmesh/management/version
 echo "changeID=\"%{change_id}\"" >> %{buildroot}/opt/nvmesh/management/version
 echo "branch=\"%{branch}\"" >> %{buildroot}/opt/nvmesh/management/version
 touch %{buildroot}/var/log/nvmesh/management.out
+
+%if %{skip_stripping}
+    echo "Running manual strip (pruning node_modules)..."
+    find %{buildroot} -name node_modules -prune -o -type f \( -perm -u+x -o -name "*.so" \) -exec strip --strip-unneeded {} + || :
+%endif
 
 %post
 isUpgrade=$1
