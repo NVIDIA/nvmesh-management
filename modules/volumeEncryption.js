@@ -556,6 +556,9 @@ scope.runEncryptionCommand = (encryptionObj, command, cb) => {
 			.addInfo(Entities.Volume.ID, encryptionObj._id)
 			.addInfo(Entities.Volume.UUID, encryptionObj.uuid);
 
+		if (!systemMessage || executingTOMA)
+			message.addInfo(Entities.Target.executingTOMA, executingTOMA._id);
+
 		if (systemMessage)
 			message.addInfo(Entities.Error, systemMessage);
 

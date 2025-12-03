@@ -168,7 +168,8 @@ scope.Entities = {
 		reportID: 'reportID',
 		tomaToken: 'tomaToken',
 		hostname: 'hostname',
-		featureCompatibilityVersion: 'targetFeatureCompatibilityVersion'
+		featureCompatibilityVersion: 'targetFeatureCompatibilityVersion',
+		executingTOMA: 'executingTOMA'
 	},
 	TomaLeader: {
 		Zone: 'leaderZoneID',
