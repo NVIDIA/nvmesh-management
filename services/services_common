@@ -150,8 +150,8 @@ getFieldFromManagementConfig() {
 getMongoShellCommandLineArguments() {
 	local confName=$1
 	local forMongoDump=$2
-
-	commandLineArguments=$($nodetouse --eval "console.log(require('$MDIR/modules/mongoCMDLineArgsBuilder.js').buildMongoConnectionCommandlineArgsByConnectionName('$confName', '$forMongoDump'))")
+	local copyCerts=true
+	commandLineArguments=$($nodetouse --eval "console.log(require('$MDIR/modules/mongoCMDLineArgsBuilder.js').buildMongoConnectionCommandlineArgsByConnectionName('$confName', '$forMongoDump', '$copyCerts'))")
 }
 
 fetch_management_cluster_from_config() {

@@ -12,7 +12,6 @@
 var scope = {};
 module.exports = scope;
 
-var fs = require('fs');
 var async = require('async');
 const { Kafka, logLevel: kafkaLogLevel, AclResourceTypes, AclOperationTypes, AclPermissionTypes, ResourcePatternTypes } = require('kafkajs');
 const { Backoff } = require('../models/backoff.js');
@@ -31,6 +30,7 @@ var { MongoError, SystemMessage, Entities, InteropDBError } = require('./error.j
 
 const { metrics, isMetricsEnabled } = require('./openTelemetry.js');
 const { trace, context } = require('@opentelemetry/api');
+const cert = require('./cert.js');
 
 let isRecycleProducerInProgress = false;
 let lastConsumerRecycleTime = null;
@@ -485,12 +485,14 @@ function buildKafkaTLSOptions(kafkaOptions, kafkaConfiguration) {
 	if (!kafkaConfiguration.transport.keyFile)
 		throw new Error('TLS enabled but missing kafkaConnection.transport.keyFile configuration!');
 
+	const activeCertSubDir = cert.prepareCertSubDir('kafka');
+
 	kafkaOptions.ssl = {};
-	kafkaOptions.ssl.cert = [fs.readFileSync(kafkaConfiguration.transport.certFile, 'utf-8')];
-	kafkaOptions.ssl.key = [fs.readFileSync(kafkaConfiguration.transport.keyFile, 'utf-8')];
+	kafkaOptions.ssl.cert = [cert.getCertFile(activeCertSubDir, kafkaConfiguration.transport.certFile, consts.CERT_TYPES.CERT, 'utf-8')];
+	kafkaOptions.ssl.key = [cert.getCertFile(activeCertSubDir, kafkaConfiguration.transport.keyFile, consts.CERT_TYPES.KEY, 'utf-8')];
 
 	if (kafkaConfiguration.transport.CAFile)
-		kafkaOptions.ssl.ca = [fs.readFileSync(kafkaConfiguration.transport.CAFile, 'utf-8')];
+		kafkaOptions.ssl.ca = [cert.getCertFile(activeCertSubDir, kafkaConfiguration.transport.CAFile, consts.CERT_TYPES.CA, 'utf-8')];
 
 	if (kafkaConfiguration.transport.passphrase)
 		kafkaOptions.ssl.passphrase = kafkaConfiguration.transport.passphrase;
@@ -1146,7 +1148,6 @@ async function disconnectProducer() {
 	}
 }
 
-
 scope.recycleConsumer = callback => {
 	(async() => {
 		logger.sysWARNING('Going to recycle consumer');
@@ -1161,6 +1162,7 @@ scope.recycleConsumer = callback => {
 		logger.sysDEBUG(`recycleConsumer:: disconnected consumers ${error ? error.toString() : ''}`);
 
 		if (!error) {
+			logger.sysDEBUG('recycleConsumer:: Initializing new consumer');
 			error = await scope.initConsumers();
 			logger.sysDEBUG('recycleConsumer:: initConsumers finished');
 		}
@@ -1228,10 +1230,13 @@ scope.clearRecycleConsumerCooldown = () => {
 };
 
 async function recycleProducer() {
-	logger.sysDEBUG('Going to recycle producer');
-
+	logger.sysDEBUG('recycleProducer:: Disconnecting existing producer');
 	await disconnectProducer();
+
+	logger.sysDEBUG('recycleProducer:: Initializing new producer');
 	await initProducer();
+
+	logger.sysDEBUG('recycleProducer:: Producer recycled successfully');
 }
 
 async function recycleProducerIfNeeded(currentProducer) {

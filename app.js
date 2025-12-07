@@ -55,6 +55,7 @@ var lockModule = require('./modules/lock.js');
 var managementClusterModule = require('./modules/managementCluster.js');
 var dbUpgradeModule = require('./modules/dbUpgrade.js');
 var systemMessages = require('./systemMessages.js');
+var cert = require('./modules/cert.js');
 var ClientCertStrategy = require('./modules/clientCertStrategy').Strategy;
 var { Entities, MongoError, SystemMessage, SystemAdminMessage, InteropDBError, Differentiators } = require('./modules/error.js');
 
@@ -241,74 +242,27 @@ process.on('SIGHUP', function() {
 	reloadCertificates();
 });
 
-function createSubCertDirIfNeeded(configName) {
-	let innerDirName = configName.split('.')[0];
+function getServerOptions(configName, isMTLS) {
+	const serverTLSConfig = config.get(configName);
+	const subdirName = configName.split('.')[0];
 
-	if (!['websocket', 'server'].includes(innerDirName)) {
+	if (!['websocket', 'server'].includes(subdirName)) {
 		new SystemMessage(systemMessages.APP_CERT_DIRECTORY_UNKNOWN).log();
 		process.exit(1);
 	}
 
-	let activeCertSubDir = path.join(consts.ACTIVE_CERT_DIR, innerDirName);
-
-	try {
-		fs.mkdirSync(activeCertSubDir, { recursive: true });
-	} catch (err) {
-		new SystemMessage(systemMessages.APP_CREATE_SUB_CERT_DIRECTORY_FAILED)
-			.addInfo(Entities.Exception, err.message)
-			.addInfo(Entities.Stack, err.stack)
-			.addInfo(Entities.Path, activeCertSubDir)
-			.log();
-		process.exit(1);
-	}
-
-	return activeCertSubDir;
-}
-
-function copyAndReadSyncCertFile(activeCertSubDir, certPath) {
-	let copiedCertPath = path.join(activeCertSubDir, path.basename(certPath));
-	let certContent;
-
-	try {
-		fs.copyFileSync(certPath, copiedCertPath);
-	} catch (err) {
-		new SystemMessage(systemMessages.APP_COPY_CERT_FAILED)
-			.addInfo(Entities.Exception, err.message)
-			.addInfo(Entities.Stack, err.stack)
-			.addInfo(Entities.Path, certPath)
-			.log();
-		process.exit(1);
-	}
-
-	try {
-		certContent = fs.readFileSync(copiedCertPath);
-	} catch (err) {
-		new SystemMessage(systemMessages.APP_READ_CERT_FAILED)
-			.addInfo(Entities.Exception, err.message)
-			.addInfo(Entities.Stack, err.stack)
-			.addInfo(Entities.Path, copiedCertPath)
-			.log();
-		process.exit(1);
-	}
-
-	return certContent;
-}
-
-function getServerOptions(configName, isMTLS) {
-	const serverTLSConfig = config.get(configName);
-
-	let activeCertSubDir = createSubCertDirIfNeeded(configName);
+	const activeCertSubDir = cert.prepareCertSubDir(subdirName);
 
 	let options = {
-		key: copyAndReadSyncCertFile(activeCertSubDir, serverTLSConfig.key),
-		cert: copyAndReadSyncCertFile(activeCertSubDir, serverTLSConfig.cert)
+		key: cert.getCertFile(activeCertSubDir, serverTLSConfig.key, consts.CERT_TYPES.KEY),
+		cert: cert.getCertFile(activeCertSubDir, serverTLSConfig.cert, consts.CERT_TYPES.CERT)
 	};
 
 	if (serverTLSConfig.limitToSSLCipherSuites.length)
 		options.ciphers = serverTLSConfig.limitToSSLCipherSuites;
 
 	if (isMTLS) {
-		options.ca = copyAndReadSyncCertFile(activeCertSubDir, serverTLSConfig.ca);
+		options.ca = cert.getCertFile(activeCertSubDir, serverTLSConfig.ca, consts.CERT_TYPES.CA);
 		options.rejectUnauthorized = true; // if certificate is not signed by the CA then drop the connection
 		options.requestCert = true; // client have to send its own Cert
 	}

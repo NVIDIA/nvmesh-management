@@ -17,6 +17,20 @@ consts.installDir = '/opt/nvmesh/management';
 consts.INTEROP_DB_RELATIVE_PATH = '../interop-db/InteropDB';
 consts.ACTIVE_CERT_DIR = '/var/run/nvmesh/tls/nvmeshmgr';
 
+// Certificate types
+consts.CERT_TYPES = {
+	KEY: 'key',
+	CERT: 'cert',
+	CA: 'ca'
+};
+
+// Standard filenames for certificate types in the active cert directory
+consts.CERT_TYPE_FILENAMES = {
+	[consts.CERT_TYPES.KEY]: 'key.key',
+	[consts.CERT_TYPES.CERT]: 'cert.crt',
+	[consts.CERT_TYPES.CA]: 'ca.crt'
+};
+
 // Use config to only update existing volumes, not attaching new volumes and not changing type of existing volume
 consts.MAGIC_CONFIG_UPDATE_TOKEN = 'F0AAAAAAAAAAAAA';
 

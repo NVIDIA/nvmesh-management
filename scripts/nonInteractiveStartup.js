@@ -2,6 +2,8 @@ var uuid = require('uuid');
 
 var utils = require('/opt/nvmesh/management/utils.js');
 var config = require('/opt/nvmesh/management/modules/config.js');
+var cert = require('/opt/nvmesh/management/modules/cert.js');
+var consts = require('/opt/nvmesh/management/consts.js');
 
 var mongodb = require('mongodb-legacy').MongoClient;
 var querystring = require('querystring');
@@ -37,15 +39,19 @@ function buildMongoConnectionOptions(mongoConf, dbName) {
 			process.exit(1);
 
 		} else {
+			const activeCertSubDir = cert.prepareCertSubDir('mongo');
+
 			mongoClientOptions['tls'] = true;
-			mongoClientOptions['tlsCertificateKeyFile'] = mongoConf.transport.certificateKeyFile;
+			mongoClientOptions['tlsCertificateKeyFile'] =
+				cert.getCertFilePath(activeCertSubDir, mongoConf.transport.certificateKeyFile, consts.CERT_TYPES.CERT);
 			mongoClientOptions['authMechanism'] = mongoConf.auth.authenticationMechanism;
 
 			if (mongoConf.transport.passphrase)
 				mongoClientOptions['tlsCertificateKeyFilePassword'] = mongoConf.transport.passphrase;
 
 			if (mongoConf.transport.CAFile)
-				mongoClientOptions['tlsCAFile'] = mongoConf.transport.CAFile;
+				mongoClientOptions['tlsCAFile'] =
+					cert.getCertFilePath(activeCertSubDir, mongoConf.transport.CAFile, consts.CERT_TYPES.CA);
 		}
 	}
 

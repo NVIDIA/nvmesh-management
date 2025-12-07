@@ -126,6 +126,21 @@ var systemMessages = {
 		id: 3014,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	CERT_CREATE_DIRECTORY_FAILED: {
+		message: 'Failed to create certificates directory, shutting down.',
+		id: 3018,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	CERT_COPY_FAILED: {
+		message: 'Failed to copy certificate, shutting down.',
+		id: 3019,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	CERT_READ_FAILED: {
+		message: 'Failed to read certificate, shutting down.',
+		id: 3020,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	APP_UNCAUGHT_EXCEPTION: {
 		message: 'An unexpected application error occurred in the management, shutting down, contact Excelero support.',
 		id: 1000,
@@ -144,21 +159,6 @@ var systemMessages = {
 	APP_CERT_DIRECTORY_UNKNOWN: {
 		message: 'Unkown cert directory provided, shutting down.',
 		id: 1009,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
-	APP_CREATE_SUB_CERT_DIRECTORY_FAILED: {
-		message: 'Failed to create sub certificates directory, shutting down.',
-		id: 1010,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
-	APP_COPY_CERT_FAILED: {
-		message: 'Failed to copy certificate, shutting down.',
-		id: 1011,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
-	APP_READ_CERT_FAILED: {
-		message: 'Failed to read certificate, shutting down.',
-		id: 1012,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	APP_GENERAL_SETTINGS_LOAD_FAILED: {

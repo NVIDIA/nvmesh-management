@@ -20,6 +20,7 @@ var consts = require('../consts.js');
 var config = require('./config.js');
 var log = require('./log.js');
 var utils = require('../utils.js');
+var cert = require('./cert.js');
 
 var { MongoError, SystemAdminMessage, Entities } = require('./error.js');
 var systemMessages = require('../systemMessages.js');
@@ -168,14 +169,14 @@ function buildMongoConnectionOptions(mongoConf) {
 
 		} else {
 			mongoClientOptions['tls'] = true;
-			mongoClientOptions['tlsCertificateKeyFile'] = mongoConf.transport.certificateKeyFile;
+			mongoClientOptions['tlsCertificateKeyFile'] = cert.getActiveCertPath('mongo', consts.CERT_TYPES.CERT);
 			mongoClientOptions['authMechanism'] = mongoConf.auth.authenticationMechanism;
 
 			if (mongoConf.transport.passphrase)
 				mongoClientOptions['tlsCertificateKeyFilePassword'] = mongoConf.transport.passphrase;
 
 			if (mongoConf.transport.CAFile)
-				mongoClientOptions['tlsCAFile'] = mongoConf.transport.CAFile;
+				mongoClientOptions['tlsCAFile'] = cert.getActiveCertPath('mongo', consts.CERT_TYPES.CA);
 		}
 	}
 
