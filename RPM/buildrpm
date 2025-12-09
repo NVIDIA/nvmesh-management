@@ -32,7 +32,7 @@ usage:
 
 --ubuntu		    create deb package for ubuntu
 
---skip-stripping              skip stripping and post-install scripts (fast build - only for dev purposes)
+--fast-dev-build   skip os post install scripts (byte compile/compress) and strip only on node_modules (only for dev purposes)
 EOF
 }
 
@@ -82,7 +82,7 @@ buildRPMSetupTree() {
     fi
 }
 
-skipStripping=false
+fastDevBuild=false
 
 pkgDeb() {
     if $isUbuntu || [[ "$DISTRIBUTION_INFO" =~ "Ubuntu" ]]; then
@@ -110,7 +110,7 @@ pkgDeb() {
                 sed -i -E "s/^[ ]*Depends:\s.*$/&, $requiresUbuntu/g" $packDir/debian/control
             fi
 
-            if [[ $skipStripping == true ]] && [[ $rpm == $mgmt ]]; then
+            if [[ $fastDevBuild == true ]] && [[ $rpm == $mgmt ]]; then
                 echo "Excluding node_modules from dh_strip_nondeterminism..."
                 printf "\noverride_dh_strip_nondeterminism:\n\tdh_strip_nondeterminism -Xnode_modules\n" >> $packDir/debian/rules
             fi
@@ -200,8 +200,8 @@ case $key in
 	buildNum="$2"
 	shift
 	;;
-    --skip-stripping)
-        skipStripping=true
+    --fast-dev-build)
+        fastDevBuild=true
         ;;
     *)
         # unknown option
@@ -374,11 +374,11 @@ for rpm in "${rpmsToCreate[@]}"; do
 
     rm -fr ~/"rpmbuild/RPMS/$ARCH/$packagePrefix"*
 
-    if [[ $skipStripping == true ]] && [[ $rpm == $mgmt ]]; then
-        echo "Skipping stripping enabled."
-        skipStripInt=1
+    if [[ $fastDevBuild == true ]] && [[ $rpm == $mgmt ]]; then
+        echo "Fast dev build enabled."
+        fastDevBuildInt=1
     else
-        skipStripInt=0
+        fastDevBuildInt=0
     fi
 
     echo "Starting rpmbuild for $rpm..."
@@ -389,7 +389,7 @@ for rpm in "${rpmsToCreate[@]}"; do
         rpm_creation_retval=$?
         utilsPackageFile=$(find ~/rpmbuild/RPMS/$ARCH/$packagePrefix*)
     elif [ $rpm == $mgmt ]; then
-        rpmbuild -ba ~/rpmbuild/SPECS/nvmesh-$rpm.spec --define "commit_id $commitID" --define "change_id $changeID" --define "branch $branchName" --define "version $rpm_version" --define "release $rpm_release" --define "requires $requires" --define "skip_stripping $skipStripInt"
+        rpmbuild -ba ~/rpmbuild/SPECS/nvmesh-$rpm.spec --define "commit_id $commitID" --define "change_id $changeID" --define "branch $branchName" --define "version $rpm_version" --define "release $rpm_release" --define "requires $requires" --define "fast_dev_build $fastDevBuildInt"
         rpm_creation_retval=$?
         mgmtPackageFile=$(find ~/rpmbuild/RPMS/$ARCH/$packagePrefix*)
     elif [ $rpm == $nhc ]; then

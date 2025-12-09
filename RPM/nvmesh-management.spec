@@ -7,7 +7,7 @@ License:			Commercial Non OSI
 URL:				http://www.nvidia.com
 Source0:			%{name}
 
-%if %{skip_stripping}
+%if %{fast_dev_build}
     # Disable OS Post-Install Scripts (strip/compress/byte-compile)
     %global __os_install_post %{nil}
 %endif
@@ -28,7 +28,7 @@ Requires:			%{requires}
 cp -rf %{_sourcedir}/%{name} %{_builddir}/
 
 %build
-%if %{skip_stripping}
+%if %{fast_dev_build}
     # Disable default stripping
     %define __strip /bin/true
 %endif
@@ -62,7 +62,7 @@ echo "changeID=\"%{change_id}\"" >> %{buildroot}/opt/nvmesh/management/version
 echo "branch=\"%{branch}\"" >> %{buildroot}/opt/nvmesh/management/version
 touch %{buildroot}/var/log/nvmesh/management.out
 
-%if %{skip_stripping}
+%if %{fast_dev_build}
     echo "Running manual strip (pruning node_modules)..."
     find %{buildroot} -name node_modules -prune -o -type f \( -perm -u+x -o -name "*.so" \) -exec strip --strip-unneeded {} + || :
 %endif
