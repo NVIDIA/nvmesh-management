@@ -110,7 +110,7 @@ pkgDeb() {
                 sed -i -E "s/^[ ]*Depends:\s.*$/&, $requiresUbuntu/g" $packDir/debian/control
             fi
 
-            if [ "$skipStripping" == "true" ] && [ $rpm == $mgmt ]; then
+            if [[ $skipStripping == true ]] && [[ $rpm == $mgmt ]]; then
                 echo "Excluding node_modules from dh_strip_nondeterminism..."
                 printf "\noverride_dh_strip_nondeterminism:\n\tdh_strip_nondeterminism -Xnode_modules\n" >> $packDir/debian/rules
             fi
@@ -374,7 +374,7 @@ for rpm in "${rpmsToCreate[@]}"; do
 
     rm -fr ~/"rpmbuild/RPMS/$ARCH/$packagePrefix"*
 
-    if [ "$skipStripping" == "true" ] && [ $rpm == $mgmt ]; then
+    if [[ $skipStripping == true ]] && [[ $rpm == $mgmt ]]; then
         echo "Skipping stripping enabled."
         skipStripInt=1
     else
