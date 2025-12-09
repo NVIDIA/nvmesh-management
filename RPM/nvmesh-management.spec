@@ -7,13 +7,6 @@ License:			Commercial Non OSI
 URL:				http://www.nvidia.com
 Source0:			%{name}
 
-%if %{skip_dependency_generation}
-    # Disable Dependency Generation
-    %define _use_internal_dependency_generator 0
-    %define __find_requires %{nil}
-    %define __find_provides %{nil}
-%endif
-
 %if %{skip_stripping}
     # Disable OS Post-Install Scripts (strip/compress/byte-compile)
     %global __os_install_post %{nil}

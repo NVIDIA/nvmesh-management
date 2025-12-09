@@ -32,8 +32,6 @@ usage:
 
 --ubuntu		    create deb package for ubuntu
 
---skip-dependency-generation  skip internal dependency generation (fast build - only for dev purposes)
-
 --skip-stripping              skip stripping and post-install scripts (fast build - only for dev purposes)
 EOF
 }
@@ -84,7 +82,6 @@ buildRPMSetupTree() {
     fi
 }
 
-skipDependencyGeneration=false
 skipStripping=false
 
 pkgDeb() {
@@ -203,9 +200,6 @@ case $key in
 	buildNum="$2"
 	shift
 	;;
-    --skip-dependency-generation)
-        skipDependencyGeneration=true
-        ;;
     --skip-stripping)
         skipStripping=true
         ;;
@@ -380,13 +374,6 @@ for rpm in "${rpmsToCreate[@]}"; do
 
     rm -fr ~/"rpmbuild/RPMS/$ARCH/$packagePrefix"*
 
-    if [ "$skipDependencyGeneration" == "true" ] && [ $rpm == $mgmt ]; then
-        echo "Skipping dependency generation enabled."
-        skipDepGenInt=1
-    else
-        skipDepGenInt=0
-    fi
-
     if [ "$skipStripping" == "true" ] && [ $rpm == $mgmt ]; then
         echo "Skipping stripping enabled."
         skipStripInt=1
@@ -402,7 +389,7 @@ for rpm in "${rpmsToCreate[@]}"; do
         rpm_creation_retval=$?
         utilsPackageFile=$(find ~/rpmbuild/RPMS/$ARCH/$packagePrefix*)
     elif [ $rpm == $mgmt ]; then
-        rpmbuild -ba ~/rpmbuild/SPECS/nvmesh-$rpm.spec --define "commit_id $commitID" --define "change_id $changeID" --define "branch $branchName" --define "version $rpm_version" --define "release $rpm_release" --define "requires $requires" --define "skip_dependency_generation $skipDepGenInt" --define "skip_stripping $skipStripInt"
+        rpmbuild -ba ~/rpmbuild/SPECS/nvmesh-$rpm.spec --define "commit_id $commitID" --define "change_id $changeID" --define "branch $branchName" --define "version $rpm_version" --define "release $rpm_release" --define "requires $requires" --define "skip_stripping $skipStripInt"
         rpm_creation_retval=$?
         mgmtPackageFile=$(find ~/rpmbuild/RPMS/$ARCH/$packagePrefix*)
     elif [ $rpm == $nhc ]; then
