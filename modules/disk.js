@@ -1092,6 +1092,23 @@ scope.evictDiskByDiskIDsAndUUIDsWithLogsWrapper = (disks, user, callback) => {
 	scope.evictDiskByDiskIDsAndUUIDs(disks, user, false, null, null, null, callback);
 };
 
+scope.updateVolumesAfterEvict = (disk, raidSegmentsIdsToRemap, zonesToLock, callback) => {
+	const raidSegments = disk.diskSegments.filter(s => raidSegmentsIdsToRemap.includes(s._id));
+
+	for (const segment of raidSegments) {
+		if (segment.status === consts.diskSegmentStatuses.DEAD)
+			segment.isDead = true;
+
+		logger.sysDEBUG(`setting REMAP for segment id: ${segment.uuid}`);
+		segment.status = consts.diskSegmentStatuses.REMAP;
+	}
+
+	if (raidSegments.length)
+		return volumeModule.updateVolumeDiskSegmentsAfterEvict(disk.diskSegments, null, zonesToLock, callback);
+
+	callback();
+};
+
 scope.evictDiskByDiskIDsAndUUIDs = function(disks, user, isAutoEvict, lockedZones, existingMessages, autoEvictReason, callback) {
 	var db = app.get('db');
 	var serverCollection = db.collection('server');
@@ -1252,20 +1269,7 @@ scope.evictDiskByDiskIDsAndUUIDs = function(disks, user, isAutoEvict, lockedZone
 									if (shouldRetryEvict)
 										return callback();
 
-									//Mark all the segments that are part of RAID10&RAID1 volumes for remap.
-									var raidSegments = disk.diskSegments.filter(function(s) { return raidSegmentsIdsToRemap.indexOf(s._id) > -1; });
-									raidSegments.forEach(function(segment) {
-										if (segment.status === consts.diskSegmentStatuses.DEAD)
-											segment.isDead = true;
-
-										logger.sysVERBOSE('diskSegments', 'setting REMAP for segment id: ' + segment.uuid);
-										segment.status = consts.diskSegmentStatuses.REMAP;
-									});
-
-									if (raidSegments && raidSegments.length)
-										volumeModule.updateVolumeDiskSegmentsAfterEvict(disk.diskSegments, null, zonesToLock, callback);
-									else
-										callback();
+									scope.updateVolumesAfterEvict(disk, raidSegmentsIdsToRemap, zonesToLock, callback);
 								}
 							], function(err) {
 								callback(err, segmentsIdsToDeprecate);
