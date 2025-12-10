@@ -1898,7 +1898,11 @@ scope.extendVolume = function(updateObj, user, callback) {
 		function createVolumeExtensions(cb) {
 			scope.createVolumeExtension(globs.updatedVol, newCapacity, user, function(err, extensionVol) {
 				if (err) {
-					message = new SystemAdminMessage(systemMessages.VOLUME_EXTEND_CREATE_EXTENSION_FAILED).addInfo(Entities.Error, err);
+					if (err instanceof SystemMessage)
+						message = new SystemAdminMessage(systemMessages.VOLUME_EXTEND_CREATE_EXTENSION_FAILED, err);
+					else
+						message = new SystemAdminMessage(systemMessages.VOLUME_EXTEND_CREATE_EXTENSION_FAILED).addInfo(Entities.Error, err);
+
 					return cb(true);
 				}
 

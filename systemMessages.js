@@ -1107,7 +1107,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	UTILS_CREATE_VOLUME_EXTENSION_FAILURE: {
-		message: 'Failed to created volume extension',
+		message: 'Failed to create volume extension',
 		id: 1519,
 		header: 'Create VPG Failed',
 		logLevel: consts.loggingLevel.ERROR,
