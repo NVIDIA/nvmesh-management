@@ -100,7 +100,7 @@ const Upgrades = () => {
 		value: row => minRedundancyLevelToLabel(row.minRedundancyLevel)
 	}, {
 		name: 'Machines',
-		field: 'machinesToUpgrade',
+		field: 'machinesToUpgrade._id',
 		placeholder: 'Search by Machines',
 		value: row => <ExpandableList
 			items={row.machinesToUpgrade}
