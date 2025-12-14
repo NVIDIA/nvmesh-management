@@ -18,9 +18,7 @@ const ArtifactsFiltSort = ({
 		},
 		{
 			name: 'Platforms',
-			field: 'platforms',
-			filterable: false,
-			sortable: false,
+			field: 'platforms.name',
 			value: row => <ExpandableList
 				items={row.platforms}
 				renderItem={(platform, index) => <span key={index} className="label label-info">{platform.name}</span>}/>,
