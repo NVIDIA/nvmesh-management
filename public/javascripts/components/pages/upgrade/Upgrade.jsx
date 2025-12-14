@@ -306,6 +306,10 @@ const UpgradeDetails = ({ upgrade }) => (
 						</td>
 					</tr>
 					<tr>
+						<th>Max Concurrent Clients</th>
+						<td>{upgrade.maxConcurrentClients}</td>
+					</tr>
+					<tr>
 						<th>Created By</th>
 						<td>
 							{upgrade.createdBy} <br/>
