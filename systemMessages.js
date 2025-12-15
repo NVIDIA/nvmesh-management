@@ -401,24 +401,16 @@ var systemMessages = {
 		id: 1077,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
-	RELEASE_PROVISION_REQUEST: {
-		message: 'REST API Request: Provision Releases',
-		id: 10770,
-		header: getAuditHeader(consts.entity.release, consts.operation.provision),
-		logLevel: consts.loggingLevel.INFO,
-		sysLogLevel: consts.loggingLevel.INFO,
-		isAudit: true,
-	},
-	PROVISION_RELEASE_SUCCESS: {
-		message: 'Release provisioned successfully',
-		header: 'Release Provisioned',
+	SAVE_RELEASE_SUCCESS: {
+		message: 'Release saved successfully',
+		header: 'Release Saved',
 		id: 10771,
 		sysLogLevel: consts.loggingLevel.INFO,
 		logLevel: consts.loggingLevel.INFO
 	},
-	PROVISION_RELEASE_FAILED: {
-		message: 'Release provision failed',
-		header: 'Release Provision Failed',
+	SAVE_RELEASE_FAILED: {
+		message: 'Release save failed',
+		header: 'Release Save Failed',
 		id: 10772,
 		sysLogLevel: consts.loggingLevel.ERROR,
 		logLevel: consts.loggingLevel.ERROR

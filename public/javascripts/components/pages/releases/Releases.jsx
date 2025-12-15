@@ -79,11 +79,11 @@ const Releases = () => {
 	const createRelease = async(release) => {
 		const responses = await ReleasesService.create([release]);
 		if (responses[0].success) {
-			successAlert(`${release.version} Release created successfully`);
+			successAlert(`Release ${release.releaseName} created successfully`);
 			reloadTable();
 		} else {
 			const errorMsg = extractErrorMsg(responses[0].error);
-			errorAlert(`Failed to create Release ${release.version} - ${errorMsg}`);
+			errorAlert(`Failed to create Release ${release.releaseName} - ${errorMsg}`);
 		}
 	};
 

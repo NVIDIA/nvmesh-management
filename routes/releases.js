@@ -16,7 +16,7 @@ const { Entities, Differentiators } = require('../modules/error.js');
 const { createAuditRequestLog } = require('../modules/log.js');
 const validateProjection = require('../middlewares/validateProjection.js');
 const releaseModule = require('../modules/release.js');
-const releaseProvisionerModule = require('../modules/releaseProvisioner.js');
+const releaseBuilderModule = require('../modules/releaseBuilder.js');
 
 const router = express.Router();
 
@@ -92,104 +92,6 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 
 		res.json(releases);
 	});
-});
-
-/**
- * @apiVersion 1.0.0
- * @api {post} /releases/save Save releases
- * @apiName SaveReleases
- * @apiGroup releases
- * @apiDescription Save `releases`.
- *
- * @apiParam {object[]} releases List of `releases` to save.
- * @apiParamExample {object[]} Example request
- * [{
-  "version": "3.2.0-HF2",
-  "artifacts": [
-    {
-      "ID": 1,
-      "name": "nvmesh-target-3.1.0-1357.el8_6.x86_64.rpm",
-      "platforms": [
-        {
-          "ID": 1,
-          "name": "SetupName",
-          "description": "Setup description",
-          "archTypeID": 1,
-          "operatingSystemID": 1,
-          "kernelID": 8,
-          "ofedID": 4,
-          "ArtifactPlatform": {
-            "ID": 1,
-            "artifactID": 1,
-            "platformID": 1
-          }
-        },
-        {
-          "ID": 2,
-          "name": "name2",
-          "description": "new description2",
-          "archTypeID": 1,
-          "operatingSystemID": 1,
-          "kernelID": 9,
-          "ofedID": 5,
-          "ArtifactPlatform": {
-            "ID": 9,
-            "artifactID": 1,
-            "platformID": 2
-          }
-        }
-      ]
-    },
-    {
-      "ID": 2,
-      "name": "nvmesh-base-3.1.0-1357.el8_6.x86_64.rpm",
-      "platforms": [
-        {
-          "ID": 1,
-          "name": "SetupName",
-          "description": "Setup description",
-          "archTypeID": 1,
-          "operatingSystemID": 1,
-          "kernelID": 8,
-          "ofedID": 4,
-          "ArtifactPlatform": {
-            "ID": 2,
-            "artifactID": 2,
-            "platformID": 1
-          }
-        },
-        {
-          "ID": 2,
-          "name": "name2",
-          "description": "new description2",
-          "archTypeID": 1,
-          "operatingSystemID": 1,
-          "kernelID": 9,
-          "ofedID": 5,
-          "ArtifactPlatform": {
-            "ID": 10,
-            "artifactID": 2,
-            "platformID": 2
-          }
-        }
-      ]
-    }
-  ]
-}]
- */
-router.post('/save', (req, res) => {
-	let releases = req.body;
-
-	let incomingRequestSystemAdminMessage = releases.map((release) => createAuditRequestLog(req, systemMessages.RELEASE_SAVE_REQUEST)
-		.addInfo(Entities.Release.ID, release.ID)
-		.addInfo(Entities.Release.name, release.version)
-	);
-
-	utils.handleRESTAndLog(
-		incomingRequestSystemAdminMessage,
-		cb => releaseModule.createReleases(releases, cb),
-		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Release.name, Entities.Release.ID)))
-	);
 });
 
 /**
@@ -297,10 +199,10 @@ router.get('/count', (req, res) => {
 
 /**
  * @apiVersion 1.0.0
- * @api {post} /releases/provision Provision a new release
- * @apiName ProvisionRelease
+ * @api {post} /releases/save Save a new release
+ * @apiName SaveRelease
  * @apiGroup releases
- * @apiDescription Provisions a release from a manifest. This complex operation can perform the following actions:
+ * @apiDescription Saves a release from a payload. This complex operation can perform the following actions:
  *
  * - **Platform Creation**: Creates new platforms, including their OS, kernel, OFED, and architecture definitions.
  * - **Artifact Association**: Creates and associates artifacts with new or existing platforms.
@@ -310,8 +212,8 @@ router.get('/count', (req, res) => {
  *   - The system first identifies the corresponding component in the release specified by `inheritRelationsFrom` (release `n-1`).
  *     If no corresponding component is found, the inheritance for that component is skipped.
  *   - It then adds compatibility with the latest version of related `NVMESH_PACKAGE` components from release `n-1`.
- *   - Subsequently, it attempts to add compatibility with the new version (`n`) of those components if they are part of the current provisioning manifest.
- *   - If a component's new version (`n`) is not in the manifest, the system will instead add compatibility with the second-to-last known version (`n-2`),
+ *   - Subsequently, it attempts to add compatibility with the new version (`n`) of those components if they are part of the current save payload.
+ *   - If a component's new version (`n`) is not in the payload, the system will instead add compatibility with the second-to-last known version (`n-2`),
  *     if available from the `n-1` component's compatibility list.
  *
  *   For each component in the previous release, this process will add compatibility with the new version (`n`) of that component.
@@ -324,12 +226,12 @@ router.get('/count', (req, res) => {
  *  - linking new artifacts to an existing platform
  *  - updating the version of previous release nvmesh components to be compatible with the new release nvmesh components
  *
- * @apiParam {string} releaseName Version of the release to provision. Can be a new or an existing release.
- * @apiParam {string} inheritRelationsFrom Version of an existing release to inherit component relationships and upgrade scenarios from.
+ * @apiParam {string} releaseName Version of the release to save. Can be a new or an existing release.
+ * @apiParam {string} [inheritRelationsFrom] Version of an existing release to inherit component relationships and upgrade scenarios from.
  * @apiParam {boolean} [createPlatforms=false] If true, new platform definitions and dependencies will be created.
  * @apiParam {object[]} platforms Array of platform objects. If `createPlatforms` is true, platforms are created; otherwise,
  * existing platforms are updated with artifacts.
- * @apiParam {string} platforms.name The name of the platform.
+ * @apiParam {string} platforms.name The name of the platform. If null, given artifacts will not be associated with any platform.
  * @apiParam {string[]} platforms.artifacts Array of artifact names to associate with this platform.
  * @apiParam {object} [platforms.os] Operating system definition. This object is required if `createPlatforms` is true.
  * @apiParam {string} [platforms.os.distributionType] OS distribution type (e.g., 'ubuntu', 'rocky'). Required if `os` is provided.
@@ -370,17 +272,24 @@ router.get('/count', (req, res) => {
  *     "payload": null
  * }
  */
-router.post('/provision', (req, res) => {
-	const manifest = req.body;
+router.post('/save', (req, res) => {
+	const payload = req.body;
 
-	const incomingRequestSystemAdminMessage = createAuditRequestLog(req, systemMessages.RELEASE_PROVISION_REQUEST)
-		.addInfo(Entities.Release.name, manifest.releaseName, Differentiators.Destination)
-		.addInfo(Entities.Release.name, manifest.inheritRelationsFrom, Differentiators.Source);
+	const incomingRequestSystemAdminMessage = payload.map((release) => {
+		const message = createAuditRequestLog(req, systemMessages.RELEASE_SAVE_REQUEST)
+			.addInfo(Entities.Release.name, release.releaseName, Differentiators.Destination);
+
+		if (release.inheritRelationsFrom)
+			message.addInfo(Entities.Release.name, release.inheritRelationsFrom, Differentiators.Source);
+
+		return message;
+	});
 
 	utils.handleRESTAndLog(
-		[incomingRequestSystemAdminMessage],
-		cb => releaseProvisionerModule.provision(manifest, cb),
-		systemAdminMessage => res.json(systemAdminMessage.createApiResponse(Entities.Release.name)));
+		incomingRequestSystemAdminMessage,
+		cb => releaseBuilderModule.saveReleases(payload, cb),
+		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Release.name)))
+	);
 });
 
 module.exports = router;

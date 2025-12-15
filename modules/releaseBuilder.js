@@ -383,16 +383,18 @@ const groupPlatformsByArtifacts = requestedPlatforms => {
 	requestedPlatforms.forEach(({ name: platformName, artifacts }) => {
 		artifacts.forEach(artifactName => {
 			if (!platformsByArtifacts[artifactName]) {
-				const newArtifact = {
-					name: artifactName,
-					platforms: [platformName]
-				};
+				const newArtifact = { name: artifactName, platforms: [] };
+				// platformName might be null if the artifact is not associated with any platform
+				if (platformName)
+					newArtifact.platforms.push(platformName);
 
 				platformsByArtifacts[artifactName] = newArtifact;
 				result.push(newArtifact);
 			} else {
 				// modify the platformsByArtifacts will affect the result entry already pushed
-				platformsByArtifacts[artifactName].platforms.push(platformName);
+				// platformName might be null if the artifact is not associated with any platform
+				if (platformName)
+					platformsByArtifacts[artifactName].platforms.push(platformName);
 			}
 		});
 	});
@@ -408,7 +410,7 @@ const prepareArtifacts = (requestedPlatforms, callback) => {
 
 	const requestObj = {
 		filter: {
-			name: { $in: requestedPlatforms.map(platform => platform.name) }
+			name: { $in: requestedPlatforms.filter(platform => platform.name).map(platform => platform.name) }
 		}
 	};
 
@@ -684,7 +686,7 @@ const prepareNComponentVersions = (componentVersionsToUpdate, versions, mappedEn
 			newCompatibilities.push(nMinus1sortedCompatibilities.pop());
 
 			// get the version for the component in release n - i.e. '3.3.2'
-			const version = versions.n[componentName].version;
+			const version = versions.n[componentName]?.version;
 
 			if (version) {
 				// add the n nvmesh package compatibility if it exists
@@ -1013,34 +1015,54 @@ const inheritUpgradeScenarios = (releaseN, releaseNMinus1, callback) => {
 	], callback);
 };
 
-// provision a release by creating platforms, artifacts, release, components, upgrade scenarios
-scope.provision = (manifest, callback) => {
+scope.saveReleases = (payload, cb) => {
+	const messages = [];
+
+	async.eachSeries(payload, (release, cb) => {
+		saveRelease(release, message => {
+			messages.push(message);
+			cb();
+		});
+	}, () => cb(messages));
+};
+
+const saveRelease = (payload, callback) => {
 	async.series([
 		// create platforms and dependencies
 		cb => {
-			if (!manifest.createPlatforms)
+			if (!payload.createPlatforms)
 				return cb();
 
-			createPlatformsAndDependencies(manifest.platforms, cb);
+			createPlatformsAndDependencies(payload.platforms.filter(platform => platform.name), cb);
 		},
 		// create artifacts and link them to platforms
-		cb => createEntities(manifest.platforms, prepareArtifacts, createArtifacts, handleArtifactsResponses, cb),
+		cb => createEntities(payload.platforms, prepareArtifacts, createArtifacts, handleArtifactsResponses, cb),
 		// create/update release and link artifacts to it
 		cb => {
-			const { releaseName, platforms } = manifest;
+			const { releaseName, platforms } = payload;
 			const artifacts = getUniqueStrings(platforms.flatMap(platform => platform.artifacts), 'artifacts');
 
 			createOrUpdateRelease(releaseName, artifacts, cb);
 		},
 		// inherit components
-		cb => inheritComponents(manifest.releaseName, manifest.inheritRelationsFrom, cb),
+		cb => {
+			if (!payload.inheritRelationsFrom)
+				return cb();
+
+			inheritComponents(payload.releaseName, payload.inheritRelationsFrom, cb);
+		},
 		// inherit upgrade scenarios
-		cb => inheritUpgradeScenarios(manifest.releaseName, manifest.inheritRelationsFrom, cb),
+		cb => {
+			if (!payload.inheritRelationsFrom)
+				return cb();
+
+			inheritUpgradeScenarios(payload.releaseName, payload.inheritRelationsFrom, cb);
+		},
 	], error => {
 		const message = (error ?
-			new SystemAdminMessage(systemMessages.PROVISION_RELEASE_FAILED).addInfo(Entities.Error, error) :
-			new SystemAdminMessage(systemMessages.PROVISION_RELEASE_SUCCESS)
-		);
+			new SystemAdminMessage(systemMessages.SAVE_RELEASE_FAILED).addInfo(Entities.Error, error) :
+			new SystemAdminMessage(systemMessages.SAVE_RELEASE_SUCCESS)
+		).addInfo(Entities.Release.name, payload.releaseName);
 
 		callback(message);
 	});
