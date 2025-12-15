@@ -13,6 +13,27 @@ import ArtifactsFiltSort from '../artifacts/ArtifactsFiltSort.jsx';
 const { useState } = React;
 const { useForm } = ReactHookForm;
 
+const buildSaveReleasePayload = ({ version, artifacts }) => {
+	const NO_PLATFORM_NAME = null;
+	const platformsMap = new Map();
+
+	artifacts.forEach(artifact => {
+		const targetPlatformNames = artifact.platforms?.length ? artifact.platforms.map(p => p.name) : [NO_PLATFORM_NAME];
+
+		targetPlatformNames.forEach(platform => {
+			if (!platformsMap.has(platform))
+				platformsMap.set(platform, { name: platform, artifacts: [] });
+
+			platformsMap.get(platform).artifacts.push(artifact.name);
+		});
+	});
+
+	return {
+		releaseName: version,
+		platforms: Array.from(platformsMap.values())
+	};
+};
+
 const CreateEditRelease = ({
 	release = {},
 	handleCancel = () => {},
@@ -31,7 +52,11 @@ const CreateEditRelease = ({
 			artifacts: selectedArtifacts
 		};
 
-		onSubmit(editedRelease);
+		if (!isCreate)
+			return onSubmit(editedRelease);
+
+		const payload = buildSaveReleasePayload(editedRelease);
+		onSubmit(payload);
 	};
 
 	return (
