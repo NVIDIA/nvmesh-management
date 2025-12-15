@@ -47,9 +47,9 @@ const VolumeDiagram = ({
 				<Tab header="Targets">
 					<VolumeDiagramTargets targets={mainVolumeDiagram.targets}/>
 				</Tab>
-				{mainVolumeDiagram.csiMetadata && <Tab header="CSI Metadata">
+				{mainVolumeDiagram.metadata && <Tab header="Metadata">
 					<table className="table">
-						{Object.entries(mainVolumeDiagram.csiMetadata).map(([key, value]) => (
+						{Object.entries(mainVolumeDiagram.metadata).map(([key, value]) => (
 							<tr key={key}>
 								<th className="col-3">{key}</th>
 								<td className="text-muted">{value}</td>

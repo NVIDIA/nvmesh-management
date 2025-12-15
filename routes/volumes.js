@@ -395,8 +395,16 @@ router.get('/getVolumeDiagram/:volumeID', function(req, res) {
 				}
 			};
 
-			if (volume.csi_metadata)
-				diagram.csiMetadata = volume.csi_metadata;
+			volume.metadata = volume.csi_metadata || volume.metadata || {};
+			if (Object.keys(volume.metadata).length) {
+				diagram.metadata = {};
+				for (const key in volume.metadata) {
+					let value = volume.metadata[key];
+					if (typeof value === 'object' || Array.isArray(value))
+						value = JSON.stringify(value);
+					diagram.metadata[key] = value;
+				}
+			}
 
 			diagrams.push(diagram);
 
