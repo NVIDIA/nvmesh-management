@@ -28,7 +28,6 @@ var localStrategy = require('passport-local').Strategy;
 var session = require('express-session');
 var layouts = require('express-ejs-layouts');
 var fs = require('fs');
-var ip = require('ip');
 var dns = require('dns');
 var { execSync } = require('child_process');
 var https = require('https');
@@ -689,7 +688,7 @@ function doAfterDatabasesArePopulatedAndConnected() {
 			}
 
 			function resolveFirstInterface(callback) {
-				const firstIp = ip.address();
+				const firstIp = utils.getIPAddress();
 				logger.sysDEBUG(`Using first available IP: ${firstIp}`);
 				return callback(firstIp);
 			}

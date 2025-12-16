@@ -24,8 +24,9 @@ var events = require('./events.js');
 var { ExecutionTimer } = require('./models/executionTimer.js');
 var fs = require('fs');
 var path = require('path');
-var websocket = require('./modules/websocket');
+const os = require('os');
 
+var websocket = require('./modules/websocket');
 var logModule = require('./modules/log.js');
 var kafkaModule = require('./modules/kafka.js');
 var lockModule = require('./modules/lock.js');
@@ -6348,6 +6349,20 @@ scope.getSystemInfo = (callback) => {
 		const systemInfo = scope.collectSystemInfo(clusterID);
 		callback(systemInfo);
 	});
+};
+
+scope.getIPAddress = () => {
+	const interfaces = os.networkInterfaces();
+
+	for (const networkInterface of Object.values(interfaces)) {
+		for (const net of networkInterface || []) {
+			if (net.family === 'IPv4' && !net.internal) {
+				return net.address;
+			}
+		}
+	}
+
+	return '127.0.0.1';
 };
 
 module.exports = scope;

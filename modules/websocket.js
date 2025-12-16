@@ -10,7 +10,6 @@
 /* global app */
 
 var uuid = require('uuid');
-var ipModule = require('ip');
 var async = require('async');
 const fs = require('fs');
 
@@ -271,7 +270,7 @@ scope.getRegistrant = function() {
 	return {
 		type: consts.originTypes.MANAGEMENT,
 		id: app.get('managementId'),
-		ip: ipModule.address(),
+		ip: utils.getIPAddress(),
 		port: config.get('webSocketServerPort')
 	};
 };

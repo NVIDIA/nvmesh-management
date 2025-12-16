@@ -70,7 +70,6 @@
     "fs": "0.0.1-security",
     "fs-ext": "^2.0.0",
     "interop-db": "file:../interop-db",
-    "ip": "~0.3.3",
     "kafkajs": "^2.2.0",
     "modern-syslog": "^1.2.0",
     "moment": "^2.24.0",
