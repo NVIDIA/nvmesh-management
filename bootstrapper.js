@@ -645,6 +645,11 @@ function registerToLogsHandlers(eventEmitter) {
 		});
 	});
 
+	eventEmitter.on(objectNotifier.events.zonesRanksChangeEvent.name, function(args) {
+		// updating the latest zoneRanks another MGMT did into my cache
+		if (args.triggeredBy && args.triggeredBy.type === consts.originTypes.MANAGEMENT)
+			objectNotifier.setObject(objectNotifier.events.zonesRanksChangeEvent.name, args.payload);
+	});
 }
 
 scope.registerToEvents = function(cb) {

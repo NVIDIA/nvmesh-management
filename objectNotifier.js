@@ -21,6 +21,7 @@ var generalSettingsModule = require('./modules/generalSettings.js');
 var consts = require('./consts.js');
 var logger = require('./logger.js');
 var utils = require('./utils');
+var events = require('./events.js');
 
 var { Entities, SystemMessage, MongoError, SystemAdminMessage } = require('./modules/error.js');
 var systemMessages = require('./systemMessages.js');
@@ -543,7 +544,9 @@ monitoredObjects[scope.events.zonesRanksChangeEvent.name] = {
 		zoneModule.getZones([], (err, zones) => {
 			if (!err && zones && zones.length) {
 				zones.forEach((zone) => zone.targetsInZone = zone.targetsInZone?.length || 0);
-				return callback(err, zoneModule.getZonesRanks(zones));
+				let zoneRanks = zoneModule.getZonesRanks(zones);
+				events.emitEvent(null, scope.events.zonesRanksChangeEvent, zoneRanks);
+				return callback(err, zoneRanks);
 			}
 
 			callback(err, {});
@@ -654,17 +657,11 @@ scope.getObject = function(event, callback) {
 		callback();
 };
 
-/*
-* This function probably redundant for none scalar values.
-* But we may need it, so comment till the framework mature, and we'll know for sure.
 scope.setObject = function(event, value) {
 	var obj = monitoredObjects[event];
-	if (!equals(obj.value, value)) {
+	if (obj)
 		obj.value = value;
-		emit(event, obj.value);
-	}
 };
-*/
 
 scope.notifyChange = function(event, updateType) {
 	var obj = monitoredObjects[event];
