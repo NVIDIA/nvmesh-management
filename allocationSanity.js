@@ -11,10 +11,10 @@
 /* global app */
 var mongodb = require('mongodb-legacy').MongoClient;
 var express = require('express');
-var logger = require('./logger.js');
 var mongoDBModule = require('./modules/mongoDB.js');
 var sanityAndRecover = require('./modules/sanityAndRecover.js');
 var errorModule = require('./modules/error.js');
+var logger = require('./logger.js'); // It is imported here to avoid circular dependency
 
 // eslint-disable-next-line no-global-assign
 app = express();
