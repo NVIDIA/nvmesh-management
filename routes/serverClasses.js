@@ -19,7 +19,7 @@ const validateProjection = require('../middlewares/validateProjection.js');
 const { createAuditRequestLog } = require('../modules/log.js');
 const systemMessages = require('../systemMessages.js');
 const isAdminRole = require('../middlewares/isAdminRole.js');
-const { fetchEntityByID, getCountEntitiesHandler } = require('./common.js');
+const { getCountEntitiesHandler } = require('./common.js');
 
 const router = express.Router();
 
@@ -294,8 +294,11 @@ router.post('/update', (req, res) => {
 * }
 */
 router.get('/:id', (req, res) => {
-	fetchEntityByID('serverClass', req.params.id, false, {}, result => {
-		return res.json(result);
+	serverClassModule.fetchServerClassByID(req.params.id, (error, serverClass) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		return res.json(serverClass);
 	});
 });
 

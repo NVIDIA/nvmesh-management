@@ -27,11 +27,12 @@ const {
 	updateVPGs,
 	extendVPGs,
 	getVolumesCapacityUsageByID,
-	getVolumesCapacityUsageAll
+	getVolumesCapacityUsageAll,
+	fetchVPGByID
 } = require('../modules/volumeProvisioningGroup.js');
 const validateProjection = require('../middlewares/validateProjection.js');
 const isAdminRole = require('../middlewares/isAdminRole.js');
-const { fetchEntityByID, getCountEntitiesHandler } = require('./common.js');
+const { getCountEntitiesHandler } = require('./common.js');
 
 router.get('/', function(req, res) {
 	var renderData = {};
@@ -408,8 +409,11 @@ router.get('/getDisksByID/:id', function(req, res) {
 * }
 */
 router.get('/:id', (req, res) => {
-	fetchEntityByID('volumeProvisioningGroup', req.params.id, false, {}, result => {
-		return res.json(result);
+	fetchVPGByID(req.params.id, (error, vpg) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		return res.json(vpg);
 	});
 });
 

@@ -309,4 +309,8 @@ scope.updateDriveClassNodeIDFromReappearingDrive = reappearingDrive => {
 	});
 };
 
+scope.fetchDriveClassByID = function(driveClassID, cb) {
+	utils.fetchEntityByID('diskClass', driveClassID, false, {}, systemMessages.DRIVECLASS_DRIVE_NOT_FOUND, cb);
+};
+
 module.exports = scope;

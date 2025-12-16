@@ -20,7 +20,7 @@ const { createAuditRequestLog } = require('../modules/log.js');
 const systemMessages = require('../systemMessages.js');
 const { removeSessionFromConcurrentSessions, getConcurrentSessions } = require('../middlewares/login.js');
 const isAdminRole = require('../middlewares/isAdminRole.js');
-const { fetchEntityByID, getCountEntitiesHandler } = require('./common.js');
+const { getCountEntitiesHandler } = require('./common.js');
 
 var router = express.Router();
 
@@ -377,8 +377,11 @@ router.post('/disconnect', isAdminRole, function(req, res) {
 * }
 */
 router.get('/:id', isAdminRole, (req, res) => {
-	fetchEntityByID('user', req.params.id, false, { password: 0 }, result => {
-		return res.json(result);
+	userModule.fetchUserByID(req.params.id, (error, user) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		return res.json(user);
 	});
 });
 

@@ -193,7 +193,7 @@ router.get('/:id', (req, res) => {
 		const backup = backupsWrapper.backups[backupID];
 
 		if (!backup)
-			return res.json(utils.createApiResponse(backupID, null, false, new SystemMessage(systemMessages.CANT_FIND_ENTITY).toApiResponse()));
+			return res.json(utils.createApiResponse(backupID, null, false, new SystemMessage(systemMessages.BACKUP_NOT_FOUND).toApiResponse()));
 
 		res.json(backup);
 	});

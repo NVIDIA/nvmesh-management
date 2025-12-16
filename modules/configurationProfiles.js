@@ -558,6 +558,21 @@ scope.getProfileByName = function(profileName, callback) {
 	});
 };
 
+scope.fetchProfileByID = function(profileID, cb) {
+	const db = app.get('db');
+	const configProfileCollection = db.collection('configurationProfile');
+
+	configProfileCollection.findOne({ _id: profileID }, {}, (err, profile) => {
+		if (err)
+			return cb(new MongoError(err).log());
+
+		if (!profile)
+			return cb(new SystemMessage(systemMessages.CONFIG_PROFILE_NOT_FOUND));
+
+		cb(null, profile);
+	});
+};
+
 /**
  * returns a list of nodeConfigs of nodes for a given desiredProfile.
  * @param {string} profileName

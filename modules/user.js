@@ -20,6 +20,10 @@ const { removeUsersSessionsFromConcurrentSessions } = require('../middlewares/lo
 
 var scope = {};
 
+scope.fetchUserByID = function(userID, cb) {
+	utils.fetchEntityByID('user', userID, false, { password: 0 }, systemMessages.USER_NOT_FOUND, cb);
+};
+
 scope.saveUsers = (users, creatingUser, callback) => {
 	const messages = [];
 

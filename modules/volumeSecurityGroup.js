@@ -18,6 +18,10 @@ const { MongoError, SystemMessage, Entities, SystemAdminMessage } = require('./e
 
 const scope = {};
 
+scope.fetchVSGByID = function(vsgID, cb) {
+	utils.fetchEntityByID('volumeSecurityGroup', vsgID, false, {}, systemMessages.VSG_NOT_FOUND, cb);
+};
+
 scope.deleteVSGs = (VSGs, callback) => {
 	const messages = [];
 
@@ -117,7 +121,7 @@ scope.updateVSGs = (VSGs, user, cb) => {
 						return callback(new MongoError(err).log());
 
 					if (!VSGFromDB)
-						return callback(new SystemMessage(systemMessages.VSG_UPDATE_NOT_FOUND));
+						return callback(new SystemMessage(systemMessages.VSG_NOT_FOUND));
 
 					callback();
 				});

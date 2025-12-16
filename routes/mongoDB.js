@@ -121,8 +121,10 @@ router.get('/:id', (req, res) => {
 	mongoDBModule.getAllMongoDB(results => {
 		const mongoDB = results[0].members.find(r => r.name === mongoDBID);
 
+
 		if (!mongoDB)
-			return res.json(utils.createApiResponse(mongoDBID, null, false, new SystemMessage(systemMessages.CANT_FIND_ENTITY).toApiResponse()));
+			return res.json(utils.createApiResponse(mongoDBID, null, false,
+				new SystemMessage(systemMessages.MONGODB_REPLICA_SET_MEMBER_NOT_FOUND).toApiResponse()));
 
 		res.json(mongoDB);
 	});

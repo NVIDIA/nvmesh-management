@@ -19,6 +19,10 @@ const systemMessages = require('../systemMessages.js');
 
 const scope = {};
 
+scope.fetchServerClassByID = function(serverClassID, cb) {
+	utils.fetchEntityByID('serverClass', serverClassID, false, {}, systemMessages.TARGETCLASS_NOT_FOUND, cb);
+};
+
 function validateTargets(targetClasses, executeForEachClassFn, callback) {
 	const query = { projection: { _id: 0, node_id: 1 } };
 
@@ -191,7 +195,7 @@ scope.updateTargetClasses = (targetClasses, user, callback) => {
 				const targetClassResult = results[targetClass._id];
 				
 				if (targetClassResult.matchedCount == 0)
-					error = new SystemMessage(systemMessages.TARGETCLASS_UPDATED_NOT_FOUND);
+					error = new SystemMessage(systemMessages.TARGETCLASS_NOT_FOUND);
 				else
 					error = targetClassResult.err;
 

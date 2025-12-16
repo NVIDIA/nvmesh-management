@@ -25,7 +25,7 @@ const { createAuditRequestLog } = require('../modules/log.js');
 
 const validateProjection = require('../middlewares/validateProjection.js');
 const isAdminRole = require('../middlewares/isAdminRole.js');
-const { fetchEntityByID, getCountEntitiesHandler } = require('./common.js');
+const { getCountEntitiesHandler } = require('./common.js');
 
 var router = express.Router();
 
@@ -1053,15 +1053,18 @@ router.post('/delete', isAdminRole, function(req, res) {
 * }
 */
 router.get('/:id', (req, res) => {
-	fetchEntityByID('volume', req.params.id, false, {}, result => {
-		if (result.diskClasses?.length) {
-			result.limitByDisks = [];
+	volumeModule.fetchVolumeByID(req.params.id, (error, volume) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		if (volume.diskClasses?.length) {
+			volume.limitByDisks = [];
 		}
-		if (result.serverClasses?.length) {
-			result.limitByNodes = [];
+		if (volume.serverClasses?.length) {
+			volume.limitByNodes = [];
 		}
 
-		return res.json(result);
+		return res.json(volume);
 	});
 });
 

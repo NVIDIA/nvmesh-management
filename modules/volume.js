@@ -3020,4 +3020,8 @@ scope.fetchVolumeVersionByUUID = function fetchVolumeVersionByUUID(uuid, cb) {
 	});
 };
 
+scope.fetchVolumeByID = function(id, cb) {
+	utils.fetchEntityByID('volume', id, false, {}, systemMessages.VOLUME_NOT_FOUND, cb);
+};
+
 module.exports = scope;

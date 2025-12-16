@@ -18,7 +18,7 @@ var { Entities } = require('../modules/error.js');
 const { createAuditRequestLog } = require('../modules/log.js');
 const validateProjection = require('../middlewares/validateProjection.js');
 const isAdminRole = require('../middlewares/isAdminRole.js');
-const { fetchEntityByID, getCountEntitiesHandler } = require('./common.js');
+const { getCountEntitiesHandler } = require('./common.js');
 
 var router = express.Router();
 module.exports = router;
@@ -451,7 +451,10 @@ router.post('/apply', function(req, res) {
 * }
 */
 router.get('/:id', (req, res) => {
-	fetchEntityByID('configurationProfile', req.params.id, {}, result => {
-		return res.json(result);
+	configProfilesModule.fetchProfileByID(req.params.id, (error, profile) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		return res.json(profile);
 	});
 });

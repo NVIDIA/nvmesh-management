@@ -6141,7 +6141,7 @@ scope.waitForState = (backoff, debugInfoStr, checkStateFunc, callback) => {
 scope.BtoGB = number => number / consts.GB;
 scope.getMessageSequenceObjectFromKafkaMessageTypes = kafkaMessageTypesObject => Object.fromEntries(Object.values(kafkaMessageTypesObject).map(t => [t, 0]));
 
-scope.fetchEntityByID = (entityType, entityID, isMongoObjectID = false, projection = {}, cb) => {
+scope.fetchEntityByID = (entityType, entityID, isMongoObjectID = false, projection = {}, notFoundError = systemMessages.CANT_FIND_ENTITY, cb) => {
 	const db = app.get('db');
 	const collection = db.collection(entityType);
 	const _id = isMongoObjectID ? new ObjectId(entityID) : entityID;
@@ -6151,7 +6151,7 @@ scope.fetchEntityByID = (entityType, entityID, isMongoObjectID = false, projecti
 			return cb(new MongoError(error).log());
 
 		if (!entity)
-			return cb(new SystemMessage(systemMessages.CANT_FIND_ENTITY));
+			return cb(new SystemMessage(notFoundError));
 
 		cb(null, entity);
 	});

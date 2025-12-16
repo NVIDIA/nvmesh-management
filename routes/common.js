@@ -1,15 +1,6 @@
-const { fetchEntityByID, count, tryParseJSON } = require('../utils');
+const { count, tryParseJSON } = require('../utils');
 
 const scope = {};
-
-scope.fetchEntityByID = (entityType, entityID, isMongoObjectID, projection, cb) => {
-	fetchEntityByID(entityType, entityID, isMongoObjectID, projection, (error, entity) => {
-		if (error)
-			return cb(error.createApiResponse());
-
-		cb(entity);
-	});
-};
 
 scope.getCountEntitiesHandler = (entityType, requiredFilter = {}, defaultFilter = {}) => {
 	return (req, res) => {

@@ -4611,4 +4611,8 @@ scope.sendUpdateTargetNICsMessage = function(clientID, topic, targetIDs, originI
 	});
 };
 
+scope.fetchClientByID = function(clientID, cb) {
+	utils.fetchEntityByID('client', clientID, false, {}, systemMessages.CLIENT_NOT_FOUND, cb);
+};
+
 module.exports = scope;

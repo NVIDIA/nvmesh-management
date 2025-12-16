@@ -14,7 +14,7 @@ var consts = require('../consts.js');
 var logModule = require('../modules/log.js');
 const validateProjection = require('../middlewares/validateProjection.js');
 const isAdminRole = require('../middlewares/isAdminRole.js');
-const { fetchEntityByID, getCountEntitiesHandler } = require('./common.js');
+const { getCountEntitiesHandler } = require('./common.js');
 
 var router = express.Router();
 
@@ -276,8 +276,11 @@ router.post('/acknowledgeAll', isAdminRole, function(req, res) {
 * }
 */
 router.get('/:id', (req, res) => {
-	fetchEntityByID('log', req.params.id, true, {}, result => {
-		return res.json(result);
+	logModule.fetchLogByID(req.params.id, (error, log) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		return res.json(log);
 	});
 });
 

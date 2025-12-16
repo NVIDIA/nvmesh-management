@@ -1644,4 +1644,8 @@ function validateThirdPartyLibCompatibilities(libName, libVersionsFound, nvmeshP
 	});
 }
 
+scope.fetchUpgradeByID = function(upgradeID, cb) {
+	utils.fetchEntityByID('upgrade', upgradeID, false, {}, systemMessages.UPGRADE_NOT_FOUND, cb);
+};
+
 module.exports = scope;

@@ -106,4 +106,8 @@ scope.updateKeys = (keys, user, callback) => {
 	}, () => callback(messages));
 };
 
+scope.fetchKeyByID = function(keyID, cb) {
+	utils.fetchEntityByID('key', keyID, false, {}, systemMessages.KEY_NOT_FOUND, cb);
+};
+
 module.exports = scope;

@@ -13,6 +13,7 @@ var async = require('async');
 
 var consts = require('../consts.js');
 var config = require('./config.js');
+var utils = require('../utils.js');
 
 var lockModule = require('./lock.js');
 var sanityAndRecover = require('./sanityAndRecover.js');
@@ -23,6 +24,9 @@ const systemMessages = require('../systemMessages.js');
 
 var scope = {};
 
+scope.fetchManagementClusterByID = function(managementClusterID, cb) {
+	utils.fetchEntityByID('managementCluster', managementClusterID, false, {}, systemMessages.MANAGEMENT_CLUSTER_NOT_FOUND, cb);
+};
 
 scope.deleteManagementFromClusterAndConfiguration = (managementId, callback) => {
 	const db = app.get('db');

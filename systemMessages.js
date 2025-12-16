@@ -361,6 +361,11 @@ var systemMessages = {
 		id: 1066,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	BACKUP_NOT_FOUND: {
+		message: 'Backup not found',
+		id: 1067,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	DBBACKUP_BACKUP_REMOVE_FAILED: {
 		message: 'Could not delete the oldest backup while rotating, this may lead to excessive storage space usage.',
 		id: 1068,
@@ -538,6 +543,11 @@ var systemMessages = {
 		message: 'Changing password is required',
 		id: 1268,
 		sysLogLevel: consts.loggingLevel.DEBUG
+	},
+	MONGODB_REPLICA_SET_MEMBER_NOT_FOUND: {
+		message: 'MongoDB replica set member not found',
+		id: 1273,
+		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	MONGODB_REPLICA_SET_HOST_WENT_UP: {
 		message: 'A MongoDB replica set member went up',
@@ -1409,6 +1419,13 @@ var systemMessages = {
 		isAudit: true,
 		isSecurity: true
 	},
+	TARGET_NOT_FOUND: {
+		message: 'Target not found',
+		id: 15545,
+		header: 'Target Not Found',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	NIC_DELETE_FAILED: {
 		message: 'NIC Delete Failed',
 		id: 15541,
@@ -1861,7 +1878,7 @@ var systemMessages = {
 		id: 326,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
-	TARGETCLASS_UPDATED_NOT_FOUND: {
+	TARGETCLASS_NOT_FOUND: {
 		message: 'Target Class not found',
 		id: 327,
 		sysLogLevel: consts.loggingLevel.ERROR
@@ -1968,6 +1985,13 @@ var systemMessages = {
 		message: 'Failed to create upgrade agent - missing featureCompatibilityVersion',
 		id: 16287,
 		header: 'Upgrade Agent Creation Failed',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	UPGRADE_NOT_FOUND: {
+		message: 'Upgrade not found',
+		id: 16288,
+		header: 'Upgrade Not Found',
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
@@ -2137,6 +2161,13 @@ var systemMessages = {
 		message: 'Failed to save users',
 		id: 1645,
 		header: 'Users Save Failed',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	USER_NOT_FOUND: {
+		message: 'User not found',
+		id: 16451,
+		header: 'User Not Found',
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
@@ -2406,6 +2437,13 @@ var systemMessages = {
 		header: 'All Logs Acknowledged',
 		logLevel: consts.loggingLevel.INFO,
 		sysLogLevel: consts.loggingLevel.INFO
+	},
+	LOG_NOT_FOUND: {
+		message: 'Log not found',
+		id: 16782,
+		header: 'Log Not Found',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	ENCRYPTION_ALREADY_INITIALIZED: {
 		message: 'Volume encryption already initialized',
@@ -2753,6 +2791,13 @@ var systemMessages = {
 		isAudit: true,
 		isSecurity: true
 	},
+	MANAGEMENT_CLUSTER_NOT_FOUND: {
+		message: 'Management Cluster not found',
+		id: 151110,
+		header: 'Management Cluster Not Found',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	MANAGEMENT_CLUSTER_DELETE_REQUEST: {
 		message: 'REST API Request: Delete Management',
 		id: 151111,
@@ -2870,7 +2915,7 @@ var systemMessages = {
 		id: 16931,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
-	VSG_UPDATE_NOT_FOUND: {
+	VSG_NOT_FOUND: {
 		message: 'VSG not found',
 		id: 16932,
 		sysLogLevel: consts.loggingLevel.ERROR

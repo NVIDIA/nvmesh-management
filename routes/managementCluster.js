@@ -15,7 +15,7 @@ var utils = require('../utils.js');
 var consts = require('../consts.js');
 var managementClusterModule = require('../modules/managementCluster.js');
 const isAdminRole = require('../middlewares/isAdminRole.js');
-const { fetchEntityByID, getCountEntitiesHandler } = require('./common.js');
+const { getCountEntitiesHandler } = require('./common.js');
 const { Entities } = require('../modules/error.js');
 const systemMessages = require('../systemMessages.js');
 const { createAuditRequestLog } = require('../modules/log.js');
@@ -177,8 +177,11 @@ router.post('/delete', isAdminRole, function(req, res) {
 * }
 */
 router.get('/:id', (req, res) => {
-	fetchEntityByID('managementCluster', req.params.id, false, {}, result => {
-		return res.json(result);
+	managementClusterModule.fetchManagementClusterByID(req.params.id, (error, managementCluster) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		return res.json(managementCluster);
 	});
 });
 

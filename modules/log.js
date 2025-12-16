@@ -13,6 +13,7 @@ var objectNotifier = require('../objectNotifier.js');
 var events = require('../events.js');
 var consts = require('../consts.js');
 var logger = require('../logger.js');
+var utils = require('../utils.js');
 var systemMessages = require('../systemMessages.js');
 
 var { Entities, MongoError, SystemAdminMessage, SystemMessage } = require('./error.js');
@@ -154,6 +155,10 @@ scope.createAuditRequestLog = (request, systemMessage) => {
 			.addInfo(Entities.ApiRequest.role, request.user.role);
 	}
 	return systemMsg;
+};
+
+scope.fetchLogByID = function(logID, cb) {
+	utils.fetchEntityByID('log', logID, true, {}, systemMessages.LOG_NOT_FOUND, cb);
 };
 
 module.exports = scope;

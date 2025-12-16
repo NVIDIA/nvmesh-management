@@ -453,6 +453,11 @@ function getVolumesUsageCapacity(vpgID, cb) {
 	});
 }
 
+scope.fetchVPGByID = (id, cb) => {
+	utils.fetchEntityByID('volumeProvisioningGroup', id, false, {}, systemMessages.VPG_NOT_FOUND, cb);
+
+};
+
 scope.getVolumesCapacityUsageByID = (id, callback) => {
 	getVolumesUsageCapacity(id, callback);
 };

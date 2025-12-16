@@ -15,7 +15,7 @@ const consts = require('../consts.js');
 const utils = require('../utils.js');
 const systemMessages = require('../systemMessages.js');
 const validateProjection = require('../middlewares/validateProjection.js');
-const { fetchEntityByID, getCountEntitiesHandler } = require('./common.js');
+const { getCountEntitiesHandler } = require('./common.js');
 const { Entities } = require('../modules/error.js');
 const { createAuditRequestLog } = require('../modules/log.js');
 
@@ -344,8 +344,11 @@ router.post('/delete', (req, res) => {
   }
  */
 router.get('/:id', (req, res) => {
-	fetchEntityByID('upgrade', req.params.id, false, {}, result => {
-		return res.json(result);
+	upgradeModule.fetchUpgradeByID(req.params.id, (error, upgrade) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		return res.json(upgrade);
 	});
 });
 

@@ -20,7 +20,7 @@ var { MongoError, Entities, getNICID } = require('../modules/error.js');
 const { createAuditRequestLog } = require('../modules/log.js');
 const validateProjection = require('../middlewares/validateProjection.js');
 const isAdminRole = require('../middlewares/isAdminRole.js');
-const { fetchEntityByID, getCountEntitiesHandler } = require('./common.js');
+const { getCountEntitiesHandler } = require('./common.js');
 
 var router = express.Router();
 
@@ -472,8 +472,11 @@ router.post('/regenerateTOMAMessages', isAdminRole, (req, res) => {
 * }
 */
 router.get('/:id', (req, res) => {
-	fetchEntityByID('server', req.params.id, false, {}, result => {
-		return res.json(result);
+	targetModule.fetchServerByID(req.params.id, (error, server) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		return res.json(server);
 	});
 });
 

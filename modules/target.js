@@ -3077,4 +3077,8 @@ function updateNicAttributes(nic, existingReportNic){
 	this.updateNic(nic, nic.uuid, 'deviceType', existingReportNic.deviceType);
 }
 
+scope.fetchServerByID = function(serverID, cb) {
+	utils.fetchEntityByID('server', serverID, false, {}, systemMessages.TARGET_NOT_FOUND, cb);
+};
+
 module.exports = scope;
