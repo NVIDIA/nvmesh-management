@@ -638,7 +638,7 @@ function doAfterDatabasesArePopulatedAndConnected() {
 
 		//Configure PhoneHome email.
 		userCollection.updateOne(
-			{ _id: 'phoneHome@excelero.com' },
+			{ _id: 'phoneHome@excelero.com', email: consts.PHONE_HOME_USER },
 			{ $set: { email: config.get('exceleroEmail').toLowerCase() } },
 			function(err) {
 				if (err)
