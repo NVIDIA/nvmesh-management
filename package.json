@@ -67,7 +67,7 @@
     "express-session": "^1.17.2",
     "fs-ext": "^2.0.0",
     "interop-db": "file:../interop-db",
-    "kafkajs": "^2.2.0",
+    "kafkajs": "^2.2.4",
     "modern-syslog": "^1.2.0",
     "moment": "^2.24.0",
     "mongodb-legacy": "^6.1.3",
