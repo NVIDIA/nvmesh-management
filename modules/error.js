@@ -466,6 +466,10 @@ scope.SystemMessage = class SystemMessage {
 		value = this.obfuscateInfo(value);
 		value = this.linkInfo(entity, key, value, complementValue);
 
+		// use undefined string instead of undefined value so it wont be omitted when serializing toString/toApiResponse (utils.extend excludes undefined)
+		if (value === undefined)
+			value = consts.UNDEFINED;
+
 		this.additionalInfo[key] = value;
 		return this;
 	}

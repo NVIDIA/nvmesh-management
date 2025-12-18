@@ -9,6 +9,7 @@
 
 var consts = {};
 
+consts.UNDEFINED = 'undefined';
 consts.ADMIN_USER = 'admin@nvidia.com';
 consts.SYSTEM_USER = 'system@nvidia.com';
 consts.PHONE_HOME_USER = 'phoneHome@excelero.com';
