@@ -4229,97 +4229,107 @@ scope.count = function(collectionName, match, cb) {
 	});
 };
 
-//jQuery implementation for deep copy of obj.
+//jQuery implementation for deep copy of obj - jQuery version 3.7.1
 /* eslint-disable */
 scope.extend = function () {
-	var options, name, src, copy, copyIsArray, clone, target = arguments[0] || {},
+	var options, name, src, copy, copyIsArray, clone,
+		target = arguments[0] || {},
 		i = 1,
 		length = arguments.length,
 		deep = false,
-		toString = Object.prototype.toString,
-		hasOwn = Object.prototype.hasOwnProperty,
-		push = Array.prototype.push,
-		slice = Array.prototype.slice,
-		trim = String.prototype.trim,
-		indexOf = Array.prototype.indexOf,
-		class2type = {
-			'[object Boolean]': 'boolean',
-			'[object Number]': 'number',
-			'[object String]': 'string',
-			'[object Function]': 'function',
-			'[object Array]': 'array',
-			'[object Date]': 'date',
-			'[object RegExp]': 'regexp',
-			'[object Object]': 'object'
+		getProto = Object.getPrototypeOf,
+		class2type = {},
+		toString = class2type.toString,
+		hasOwn = class2type.hasOwnProperty,
+		fnToString = hasOwn.toString,
+		ObjectFunctionString = fnToString.call(Object),
+		isFunction = function (obj) {
+			return typeof obj === "function" && typeof obj.nodeType !== "number" &&
+				typeof obj.item !== "function";
 		},
-		jQuery = {
-			isFunction: function (obj) {
-				return jQuery.type(obj) === 'function';
-			},
-			isArray: Array.isArray ||
-				function (obj) {
-					return jQuery.type(obj) === 'array';
-				},
-			isWindow: function (obj) {
-				return obj != null && obj == obj.window;
-			},
-			isNumeric: function (obj) {
-				return !isNaN(parseFloat(obj)) && isFinite(obj);
-			},
-			type: function (obj) {
-				return obj == null ? String(obj) : class2type[toString.call(obj)] || 'object';
-			},
-			isPlainObject: function (obj) {
-				if (!obj || jQuery.type(obj) !== 'object' || obj.nodeType) {
-					return false;
-				}
-				try {
-					if (obj.constructor && !hasOwn.call(obj, 'constructor') && !hasOwn.call(obj.constructor.prototype, 'isPrototypeOf')) {
-						return false;
-					}
-				} catch (e) {
-					return false;
-				}
-				var key;
-				for (key in obj) { }
-				return key === undefined || hasOwn.call(obj, key);
+		isPlainObject = function (obj) {
+			var proto, Ctor;
+
+			// Detect obvious negatives
+			// Use toString instead of jQuery.type to catch host objects
+			if (!obj || toString.call(obj) !== "[object Object]") {
+				return false;
 			}
+
+			proto = getProto(obj);
+
+			// Objects with no prototype (e.g., `Object.create( null )`) are plain
+			if (!proto) {
+				return true;
+			}
+
+			// Objects with prototype are plain iff they were constructed by a global Object function
+			Ctor = hasOwn.call(proto, "constructor") && proto.constructor;
+			return typeof Ctor === "function" && fnToString.call(Ctor) === ObjectFunctionString;
 		};
-	if (typeof target === 'boolean') {
+
+	// Handle a deep copy situation
+	if (typeof target === "boolean") {
 		deep = target;
-		target = arguments[1] || {};
-		i = 2;
+
+		// Skip the boolean and the target
+		target = arguments[i] || {};
+		i++;
 	}
-	if (typeof target !== 'object' && !jQuery.isFunction(target)) {
+
+	// Handle case when target is a string or something (possible in deep copy)
+	if (typeof target !== "object" && !isFunction(target)) {
 		target = {};
 	}
-	if (length === i) {
+
+	// Extend jQuery itself if only one argument is passed
+	if (i === length) {
 		target = this;
-		--i;
+		i--;
 	}
-	for (i; i < length; i++) {
+
+	for (; i < length; i++) {
+
+		// Only deal with non-null/undefined values
 		if ((options = arguments[i]) != null) {
+
+			// Extend the base object
 			for (name in options) {
-				src = target[name];
 				copy = options[name];
-				if (target === copy) {
+
+				// Prevent Object.prototype pollution
+				// Prevent never-ending loop
+				if (name === "__proto__" || target === copy) {
 					continue;
 				}
-				if (deep && copy && (jQuery.isPlainObject(copy) || (copyIsArray = jQuery.isArray(copy)))) {
-					if (copyIsArray) {
-						copyIsArray = false;
-						clone = src && jQuery.isArray(src) ? src : [];
+
+				// Recurse if we're merging plain objects or arrays
+				if (deep && copy && (isPlainObject(copy) ||
+					(copyIsArray = Array.isArray(copy)))) {
+					src = target[name];
+
+					// Ensure proper type for the source value
+					if (copyIsArray && !Array.isArray(src)) {
+						clone = [];
+					} else if (!copyIsArray && !isPlainObject(src)) {
+						clone = {};
 					} else {
-						clone = src && jQuery.isPlainObject(src) ? src : {};
+						clone = src;
 					}
-					// WARNING: RECURSION
+					copyIsArray = false;
+
+					// Never move original objects, clone them
 					target[name] = scope.extend(deep, clone, copy);
+
+					// Don't bring in undefined values
 				} else if (copy !== undefined) {
 					target[name] = copy;
 				}
 			}
 		}
 	}
+
+	// Return the modified object
 	return target;
 };
 /* eslint-enable */
