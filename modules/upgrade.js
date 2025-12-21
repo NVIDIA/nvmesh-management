@@ -1055,7 +1055,7 @@ scope.handleStepCannotBeExecuted = (step, err, cb) => {
 		]
 	}, {
 		$inc: { stepRetryCounter: 1 },
-		$set: { lastExecTryError: err }
+		$set: { lastExecTryError: err.toString() }
 	}, cb);
 };
 
