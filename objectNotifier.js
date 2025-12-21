@@ -264,7 +264,8 @@ scope.events = {
 			_id: '_id',
 			upgradeID: 'upgradeID',
 			status: 'status',
-			response: 'response'
+			response: 'response',
+			lastExecTryError: 'lastExecTryError'
 		}
 	},
 

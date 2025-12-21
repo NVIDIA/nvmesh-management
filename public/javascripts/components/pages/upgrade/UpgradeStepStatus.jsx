@@ -34,10 +34,12 @@ const statusToLabel = (upgrade) => {
 };
 
 const UpgradeStepStatus = ({ status }) => (
-	<span className={`label ${statusToClass(status)}`}>
-		{status === consts.upgradeStepStatuses.IN_PROGRESS && <span><i className="fa fa-cog fa-spin"></i>&nbsp;</span>}
-		{statusToLabel({ status })}
+	<span className="upgrade-step-status-container">
+		<span className={`label ${statusToClass(status)}`}>
+			{status === consts.upgradeStepStatuses.IN_PROGRESS && <span><i className="fa fa-cog fa-spin"></i>&nbsp;</span>}
+			{statusToLabel({ status })}
+		</span>
 	</span>
 );
 
-export default UpgradeStepStatus; 
+export default UpgradeStepStatus;
