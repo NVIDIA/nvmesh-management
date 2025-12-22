@@ -213,7 +213,7 @@ scope.handleKeepAlive = (message, mainCallback) => {
 				sendUpdateUpgradeAgentKeepaliveTokenWithDebouncer(
 					message.upgradeAgentID,
 					newToken,
-					null,
+					newUpgradeAgent.kafkaMessageSequence.keepalive,
 					newUpgradeAgent.topics[consts.topicSuffix.UPGRADE_AGENT_COMMANDS],
 					callback
 				);
@@ -255,7 +255,10 @@ scope.handleKeepAlive = (message, mainCallback) => {
 			updateUpgradeAgent(message, (err, updatedUpgradeAgent) => {
 				if (err) return callback(err);
 
+				let messageSequence = dbUpgradeAgent.kafkaMessageSequence.keepalive;
+
 				if (updatedUpgradeAgent) {
+					messageSequence = updatedUpgradeAgent.kafkaMessageSequence.keepalive;
 					events.emitEvent([events.getUpgradeAgentID(updatedUpgradeAgent._id)], objectNotifier.events.upgradeAgentChangedEvent, updatedUpgradeAgent);
 
 					if (versionChanged)
@@ -286,7 +289,7 @@ scope.handleKeepAlive = (message, mainCallback) => {
 					return sendUpdateUpgradeAgentKeepaliveTokenWithDebouncer(
 						message.upgradeAgentID,
 						newToken,
-						null,
+						messageSequence,
 						currentTopics[consts.topicSuffix.UPGRADE_AGENT_COMMANDS],
 						callback
 					);
@@ -294,7 +297,7 @@ scope.handleKeepAlive = (message, mainCallback) => {
 					return sendUpdateUpgradeAgentKeepaliveTokenWithDebouncer(
 						message.upgradeAgentID,
 						dbUpgradeAgent.upgradeAgentToken,
-						null,
+						messageSequence,
 						currentTopics[consts.topicSuffix.UPGRADE_AGENT_COMMANDS],
 						callback
 					);
@@ -406,7 +409,7 @@ scope.requestFreshKeepalive = (upgradeAgentID, cb) => {
 	 	return sendUpdateUpgradeAgentKeepaliveTokenMessage(
 			upgradeAgent._id,
 			upgradeAgent.upgradeAgentToken,
-			null,
+			upgradeAgent.kafkaMessageSequence.keepalive,
 			upgradeAgent.topics[consts.topicSuffix.UPGRADE_AGENT_COMMANDS],
 			cb
 		);
