@@ -75,7 +75,6 @@
     "nodemailer-smtp-transport": "~1.0.3",
     "passport": "~0.6.0",
     "passport-local": "~1.0.0",
-    "path": "^0.12.7",
     "serve-favicon": "^2.5.0",
     "socket.io": "^4.5.4",
     "utf-8-validate": "5.0.2",
