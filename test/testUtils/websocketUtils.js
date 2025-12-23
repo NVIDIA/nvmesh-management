@@ -1,14 +1,8 @@
 
 /* globals log */
 const WebSocketClient = require('websocket').client;
-const WebSocketServer = require('websocket').server;
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
-const express = require('express');
 const EventEmitter = require('eventemitter3');
 
-const websocketCommon = require('../../modules/websocketCommon.js');
 const { delay } = require('./common.js');
 const consts = require('../../consts');
 
@@ -196,69 +190,6 @@ exports.MgmtWebSocketClient = class MgmtWebSocketClient {
 		let loginCredentials = { email: consts.ADMIN_USER, password: 'admin', registrant: this.registrant };
 		log.debug('trying to login to management on ' + this.address);
 		this.connection.sendUTF(JSON.stringify(loginCredentials));
-	}
-};
-
-
-exports.MgmtWebSocketServer = class MgmtWebSocketServer {
-	constructor(port = 4001, useSSL = true) {
-		this.server = null;
-		this.port = port;
-		this.useSSL = useSSL;
-
-		this.serverConfig = {
-			keepalive: true,
-			keepaliveInterval: 2000,
-			dropConnectionOnKeepaliveTimeout: true,
-			keepaliveGracePeriod: 30000,
-			closeTimeout: 3000,
-			outOfSyncInterval: 5000,
-			outOfsyncThreshold: 5000,
-			fragmentOutgoingMessages: true,
-			maxReceivedMessageSize: oneGiB,
-			maxReceivedFrameSize: oneGiB
-		};
-	}
-
-	setHandleNewConnectionFunc(func) {
-		this.handleNewConnection = func;
-	}
-
-	start() {
-		let self = this;
-		if (this.useSSL) {
-			let appRoot = '.';
-			var options = {
-				key: fs.readFileSync(path.join(appRoot, 'newCert/key.pem')),
-				cert: fs.readFileSync(path.join(appRoot, 'newCert/cert.pem'))
-			};
-
-			this.server = https.createServer(options, express()).listen(this.port, function() {
-				log.debug(`Management WebSocket Server listening on port ${self.port} with ssl`);
-			});
-		} else {
-			this.server = express().listen(this.port, function() {
-				log.debug(`Management WebSocket Server listening on port ${self.port} without ssl`);
-			});
-		}
-
-		if (!this.server) {
-			log.debug('Failed to create server');
-			return;
-		}
-
-		this.serverConfig.httpServer = this.server;
-		this.wsServer = new WebSocketServer(this.serverConfig);
-		this.wsServer.on('request', req => {
-			websocketCommon.handleRawSocketRequest(req, self.handleNewConnection);
-		});
-	}
-
-	stop() {
-		this.server.close();
-
-		if (this.httpServer)
-			this.httpServer.close();
 	}
 };
 
