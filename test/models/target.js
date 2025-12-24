@@ -138,16 +138,20 @@ exports.Target = class Target extends Entity {
 		return;
 	}
 
-	sendReport() {
+	async sendReport() {
 		let msg = ReportTargetBuilder.fromTarget(this).build();
 		log.debug(`sending report node_id=${msg.hostname} reportID=${msg.reportID} token=${msg.tomaToken} seq=${msg.messageSequence}`);
-		return sendMessageToManagement(msg);
+		const err = await sendMessageToManagement(msg);
+		if (err)
+			throw new Error(`Failed to send report to management: ${err}`);
 	}
 
 	async sendKeepAlive() {
 		log.debug(`TOMA sending keepalive node_id=${this.hostname} token=${this.tomaToken}`);
 		let msg = TomaKeepAliveBuilder.fromTarget(this).build();
-		return sendMessageToManagement(msg);
+		const err = await sendMessageToManagement(msg);
+		if (err)
+			throw new Error(`Failed to send keepalive to management: ${err}`);
 	}
 
 	async setUUID() {
