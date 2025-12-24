@@ -640,7 +640,6 @@ const createPreparedComponents = (newComponents, callback) => {
 
 // nvmesh package compatibilities are added to the n component versions based on the release n-1 component versions
 // - if the component version does not exist in release n-1, we will skip the update
-// - if the component version does not exist in release n, we will add the n-2 nvmesh package compatibility if it exists
 const prepareNComponentVersions = (componentVersionsToUpdate, versions, mappedEntitiesIdsByName) => {
 	const { componentTypeIDbyName, componentIDbyName, componentVersionIDbyName } = mappedEntitiesIdsByName;
 	const errors = [];
@@ -698,12 +697,7 @@ const prepareNComponentVersions = (componentVersionsToUpdate, versions, mappedEn
 
 				newCompatibilities.push({ ID: componentVersionID });
 			} else {
-				// add the n-2 nvmesh package compatibility if it exists
-				const nMinus2ComponentVersion = nMinus1sortedCompatibilities.pop();
-				if (nMinus2ComponentVersion)
-					newCompatibilities.push(nMinus2ComponentVersion);
-				else
-					logger.sysDEBUG(`Component ${componentName} version ${version} not found in n-2 component`);
+				logger.sysDEBUG(`Component ${componentName} version ${version} not found in release n`);
 			}
 
 			logger.sysDEBUG(`Adding new compatibilities to component ${componentName} version ${componentVersion.version}:`, newCompatibilities);
