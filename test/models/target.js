@@ -13,6 +13,7 @@ const systemMessages = require('../../systemMessages.js');
 const { LastMessageLog } = require('./lastMessageLog.js');
 const consts = require('../../consts.js');
 const { handleTimedOutComponent } = require('../../modules/lastMessageLog.js');
+const { delay } = require('../testUtils/common.js');
 
 exports.Target = class Target extends Entity {
 	constructor(nodeID, disks, nics) {
@@ -150,13 +151,22 @@ exports.Target = class Target extends Entity {
 	}
 
 	async setUUID() {
-		let shouldRetry = true;
-		while (shouldRetry) {
+		let retries = 0;
+		const MAX_RETRIES = 20;
+		const RETRY_DELAY_MS = 50;
+
+		while (retries <= MAX_RETRIES) {
 			let result = await app.get('db').collection('server').findOne({ _id: this._id }, { uuid: 1 });
-			if (result.uuid) {
+			if (result && result.uuid) {
 				this.uuid = result.uuid;
-				shouldRetry = false;
+				return;
 			}
+
+			retries++;
+			if (retries >= MAX_RETRIES) {
+				throw new Error(`Failed to set UUID for target ${this._id} after ${MAX_RETRIES} retries`);
+			}
+			await delay(RETRY_DELAY_MS);
 		}
 	}
 
