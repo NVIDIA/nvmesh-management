@@ -454,7 +454,7 @@ const prepareArtifacts = (requestedPlatforms, callback) => {
 
 // extract the versions from artifacts - { 'nvmesh-client': '3.3.2', 'nvmesh-exporter': '1.0.1' }
 // artifacts names are parsed to extract the component name and base version
-const extractVersionsFromArtifacts = (artifacts) => {
+const extractVersionsFromArtifacts = (artifacts, interestComponents) => {
 	const result = {};
 	const regex = consts.artifactNameRegex;
 
@@ -465,6 +465,11 @@ const extractVersionsFromArtifacts = (artifacts) => {
 		if (match) {
 			// eslint-disable-next-line no-unused-vars
 			const [_, componentName, baseVersion] = match;
+
+			// skip the artifact if it is not in the interest components
+			if (!interestComponents.includes(componentName))
+				continue;
+
 			if (result[componentName] && result[componentName] !== baseVersion) {
 				const error = new SystemMessage(systemMessages.MORE_THAN_ONE_ARTIFACT_BASE_VERSION_FOR_COMPONENT)
 					.addInfo(Entities.Component.name, componentName)
@@ -484,7 +489,7 @@ const extractVersionsFromArtifacts = (artifacts) => {
 
 // get the base version for each component by the release name and component name - { '3.3.2-HF1': { 'nvmesh-client': '3.3.2', 'nvmesh-exporter': '1.0.1' } }
 // base versions and component names are parsed from the artifact names which are linked to the releaseName
-const fetchVersionsForReleases = (releaseNames, callback) => {
+const fetchVersionsForReleases = (releaseNames, interestComponents, callback) => {
 	logger.sysDEBUG(`Fetching base versions by component names for releases ${releaseNames.join(', ')}`);
 
 	getAllReleases({ filter: { version: { $in: releaseNames } } }, (error, releases) => {
@@ -507,7 +512,7 @@ const fetchVersionsForReleases = (releaseNames, callback) => {
 				continue;
 			}
 
-			const [err, baseVersionsByComponentNames] = extractVersionsFromArtifacts(release.artifacts);
+			const [err, baseVersionsByComponentNames] = extractVersionsFromArtifacts(release.artifacts, interestComponents);
 			if (err)
 				return callback(err);
 
@@ -583,15 +588,9 @@ const enrichVersionsForRelease = (releaseName, result, componentIdByName, callba
 // fetch the components base versions for the release names and enrich the release versions with the component versions and compatibilities
 // example result: { '3.3.2-HF1': { 'nvmesh-client': { ID: 9, version: '3.3.2', componentTypeID: 1, compatibilities: [{ ID: 1, componentTypeID: 1 }] } } }
 const fetchAndEnrichVersionsForReleases = (releaseNames, releaseNamesToEnrich, componentIdByName, callback) => {
-	fetchVersionsForReleases(releaseNames, (error, result) => {
+	fetchVersionsForReleases(releaseNames, Object.keys(componentIdByName), (error, result) => {
 		if (error)
 			return callback(error);
-
-		// filter the result to only include components that are in the componentIdByName
-		for (const components of Object.values(result))
-			for (const name of Object.keys(components))
-				if (!Object.hasOwn(componentIdByName, name))
-					delete components[name];
 
 		async.eachSeries(
 			releaseNamesToEnrich,
