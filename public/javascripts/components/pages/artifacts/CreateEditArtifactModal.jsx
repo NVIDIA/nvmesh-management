@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* global React, ReactHookForm */
+/* global React, ReactHookForm, consts */
 
 import Input from '../../core/Input.jsx';
 import FormControl from '../../core/FormControl.jsx';
@@ -47,7 +47,7 @@ const CreateEditArtifact = ({
 					       {...register('name', {
 						       value: artifact.name,
 						       required: 'Name is required',
-						       pattern: { value: /^[a-zA-Z0-9_.*-]*$/, message: 'Invalid name' },
+						       pattern: { value: consts.artifactNameRegex, message: 'Invalid name' },
 						       maxLength: { value: 1024, message: 'exceed maximum length of 1024' }
 					       })}
 					       autoFocus

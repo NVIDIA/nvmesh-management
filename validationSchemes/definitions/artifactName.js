@@ -5,7 +5,7 @@ const schema = {
 	type: 'string',
 	maxLength: 1024,
 	minLength: 1,
-	pattern: '^[a-zA-Z0-9_.*-]+$',
+	pattern: consts.artifactNameRegex.source,
 };
 
 module.exports = schema;
