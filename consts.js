@@ -1137,6 +1137,11 @@ consts.components = {
 	UTILS: 'nvmesh-utils'
 };
 
+const componentNamesRegex = Object.values(consts.components).join('|');
+const baseVersionRegex = '[\\d+.]+';
+const rpmDebRegex = '\\.(rpm|deb)$';
+consts.artifactNameRegex = new RegExp(`^(${componentNamesRegex})[-_](${baseVersionRegex}).*${rpmDebRegex}`);
+
 consts.HOTFIX_RELEASE_SUBSTRING = 'HF';
 
 consts.thirdPartyLibs = {

@@ -454,30 +454,28 @@ const prepareArtifacts = (requestedPlatforms, callback) => {
 
 // extract the versions from artifacts - { 'nvmesh-client': '3.3.2', 'nvmesh-exporter': '1.0.1' }
 // artifacts names are parsed to extract the component name and base version
-const extractVersionsFromArtifacts = (artifacts, componentNames) => {
+const extractVersionsFromArtifacts = (artifacts) => {
 	const result = {};
+	const regex = consts.artifactNameRegex;
 
 	for (const artifact of artifacts) {
 		const artifactName = artifact.name;
+		const match = artifactName.match(regex);
 
-		for (const componentName of componentNames) {
-			const escapedComponentName = componentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-			const regex = new RegExp(`^${escapedComponentName}[-_]([0-9]+\\.[0-9]+\\.[0-9]+)`);
-			const match = artifactName.match(regex);
-
-			if (match) {
-				const baseVersion = match[1];
-				if (result[componentName] && result[componentName] !== baseVersion) {
-					const error = new SystemMessage(systemMessages.MORE_THAN_ONE_ARTIFACT_BASE_VERSION_FOR_COMPONENT)
-						.addInfo(Entities.Component.name, componentName)
-						.addInfo(Entities.Component.version, result[componentName], Differentiators.First)
-						.addInfo(Entities.Component.version, baseVersion, Differentiators.Second);
-					return [error, result];
-				}
-
-				result[componentName] = baseVersion;
-				break; // Move to next artifact once component is identified
+		if (match) {
+			// eslint-disable-next-line no-unused-vars
+			const [_, componentName, baseVersion] = match;
+			if (result[componentName] && result[componentName] !== baseVersion) {
+				const error = new SystemMessage(systemMessages.MORE_THAN_ONE_ARTIFACT_BASE_VERSION_FOR_COMPONENT)
+					.addInfo(Entities.Component.name, componentName)
+					.addInfo(Entities.Component.version, result[componentName], Differentiators.First)
+					.addInfo(Entities.Component.version, baseVersion, Differentiators.Second);
+				return [error, result];
 			}
+
+			result[componentName] = baseVersion;
+		} else {
+			logger.sysDEBUG(`Artifact ${artifactName} does not match the regex ${regex}, skipping`);
 		}
 	}
 
@@ -509,7 +507,7 @@ const fetchVersionsForReleases = (releaseNames, callback) => {
 				continue;
 			}
 
-			const [err, baseVersionsByComponentNames] = extractVersionsFromArtifacts(release.artifacts, Object.values(consts.components));
+			const [err, baseVersionsByComponentNames] = extractVersionsFromArtifacts(release.artifacts);
 			if (err)
 				return callback(err);
 
