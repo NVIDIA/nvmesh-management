@@ -46,7 +46,7 @@ async function setupSingleTargetEnvironment() {
 		await setup.newSetup(opts);
 		log.debug('enableZones: ' + app.get('globalSettings').enableZones);
 		targets = [generateTarget('server1.excelero.com', '1')];
-		targets.map(t => t.save());
+		await Promise.all(targets.map(t => t.save()));
 		log.debug('setupSingleTargetEnvironment finished');
 	} catch (err) {
 		throw new Error(`Error Setting Up Environment! Error: ${err}`);
