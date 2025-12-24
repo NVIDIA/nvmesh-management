@@ -806,7 +806,7 @@ const updateCompatibilities = (createdResponses, versions, componentIDbyName, co
 };
 
 // {
-// 	componentTypeIDbyName: { 'nvmesh-client': 1 },
+// 	componentTypeIDbyName: { 'NVMESH_PACKAGE': 1 },
 // 	componentIDbyName: { 'nvmesh-client': 9 },
 // 	versions: {
 // 		'3.3.3': { 'nvmesh-client': '3.3.3' },
