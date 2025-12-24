@@ -339,6 +339,7 @@ const createOrUpdateRelease = (releaseName, requestedArtifacts, callback) => {
 
 			if (existingRelease) {
 				release.ID = existingRelease.ID;
+				// this will append the new artifacts to the existing release artifacts
 				release.artifacts = [...existingRelease.artifacts, ...artifacts];
 			}
 

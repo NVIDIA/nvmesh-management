@@ -183,6 +183,7 @@ router.get('/count', (req, res) => {
  * - **Platform Creation**: Creates new platforms, including their OS, kernel, OFED, and architecture definitions.
  * - **Artifact Association**: Creates and associates artifacts with new or existing platforms.
  * - **Release Management**: Creates a new release or updates an existing one by linking the specified artifacts.
+ * This will append the new artifacts to the existing release artifacts.
  * - **Component Compatibility Inheritance**: Inherits NVMesh package compatibilities from a previous release (`inheritRelationsFrom`).
  *   For each component in the new release, this process establishes its compatibility with other `NVMESH_PACKAGE` components based on the following logic:
  *   - The system first identifies the corresponding component in the release specified by `inheritRelationsFrom` (release `n-1`).
