@@ -190,8 +190,6 @@ router.get('/count', (req, res) => {
  *     If no corresponding component is found, the inheritance for that component is skipped.
  *   - It then adds compatibility with the latest version of related `NVMESH_PACKAGE` components from release `n-1`.
  *   - Subsequently, it attempts to add compatibility with the new version (`n`) of those components if they are part of the current save payload.
- *   - If a component's new version (`n`) is not in the payload, the system will instead add compatibility with the second-to-last known version (`n-2`),
- *     if available from the `n-1` component's compatibility list.
  *
  *   For each component in the previous release, this process will add compatibility with the new version (`n`) of that component.
  * - **Upgrade Scenario Inheritance**: Inherits and adapts upgrade scenarios from the `inheritRelationsFrom` release.
