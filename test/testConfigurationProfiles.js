@@ -280,7 +280,7 @@ describe('Configuration Profiles', () => {
 				});
 			})
 				.then(async function() {
-					let msg = await (await client.getAgentQueue()).readMessageOrWait();				
+					let msg = await (await client.getAgentQueue()).readMessageOrWait();
 					assert.strictEqual(msg.type, consts.kafkaMessageTypes.ManagementToAgent.updateConfigProfile);
 
 					assert(msg.payload);
@@ -607,6 +607,8 @@ describe('Configuration Profiles', () => {
 			await setup.newSetup();
 			await client1.save();
 			await client2.save();
+			await client1.waitForAgentMessageType(kafkaMessageTypes.ManagementToAgent.updateConfigProfile);
+			await client2.waitForAgentMessageType(kafkaMessageTypes.ManagementToAgent.updateConfigProfile);
 			let result = await promiseSaveProfile(testProfile);
 			assert(result.success);
 			testProfile.uuid = result.uuid;
