@@ -33,13 +33,16 @@ class KafkaMockQueue {
 				const err = new Error(`timed-out waiting for Kafka Message topic: ${this.topic} timeoutMS: ${timeoutMS}`);
 				console.log(err);
 				reject(err);
+				delete self.messageListeners[waitUUID];
 			}, timeoutMS);
 			self.messageListeners[waitUUID] = {
 				func: function NewMessage(msg) {
 					clearTimeout(timer);
 					resolve(msg);
 					delete self.messageListeners[waitUUID];
-				}
+				},
+				reject: reject,
+				timer: timer
 			};
 		});
 	}
@@ -64,6 +67,15 @@ class KafkaMockQueue {
 		} else {
 			this.q.push(msg);
 		}
+	}
+
+	destroy() {
+		Object.values(this.messageListeners).forEach(listener => {
+			clearTimeout(listener.timer);
+			listener.reject(new Error(`KafkaMockQueue destroyed for topic: ${this.topic}`));
+		});
+		this.messageListeners = {};
+		this.clear();
 	}
 
 	clear() {
@@ -94,7 +106,10 @@ exports.resetKafkaQueues = function() {
 };
 
 exports.resetKafkaQueue = function(topic) {
-	delete kafkaQueues[topic];
+	if (kafkaQueues[topic]) {
+		kafkaQueues[topic].destroy();
+		delete kafkaQueues[topic];
+	}
 };
 
 exports.initMockKafka = function() {
