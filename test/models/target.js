@@ -170,8 +170,7 @@ exports.Target = class Target extends Entity {
 			await delay(RETRY_DELAY_MS);
 		}
 
-		if (retries >= MAX_RETRIES)
-			throw new Error(`Failed to set UUID for target ${this._id} after ${MAX_RETRIES} retries`);
+		throw new Error(`Failed to set UUID for target ${this._id} after ${MAX_RETRIES} retries`);
 	}
 
 	_addToZone() {
