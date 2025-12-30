@@ -14,7 +14,7 @@ const pRaidOptionsProperties = {
 const pRaidOptionsPropertiesByRAIDLevel = {
 	[consts.RAIDLevel.ERASURE_CODING]: {
 		stripeSize: pRaidOptionsProperties.stripeSize,
-		stripeWidth: { ...pRaidOptionsProperties.stripeWidth, minimum: 1, default: 1 },
+		stripeWidth: { ...pRaidOptionsProperties.stripeWidth, minimum: 1, maximum: 1, default: 1 },
 		dataBlocks: pRaidOptionsProperties.dataBlocks,
 		parityBlocks: pRaidOptionsProperties.parityBlocks,
 		protectionLevel: pRaidOptionsProperties.protectionLevel,
