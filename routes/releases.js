@@ -225,22 +225,23 @@ router.get('/count', (req, res) => {
  *  - linking new artifacts to an existing platform
  *  - updating the version of previous release nvmesh components to be compatible with the new release nvmesh components
  *
- * @apiParam {string} releaseName Version of the release to save. Can be a new or an existing release.
- * @apiParam {string} [inheritRelationsFrom] Version of an existing release to inherit component relationships and upgrade scenarios from.
- * @apiParam {boolean} [createPlatforms=false] If true, new platform definitions and dependencies will be created.
- * @apiParam {object[]} platforms Array of platform objects. If `createPlatforms` is true, platforms are created; otherwise,
+ * @apiParam {object[]} releases Array of release objects.
+ * @apiParam {string} releases.releaseName Version of the release to save. Can be a new or an existing release.
+ * @apiParam {string} [releases.inheritRelationsFrom] Version of an existing release to inherit component relationships and upgrade scenarios from.
+ * @apiParam {boolean} [releases.createPlatforms=false] If true, new platform definitions and dependencies will be created.
+ * @apiParam {object[]} releases.platforms Array of platform objects. If `createPlatforms` is true, platforms are created; otherwise,
  * existing platforms are updated with artifacts.
- * @apiParam {string} platforms.name The name of the platform. If null, given artifacts will not be associated with any platform.
- * @apiParam {string[]} platforms.artifacts Array of artifact names to associate with this platform.
- * @apiParam {object} [platforms.os] Operating system definition. This object is required if `createPlatforms` is true.
- * @apiParam {string} [platforms.os.distributionType] OS distribution type (e.g., 'ubuntu', 'rocky'). Required if `os` is provided.
- * @apiParam {string} [platforms.os.version] OS version. Required if `os` is provided.
- * @apiParam {string} [platforms.kernel] Kernel version for the platform. Required if `createPlatforms` is true.
- * @apiParam {string} [platforms.ofed] OFED version for the platform. Required if `createPlatforms` is true.
- * @apiParam {string} [platforms.arch] Platform architecture. Required if `createPlatforms` is true.
+ * @apiParam {string} releases.platforms.name The name of the platform. If null, given artifacts will not be associated with any platform.
+ * @apiParam {string[]} releases.platforms.artifacts Array of artifact names to associate with this platform.
+ * @apiParam {object} [releases.platforms.os] Operating system definition. This object is required if `createPlatforms` is true.
+ * @apiParam {string} [releases.platforms.os.distributionType] OS distribution type (e.g., 'ubuntu', 'rocky'). Required if `os` is provided.
+ * @apiParam {string} [releases.platforms.os.version] OS version. Required if `os` is provided.
+ * @apiParam {string} [releases.platforms.kernel] Kernel version for the platform. Required if `createPlatforms` is true.
+ * @apiParam {string} [releases.platforms.ofed] OFED version for the platform. Required if `createPlatforms` is true.
+ * @apiParam {string} [releases.platforms.arch] Platform architecture. Required if `createPlatforms` is true.
  *
  * @apiParamExample {json} Request Body Example:
- * {
+ * [{
  *     "releaseName": "3.4.0",
  *     "inheritRelationsFrom": "3.3.2",
  *     "createPlatforms": false,
@@ -260,16 +261,16 @@ router.get('/count', (req, res) => {
  *             ]
  *         }
  *     ]
- * }
+ * }]
  *
  * @apiSuccessExample {json} Success-Response:
- * {
+ * [{
  *     "_id": null,
  *     "uuid": null,
  *     "success": true,
  *     "error": null,
  *     "payload": null
- * }
+ * }]
  */
 router.post('/save', (req, res) => {
 	const payload = req.body;
