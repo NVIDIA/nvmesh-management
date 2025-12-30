@@ -476,7 +476,7 @@ scope.getTotalSpace = function(limitNodes, limitDisks, vpg, onlyEC, allowAllocat
 			const nodeMatch = utils.getAllocatableNodesMatch(allowAllocationOnOfflineDrives, limitNodes);
 			const diskMatch = utils.getAllocatableDrivesMatch(onlyEC, allowAllocationOnOfflineDrives, limitDisks);
 
-			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
+			utils.getSpaceAllocation(nodeMatch, diskMatch, false, (err, results) => {
 				if (err)
 					logger.sysDEBUG('Failed to get space allocation', err);
 
@@ -511,7 +511,7 @@ scope.getAllocatedSpace = function(limitNodes, limitDisks, vpg, onlyEC, allowAll
 			const nodeMatch = utils.getAllocatableNodesMatch(allowAllocationOnOfflineDrives, limitNodes);
 			const diskMatch = utils.getAllocatableDrivesMatch(onlyEC, allowAllocationOnOfflineDrives, limitDisks);
 
-			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
+			utils.getSpaceAllocation(nodeMatch, diskMatch, false, (err, results) => {
 				if (err)
 					logger.sysDEBUG('Failed to get space allocation', err);
 

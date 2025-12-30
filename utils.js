@@ -4551,7 +4551,7 @@ scope.getStatus = function(skipLogs, cb) {
 		},
 		//Get space allocation
 		function(callback) {
-			scope.getSpaceAllocation({}, {}, function(err, results) {
+			scope.getSpaceAllocation({}, {}, false, function(err, results) {
 				if (results) {
 					var spaceAllocation = results;
 					status.totalSpace = spaceAllocation.totalCapacity;
@@ -4583,7 +4583,20 @@ scope.zeroFill = function(number, width = consts.TARGET_ID_DEFAULT_LENGTH) {
 	return number + '';
 };
 
-scope.getSpaceAllocation = function(nodeMatch, diskMatch, cb) {
+function sumUpAllocatedSpaceByZone(allocatedSpaceByZone) {
+	return allocatedSpaceByZone.reduce((acc, item) => {
+		Object.entries(item).forEach(([key, value]) => {
+			if (key === '_id')
+				return;
+			
+			acc[key] = (acc[key] || 0) + value;
+		});
+
+    	return acc;
+  }, {});
+}
+
+scope.getSpaceAllocation = function(nodeMatch, diskMatch, isByZone, cb) {
 	let db = app.get('db');
 	let serverCollection = db.collection('server');
 	let executionTimer = new ExecutionTimer('getSpaceAllocation');
@@ -4596,6 +4609,7 @@ scope.getSpaceAllocation = function(nodeMatch, diskMatch, cb) {
 		{ $match: nodeMatch },
 		{
 			$project: {
+				zone: 1,
 				'disks.diskID': 1,
 				'disks.uuid': 1,
 				'disks.usableBlocks': 1,
@@ -4625,6 +4639,7 @@ scope.getSpaceAllocation = function(nodeMatch, diskMatch, cb) {
 		},
 		{
 			$project: {
+				zone: 1,
 				diskUUID: '$disks.uuid',
 				diskSegments: '$disks.diskSegments',
 				diskUsableBlocks: '$disks.usableBlocks',
@@ -4639,6 +4654,7 @@ scope.getSpaceAllocation = function(nodeMatch, diskMatch, cb) {
 		},
 		{
 			$project: {
+				zone: 1,
 				diskUUID: '$diskUUID',
 				pRaidIndex: '$diskSegments.pRaidIndex',
 				isReserved: { $ifNull: ['$diskSegments.isReserved', false] },
@@ -4678,7 +4694,10 @@ scope.getSpaceAllocation = function(nodeMatch, diskMatch, cb) {
 		},
 		{
 			$group: {
-				_id: '$diskUUID',
+				_id: {
+					zone: '$zone',
+					diskUUID: '$diskUUID',
+				},
 				diskCapacityBlocks: { $first: '$diskUsableBlocks' },
 				diskAvailableBlocks: { $first: '$diskAvailableBlocks' },
 				data: { $sum: '$dataGigabytes' },
@@ -4690,6 +4709,7 @@ scope.getSpaceAllocation = function(nodeMatch, diskMatch, cb) {
 		{
 			$addFields: {
 				// as we are holding disks, the multiplication output wont maximum number
+				zone: '$_id.zone',
 				diskCapacityInBytes: { $multiply: ['$diskCapacityBlocks', consts.BLOCK_SIZE] },
 				availableSpaceInBytes: { $multiply: ['$diskAvailableBlocks', consts.BLOCK_SIZE] }
 			}
@@ -4702,7 +4722,7 @@ scope.getSpaceAllocation = function(nodeMatch, diskMatch, cb) {
 		},
 		{
 			$group: {
-				_id: 'totalsInGigabytes',
+				_id: '$zone',
 				data: { $sum: '$data' },
 				redundancy: { $sum: '$redundancy' },
 				totalReserved: { $sum: '$reserved' },
@@ -4731,16 +4751,16 @@ scope.getSpaceAllocation = function(nodeMatch, diskMatch, cb) {
 				reservedLeft: { $round: ['$reservedLeft', 2] },
 			}
 		}
-	]).toArray(function(err, results) {
+	]).toArray(function(err, resultsByZone) {
 		if (err) {
 			executionTimer.stop(false);
 			new MongoError(err).log();
 			return cb(err);
 		}
 
-		if (results && results.length) {
+		if (resultsByZone && resultsByZone.length) {
 			executionTimer.stop(true);
-			return cb(null, results[0]);
+			return cb(null, isByZone ? resultsByZone : sumUpAllocatedSpaceByZone(resultsByZone));
 		} else {
 			executionTimer.stop(false);
 			let defaultValues = {
@@ -4752,6 +4772,11 @@ scope.getSpaceAllocation = function(nodeMatch, diskMatch, cb) {
 				availableSpace: 0,
 				reservedLeft: 0
 			};
+			
+			if (isByZone) {
+				defaultValues._id = consts.SINGLE_ZONE_DEFAULT_ID;
+				defaultValues = [defaultValues];
+			}
 
 			cb(null, defaultValues);
 		}

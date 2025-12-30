@@ -504,7 +504,7 @@ monitoredObjects[scope.events.disksCountChangeEvent.name] = {
 
 monitoredObjects[scope.events.allocatedSpaceChangeEvent.name] = {
 	getUpdatedObj: function(callback) {
-		utils.getSpaceAllocation({}, {}, (err, results) => {
+		utils.getSpaceAllocation({}, {}, false, (err, results) => {
 			return callback(err, results);
 		});
 	}

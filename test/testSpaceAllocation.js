@@ -36,7 +36,7 @@ describe('Get Space Allocation', function() {
 		it('should return 0 space', (done) => {
 			let nodeMatch = {};
 			let diskMatch = {};
-			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
+			utils.getSpaceAllocation(nodeMatch, diskMatch, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, 0);
 				assert.strictEqual(results.data, 0);
@@ -63,7 +63,7 @@ describe('Get Space Allocation', function() {
 		it('should return correct space', (done) => {
 			let nodeMatch = {};
 			let diskMatch = {};
-			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
+			utils.getSpaceAllocation(nodeMatch, diskMatch, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, TOTAL_CAPACITY);
 				assert.strictEqual(results.data, 0);
@@ -96,7 +96,7 @@ describe('Get Space Allocation', function() {
 				node_id: { '$in': ['server1.acme.com'] }
 			};
 			let diskMatch = {};
-			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
+			utils.getSpaceAllocation(nodeMatch, diskMatch, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, TOTAL_CAPACITY);
 				assert.strictEqual(results.data, 0);
@@ -138,7 +138,7 @@ describe('Get Space Allocation', function() {
 					],
 				},
 			};
-			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
+			utils.getSpaceAllocation(nodeMatch, diskMatch, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, TOTAL_CAPACITY);
 				assert.strictEqual(results.data, 0);
@@ -175,7 +175,7 @@ describe('Get Space Allocation', function() {
 		});
 
 		it('should return correct available space', (done) => {
-			utils.getSpaceAllocation({}, {}, (err, results) => {
+			utils.getSpaceAllocation({}, {}, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, FREE_SPACE_LEFT);
 				assert.strictEqual(results.data, DATA_SEGMENT_SIZE);
@@ -231,7 +231,7 @@ describe('Get Space Allocation', function() {
 					]
 				},
 			};
-			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
+			utils.getSpaceAllocation(nodeMatch, diskMatch, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, FREE_SPACE_LEFT);
 				assert.strictEqual(results.data, DATA_SEGMENT_SIZE);
@@ -282,7 +282,7 @@ describe('Get Space Allocation', function() {
 				'disks.diskID': { $in: volume.limitByDisks },
 			};
 
-			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
+			utils.getSpaceAllocation(nodeMatch, diskMatch, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, FREE_SPACE_LEFT);
 				assert.strictEqual(results.data, DATA_SEGMENT_SIZE);
@@ -342,7 +342,7 @@ describe('Get Space Allocation', function() {
 				},
 			};
 
-			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
+			utils.getSpaceAllocation(nodeMatch, diskMatch, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, FREE_SPACE_LEFT);
 				assert.strictEqual(results.data, DATA_SEGMENT_SIZE);
@@ -391,7 +391,7 @@ describe('Get Space Allocation', function() {
 		});
 
 		it('should return correct available space', (done) => {
-			utils.getSpaceAllocation({}, {}, (err, results) => {
+			utils.getSpaceAllocation({}, {}, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, Math.round((TOTAL_SPACE - 10 * PB) * 100) / 100);
 				assert.strictEqual(results.data, 10 * PB);
@@ -426,7 +426,7 @@ describe('Get Space Allocation', function() {
 		});
 
 		it('should return correct available space', (done) => {
-			utils.getSpaceAllocation({}, {}, (err, results) => {
+			utils.getSpaceAllocation({}, {}, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, Math.round((TOTAL_SPACE - 2 * 8 * PB) * 100) / 100);
 				assert.strictEqual(results.data, 8 * PB);
@@ -461,7 +461,7 @@ describe('Get Space Allocation', function() {
 		});
 
 		it('should return correct available space', (done) => {
-			utils.getSpaceAllocation({}, {}, (err, results) => {
+			utils.getSpaceAllocation({}, {}, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, Math.round((TOTAL_SPACE - 2 * 8 * PB) * 100) / 100);
 				assert.strictEqual(results.data, 8 * PB);
@@ -496,7 +496,7 @@ describe('Get Space Allocation', function() {
 		});
 
 		it('should return correct available space', (done) => {
-			utils.getSpaceAllocation({}, {}, (err, results) => {
+			utils.getSpaceAllocation({}, {}, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, TOTAL_SPACE - 9 * PB - 9 * PB / 4);
 				assert.strictEqual(results.data, 9 * PB - 0.01); // "- 0.01" is due to getSpaceAllocation precision of 2 digits
@@ -529,7 +529,7 @@ describe('Get Space Allocation', function() {
 		});
 
 		it('should return correct available space', (done) => {
-			utils.getSpaceAllocation({}, {}, (err, results) => {
+			utils.getSpaceAllocation({}, {}, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, 0);
 				assert.strictEqual(results.data, 6388.82);
@@ -585,7 +585,7 @@ describe('Get Space Allocation', function() {
 		});
 
 		it('should return correct available space', (done) => {
-			utils.getSpaceAllocation({}, {}, (err, results) => {
+			utils.getSpaceAllocation({}, {}, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, BASE_SPACE_ALLOCATION.availableSpace);
 				assert.strictEqual(results.data, BASE_SPACE_ALLOCATION.data);
@@ -621,7 +621,7 @@ describe('Get Space Allocation', function() {
 		});
 
 		it('should return correct available space after evict', (done) => {
-			utils.getSpaceAllocation({}, {}, (err, results) => {
+			utils.getSpaceAllocation({}, {}, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, 7983.91);
 				assert.strictEqual(results.data, 1.4);
@@ -667,7 +667,7 @@ describe('Get Space Allocation', function() {
 		});
 
 		it('should return correct available space after rebuild - like at the beggining', (done) => {
-			utils.getSpaceAllocation({}, {}, (err, results) => {
+			utils.getSpaceAllocation({}, {}, false, (err, results) => {
 				assert(!err);
 				assert.strictEqual(results.availableSpace, BASE_SPACE_ALLOCATION.availableSpace);
 				assert.strictEqual(results.data, BASE_SPACE_ALLOCATION.data);
