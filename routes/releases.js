@@ -199,10 +199,17 @@ router.post('/save', (req, res) => {
  * @apiDescription Delete `releases`.
  *
  * @apiParam {object[]} releases List of `releases` to delete.
+ * @apiParam {integer} releases.ID The `ID` of the `release`.
  * @apiParamExample {object[]} Example request
+ * [{"ID": 1}]
+ * @apiSuccess {object[]} results Success statuses
+ * @apiSuccessExample {object[]} Example data on success
  * [{
  *     "ID": 1,
- *     "version": "3.2.0-HF2"
+ *     "uuid": null,
+ *     "success": true,
+ *     "error": null,
+ *     "payload": null
  * }]
  */
 router.post('/delete', (req, res) => {
@@ -228,10 +235,24 @@ router.post('/delete', (req, res) => {
  * @apiDescription Update `releases`.
  *
  * @apiParam {object[]} releases List of `releases` to update.
+ * @apiParam {integer} releases.ID The `ID` of the `release`.
+ * @apiParam {string} [releases.version] The version of the release.
+ * @apiParam {object[]} [releases.artifacts] List of `artifacts` to update.
+ * @apiParam {integer} releases.artifacts.ID The `ID` of the `artifact`.
  * @apiParamExample {object[]} Example request
  * [{
  *     "ID": 1,
- *     "version": "3.2.0-HF2"
+ *     "version": "3.2.0-HF2",
+ *     "artifacts": [{ "ID": 1 }]
+ * }]
+ * @apiSuccess {object[]} results Success statuses
+ * @apiSuccessExample {object[]} Example data on success
+ * [{
+ *     "ID": 1,
+ *     "uuid": null,
+ *     "success": true,
+ *     "error": null,
+ *     "payload": null
  * }]
  */
 router.post('/update', (req, res) => {
