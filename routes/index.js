@@ -521,4 +521,16 @@ router.get('/systemInfo', (req, res) => {
 	});
 });
 
+/**
+* @apiVersion 1.0.0
+* @api {get} /consts Get serialized consts
+* @apiName getSerializedConsts
+* @apiGroup index
+* @apiDescription Get `serialized consts` of the management
+* @apiSuccess {Object} serializedConsts An object containing the serialized consts
+*/
+router.get('/consts', (req, res) => {
+	res.json(consts);
+});
+
 module.exports = router;
