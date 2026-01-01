@@ -27,7 +27,13 @@ const Upgrade = () => {
 	useEffect(() => {
 		const fetchUpgrade = async() => {
 			const upgrade = await reloadUpgrade();
-			registerToEvents(upgrade);
+			registerToEvents(upgrade._id);
+
+			// re-register to events in case we reconnected to a cluster management
+			SocketService.addHandler(events.connectedToClusterManagementEvent.name, () => {
+				unregisterFromEvents(upgrade._id);
+				registerToEvents(upgrade._id);
+			});
 
 			// reload table again in case we missed events by the time we registered for them
 			setTimeout(reloadTable, 1000);
@@ -57,8 +63,8 @@ const Upgrade = () => {
 		return upgrade;
 	};
 	
-	const registerToEvents = (upgrade) => {
-		const getUpgradeEventName = (event) => SocketService.getUpgradeID(upgrade._id) + event.name;
+	const registerToEvents = (upgradeId) => {
+		const getUpgradeEventName = (event) => SocketService.getUpgradeID(upgradeId) + event.name;
 
 		SocketService.addHandler(getUpgradeEventName(events.upgradeStatusChangedEvent), () => reloadUpgrade());
 
@@ -74,6 +80,13 @@ const Upgrade = () => {
 				setUpgradeStep(prev => ({ ...prev, status: payload.status, response: payload.response }));
 			}
 		});
+	};
+
+	const unregisterFromEvents = (upgradeId) => {
+		const getUpgradeEventName = (event) => SocketService.getUpgradeID(upgradeId) + event.name;
+
+		SocketService.removeHandler(getUpgradeEventName(events.upgradeStatusChangedEvent));
+		SocketService.removeHandler(getUpgradeEventName(events.upgradeStepStatusChangedEvent));
 	};
 
 	const editUpgradeStep = (upgradeStep) => {

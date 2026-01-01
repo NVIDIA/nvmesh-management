@@ -290,6 +290,7 @@ scope.events = {
 	operatingSystemRemovedEvent: { name: 'operatingSystemRemovedEvent' },
 
 	interopDBVersionChangedEvent: { name: 'interopDBVersionChangedEvent' },
+	connectedToClusterManagementEvent: { name: 'connectedToClusterManagementEvent' },
 };
 
 scope.getEventByName = function(eventName) {

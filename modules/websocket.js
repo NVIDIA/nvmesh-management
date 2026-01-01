@@ -378,6 +378,8 @@ scope.connectToClusterManagement = function(remoteManagementId, ip, port, useSSL
 
 		logger.sysDEBUG(`HA:Connected to management on: ${iport}`);
 
+		eventsModule.emitEvent(null, objectNotifier.events.connectedToClusterManagementEvent, { managementId: remoteManagementId });
+
 		function onClose() {
 			if (!isUpToDateConnection())
 				return logger.sysVERBOSE('HA', 'Management socket closed, but there\'s a new connection already, not handling the close event');

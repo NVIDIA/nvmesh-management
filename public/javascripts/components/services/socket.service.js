@@ -146,4 +146,5 @@ export const events = {
 	newUpgradeStepScenarioEvent: { name: 'newUpgradeStepScenarioEvent' },
 	upgradeStepScenarioRemovedEvent: { name: 'upgradeStepScenarioRemovedEvent' },
 	upgradeStepScenarioChangedEvent: { name: 'upgradeStepScenarioChangedEvent' },
+	connectedToClusterManagementEvent: { name: 'connectedToClusterManagementEvent' },
 };
