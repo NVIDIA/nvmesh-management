@@ -8,7 +8,6 @@
 const dbManager = require('./testUtils/dbManager.js');
 const assert = require('assert');
 
-const utils = require('../utils.js');
 const { evictDiskByDiskIDsAndUUIDs } = require('../modules/disk.js');
 const { setup } = require('./testUtils/setup.js');
 const { generateTarget, generateTargets, generateDisk } = require('./testUtils/entityGenerators.js');

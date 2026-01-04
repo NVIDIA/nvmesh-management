@@ -16,7 +16,6 @@ var zoneModule = require('./modules/zone.js');
 var generalSettingsModule = require('./modules/generalSettings.js');
 var consts = require('./consts.js');
 var logger = require('./logger.js');
-var utils = require('./utils');
 var events = require('./events.js');
 
 var { Entities, SystemMessage, MongoError, SystemAdminMessage } = require('./modules/error.js');

@@ -450,6 +450,20 @@ const GeneralSettings = () => {
 
 									<div className="form-group row">
 										<div className="col-lg-4">
+											<label>Available Space</label>
+											<p><small className="text-muted">Default: 100</small></p>
+										</div>
+										<div className="col-lg-8">
+											<Input type="number"
+											       className="form-control sm-input"
+											       min="0"
+											       value={settings.zoneRanking.criterias.availableSpace}
+											       onChange={e => handleSettingsChange('zoneRanking.criterias.availableSpace', parseInt(e.target.value))}/>
+										</div>
+									</div>
+
+									<div className="form-group row">
+										<div className="col-lg-4">
 											<label>Average Time in Zone Allocation Queue</label>
 											<p><small className="text-muted">Default: 50</small></p>
 										</div>

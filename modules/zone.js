@@ -443,7 +443,7 @@ function calculateCriteriaScore(zones, zone, criteria) {
 }
 
 function enrichZonesWithNonDBCriteriaValues(zones, cb) {
-	scope.getSpaceAllocation({},{}, true, (err, resultsByZone) => {
+	scope.getSpaceAllocation({}, {}, true, (err, resultsByZone) => {
 		if (err) {
 			logger.sysDEBUG('Cannot enrich zones with non-DB Criterias for calculating zone ranks');
 			return cb(err);
@@ -705,8 +705,8 @@ function sumUpAllocatedSpaceByZone(allocatedSpaceByZone) {
 			acc[key] = (acc[key] || 0) + value;
 		});
 
-    	return acc;
-  }, {});
+		return acc;
+	}, {});
 }
 
 scope.getSpaceAllocation = function(nodeMatch, diskMatch, isByZone, cb) {
