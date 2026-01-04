@@ -442,30 +442,50 @@ function calculateCriteriaScore(zones, zone, criteria) {
 	return fuzzyElement * score;
 }
 
-scope.getZonesRanks = (zones) => {
-	calculateTimeSpentWaitingAvg(zones);
-	var maxValues = getMaxCriteriaValues(zones);
-	var zoneRankingConf = app.get('globalSettings').zoneRanking;
-	var zonesRanks = {};
+function enrichZonesWithNonDBCriteriaValues(zones, cb) {
+	scope.getSpaceAllocation({},{}, true, (err, resultsByZone) => {
+		if (err) {
+			logger.sysDEBUG('Cannot enrich zones with non-DB Criterias for calculating zone ranks');
+			return cb(err);
+		}
 
-	logger.sysVERBOSE('zoneRanking', 'Max criteria values', maxValues);
+		const zoneIdToZone = new Map(resultsByZone.map(zone => [zone._id, zone]));
+		zones.forEach(zone => {
+			if (zoneIdToZone.has(zone._id)) {
+				zone[consts.zoneRankingCriterias.AVAILABLE_SPACE] = zoneIdToZone.get(zone._id)?.availableSpace || 0;
+			}
+		});
 
-	var criterias = zoneRankingConf.criterias;
-
-	zones.forEach((zone) => {
-		var score = 0;
-
-		logger.sysVERBOSE('zoneRanking', 'Calculating rank for zone', zone);
-
-		for (var criteria of Object.keys(criterias))
-			score += calculateCriteriaScore(zones, zone, criteria);
-
-		zonesRanks[zone._id] = score;
+		cb();
 	});
+}
 
-	logger.sysVERBOSE('zoneRanking', 'Zones ranking', zonesRanks);
+scope.getZonesRanks = (zones, cb) => {
+	calculateTimeSpentWaitingAvg(zones);
+	enrichZonesWithNonDBCriteriaValues(zones, () => {
+		var maxValues = getMaxCriteriaValues(zones);
+		var zoneRankingConf = app.get('globalSettings').zoneRanking;
+		var zonesRanks = {};
 
-	return zonesRanks;
+		logger.sysVERBOSE('zoneRanking', 'Max criteria values', maxValues);
+
+		var criterias = zoneRankingConf.criterias;
+
+		zones.forEach((zone) => {
+			var score = 0;
+
+			logger.sysVERBOSE('zoneRanking', 'Calculating rank for zone', zone);
+
+			for (var criteria of Object.keys(criterias))
+				score += calculateCriteriaScore(zones, zone, criteria);
+
+			zonesRanks[zone._id] = score;
+		});
+
+		logger.sysVERBOSE('zoneRanking', 'Zones ranking', zonesRanks);
+
+		cb(null, zonesRanks);
+	});
 };
 
 scope.deleteZone = (zoneID, callback) => {
@@ -674,6 +694,206 @@ scope.enforceLockedZoneSetEqualtyOrExit = (alreadyLockedZones, wishfulZonesToLoc
 		errorLogSystemMessage.log();
 		process.exit(1);
 	}
+};
+
+function sumUpAllocatedSpaceByZone(allocatedSpaceByZone) {
+	return allocatedSpaceByZone.reduce((acc, item) => {
+		Object.entries(item).forEach(([key, value]) => {
+			if (key === '_id')
+				return;
+			
+			acc[key] = (acc[key] || 0) + value;
+		});
+
+    	return acc;
+  }, {});
+}
+
+scope.getSpaceAllocation = function(nodeMatch, diskMatch, isByZone, cb) {
+	let db = app.get('db');
+	let serverCollection = db.collection('server');
+	let executionTimer = new ExecutionTimer('getSpaceAllocation');
+
+	let isReserved = { $eq: ['$isReserved', true] };
+	let isNotReserved = { $ne: ['$isReserved', true] };
+	let isFromReserved = { $eq: ['$fromReserved', true] };
+
+	serverCollection.aggregate([
+		{ $match: nodeMatch },
+		{
+			$project: {
+				zone: 1,
+				'disks.diskID': 1,
+				'disks.uuid': 1,
+				'disks.usableBlocks': 1,
+				'disks.availableBlocks': 1,
+				'disks.status': 1,
+				'disks.isExcluded': 1,
+				'disks.isOutOfService': 1,
+				'disks.Model': 1,
+				'disks.diskSegments.pRaidIndex': 1,
+				'disks.diskSegments.isReserved': 1,
+				'disks.diskSegments.fromReserved': 1,
+				'disks.diskSegments.lbs': 1,
+				'disks.diskSegments.lbe': 1,
+				'disks.diskSegments.type': 1,
+				'disks.diskSegments.uuid': 1,
+				'disks.diskSegments.redundancyRatio': 1
+			}
+		},
+		{ $unwind: '$disks' },
+		{ $match: diskMatch },
+		{
+			$match: {
+				'disks.status': { $nin: [consts.diskStatus.NOT_INITIALIZED] },
+				'disks.isExcluded': { $ne: true },
+				'disks.isOutOfService': { $ne: true }
+			}
+		},
+		{
+			$project: {
+				zone: 1,
+				diskUUID: '$disks.uuid',
+				diskSegments: '$disks.diskSegments',
+				diskUsableBlocks: '$disks.usableBlocks',
+				diskAvailableBlocks: '$disks.availableBlocks',
+			}
+		},
+		{
+			$unwind: {
+				'path': '$diskSegments',
+				'preserveNullAndEmptyArrays': true
+			}
+		},
+		{
+			$project: {
+				zone: 1,
+				diskUUID: '$diskUUID',
+				pRaidIndex: '$diskSegments.pRaidIndex',
+				isReserved: { $ifNull: ['$diskSegments.isReserved', false] },
+				fromReserved: { $ifNull: ['$diskSegments.fromReserved', false] },
+				blocks: { $add: [{ $subtract: ['$diskSegments.lbe', '$diskSegments.lbs'] }, 1] },
+				diskUsableBlocks: '$diskUsableBlocks',
+				diskAvailableBlocks: '$diskAvailableBlocks',
+				segmentType: '$diskSegments.type',
+				segmentUUID: '$diskSegments.uuid',
+				redundancyRatio: '$diskSegments.redundancyRatio'
+			}
+		},
+		{
+			$addFields: {
+				dataBlocks: { $cond: { if: isNotReserved, then: { $multiply: ['$blocks', { $subtract: [1, '$redundancyRatio'] }] }, else: 0 } },
+				redundancyBlocks: { $cond: { if: isNotReserved, then: { $multiply: ['$blocks', '$redundancyRatio'] }, else: 0 } },
+				reservedBlocks: { $cond: { if: isReserved, then: '$blocks', else: 0 } },
+				fromReservedBlocks: { $cond: { if: isFromReserved, then: '$blocks', else: 0 } }
+			}
+		},
+		{
+			$addFields: {
+				// as we are holding diskSegments, the multiplication output wont maximum number
+				dataBytes: { $multiply: ['$dataBlocks', consts.BLOCK_SIZE] },
+				redundancyBytes: { $multiply: ['$redundancyBlocks', consts.BLOCK_SIZE] },
+				reservedBytes: { $multiply: ['$reservedBlocks', consts.BLOCK_SIZE] },
+				fromReservedBytes: { $multiply: ['$fromReservedBlocks', consts.BLOCK_SIZE] }
+			}
+		},
+		{
+			$addFields: {
+				dataGigabytes: { $divide: ['$dataBytes', consts.GB] },
+				redundancyGigabytes: { $divide: ['$redundancyBytes', consts.GB] },
+				reservedGigabytes: { $divide: ['$reservedBytes', consts.GB] },
+				fromReservedGigabytes: { $divide: ['$fromReservedBytes', consts.GB] }
+			}
+		},
+		{
+			$group: {
+				_id: {
+					zone: '$zone',
+					diskUUID: '$diskUUID',
+				},
+				diskCapacityBlocks: { $first: '$diskUsableBlocks' },
+				diskAvailableBlocks: { $first: '$diskAvailableBlocks' },
+				data: { $sum: '$dataGigabytes' },
+				redundancy: { $sum: '$redundancyGigabytes' },
+				reserved: { $sum: '$reservedGigabytes' },
+				fromReserved: { $sum: '$fromReservedGigabytes' }
+			}
+		},
+		{
+			$addFields: {
+				// as we are holding disks, the multiplication output wont maximum number
+				zone: '$_id.zone',
+				diskCapacityInBytes: { $multiply: ['$diskCapacityBlocks', consts.BLOCK_SIZE] },
+				availableSpaceInBytes: { $multiply: ['$diskAvailableBlocks', consts.BLOCK_SIZE] }
+			}
+		},
+		{
+			$addFields: {
+				diskCapacityInGigabytes: { $divide: ['$diskCapacityInBytes', consts.GB] },
+				availableSpaceInGigabytes: { $divide: ['$availableSpaceInBytes', consts.GB] }
+			}
+		},
+		{
+			$group: {
+				_id: '$zone',
+				data: { $sum: '$data' },
+				redundancy: { $sum: '$redundancy' },
+				totalReserved: { $sum: '$reserved' },
+				fromReserved: { $sum: '$fromReserved' },
+				totalCapacity: { $sum: '$diskCapacityInGigabytes' },
+				availableSpace: { $sum: '$availableSpaceInGigabytes' },
+			}
+		},
+		{
+			$addFields: {
+				// 'totalReserved' - total reserved space
+				// 'fromReserved' - space allocated from reserved space (the 'data' field also include the fromReserved space)
+				// 'reservedLeft' - this is the remaining reserved space that can still be allocated
+				reservedLeft: { $subtract: [{ $sum: '$totalReserved' }, { $sum: '$fromReserved' }] },
+			}
+		},
+		{
+			$project: {
+				_id: '$_id',
+				data: { $round: ['$data', 2] },
+				redundancy: { $round: ['$redundancy', 2] },
+				totalReserved: { $round: ['$totalReserved', 2] },
+				fromReserved: { $round: ['$fromReserved', 2] },
+				totalCapacity: { $round: ['$totalCapacity', 2] },
+				availableSpace: { $round: ['$availableSpace', 2] },
+				reservedLeft: { $round: ['$reservedLeft', 2] },
+			}
+		}
+	]).toArray(function(err, resultsByZone) {
+		if (err) {
+			executionTimer.stop(false);
+			new MongoError(err).log();
+			return cb(err);
+		}
+
+		if (resultsByZone && resultsByZone.length) {
+			executionTimer.stop(true);
+			return cb(null, isByZone ? resultsByZone : sumUpAllocatedSpaceByZone(resultsByZone));
+		} else {
+			executionTimer.stop(false);
+			let defaultValues = {
+				data: 0,
+				redundancy: 0,
+				totalReserved: 0,
+				fromReserved: 0,
+				totalCapacity: 0,
+				availableSpace: 0,
+				reservedLeft: 0
+			};
+			
+			if (isByZone) {
+				defaultValues._id = consts.SINGLE_ZONE_DEFAULT_ID;
+				defaultValues = [defaultValues];
+			}
+
+			cb(null, defaultValues);
+		}
+	});
 };
 
 module.exports = scope;

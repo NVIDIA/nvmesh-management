@@ -504,7 +504,7 @@ monitoredObjects[scope.events.disksCountChangeEvent.name] = {
 
 monitoredObjects[scope.events.allocatedSpaceChangeEvent.name] = {
 	getUpdatedObj: function(callback) {
-		utils.getSpaceAllocation({}, {}, false, (err, results) => {
+		zoneModule.getSpaceAllocation({}, {}, false, (err, results) => {
 			return callback(err, results);
 		});
 	}
@@ -541,12 +541,12 @@ monitoredObjects[scope.events.zonesRanksChangeEvent.name] = {
 		zoneModule.getZones([], (err, zones) => {
 			if (!err && zones && zones.length) {
 				zones.forEach((zone) => zone.targetsInZone = zone.targetsInZone?.length || 0);
-				let zoneRanks = zoneModule.getZonesRanks(zones);
-				events.emitEvent(null, scope.events.zonesRanksChangeEvent, zoneRanks);
-				return callback(err, zoneRanks);
-			}
-
-			callback(err, {});
+				zoneModule.getZonesRanks(zones, (err, zoneRanks) => {
+					events.emitEvent(null, scope.events.zonesRanksChangeEvent, zoneRanks);
+					return callback(err, zoneRanks);
+				});
+			} else
+				callback(err, {});
 		});
 	}
 };

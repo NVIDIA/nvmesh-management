@@ -765,6 +765,7 @@ consts.entityType = {
 consts.zoneRankingCriterias = {
 	SEGMENTS_IN_ZONE: 'segmentsInZone',
 	TARGETS_IN_ZONE: 'targetsInZone',
+	AVAILABLE_SPACE: 'availableSpace',
 	AVG_TIME_SPENT_WAITING_FOR_LOCK: 'avgTimeSpentWaitingForLock'
 };
 

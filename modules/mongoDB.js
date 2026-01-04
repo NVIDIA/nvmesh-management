@@ -454,6 +454,7 @@ scope.populateInitialDBCollections = (mainCallback) => {
 							criterias: {
 								segmentsInZone: 150,
 								targetsInZone: 120,
+								availableSpace: 100,
 								avgTimeSpentWaitingForLock: 50
 							}
 						},

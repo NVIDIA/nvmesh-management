@@ -323,9 +323,10 @@ scope.getHighestScoredZone = (limitTargets, limitDisks, zonesToIgnore, cb) => {
 					zone.targetsInZone = allowedZones[zone._id] ? allowedZones[zone._id] : 0;
 				});
 
-				var zonesRanks = zoneModule.getZonesRanks(zones);
-				zonesRanks = subtractZonesToIgnore(zonesRanks);
-				return getHighest(zonesRanks);
+				zoneModule.getZonesRanks(zones, (err, zonesRanks) => {
+					zonesRanks = subtractZonesToIgnore(zonesRanks);
+					return getHighest(zonesRanks);
+				});				
 			});
 		});
 	}
