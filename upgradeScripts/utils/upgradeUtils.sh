@@ -29,7 +29,7 @@ getMongoShellCommandLineArguments() {
 	local confName=$1
 	local forMongoDump=$2
 
-	commandLineArguments=$($nodetouse --eval "console.log(require('$MDIR/modules/mongoCMDLineArgsBuilder.js').buildMongoConnectionCommandlineArgsByConnectionName('$confName', '$forMongoDump'))")
+	commandLineArguments=$($nodetouse --eval "console.log(require('$MDIR/modules/mongoCMDLineArgsBuilder.js').buildMongoConnectionCommandlineArgsByConnectionName('$confName', '$forMongoDump'))" 2>/dev/null)
 }
 
 # this is a duplicate of the same function in services/nvmeshmgr service file
