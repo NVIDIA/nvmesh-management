@@ -334,7 +334,13 @@ for rpm in "${rpmsToCreate[@]}"; do
         requires="systemd, nodejs >= 1:17.0.0-0, nodejs < 2:19.0.0-0, mongodb-mongosh >= 2.1, mongodb-mongosh < 2.7, mongodb-org-tools >= 5.0, mongodb-org-tools < 8.3, nvmesh-utils >= 2.0.0"
         requiresUbuntu="systemd, nodejs (>= 17.0.0), nodejs (<< 19.0.0), mongodb-mongosh (>= 2.1), mongodb-mongosh (<< 2.7), mongodb-org-tools (>= 5.0), mongodb-org-tools (<< 8.3), nvmesh-utils (>= 2.0.0)"
 
-        rsync -av --exclude='.git/' ../interop-db/ ./interop-db
+        cloned_interop_db_path="../interop-db"
+        if [ ! -d "$cloned_interop_db_path" ] || [ ! -n "$(ls -A "$cloned_interop_db_path" 2>/dev/null)" ]; then
+            echo "Error: Could not find interop-db driver module, cannot build nvmesh-management package"
+            exit 1
+        fi
+
+        rsync -av --exclude='.git/' $cloned_interop_db_path/ ./interop-db
         rsync -aRPq --exclude=*~ $management_transfer_list ~/"rpmbuild/SOURCES/$packagePrefix"
         rm -rf ./interop-db/
 
