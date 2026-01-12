@@ -193,6 +193,7 @@ scope.run = cb => {
 		scope.checkAndResumeStuckUpgrades,
 		cleanupUnusedTopics,
 		dbUpgradeModule.upgradeDBIfNeeded,
+		scope.addAvailableSpaceZoneRankingCriteriaToDB
 	], err => {
 		if (err)
 			logger.sysDEBUG(`Sanity and Recover encountered an error: ${err}`);
@@ -2414,6 +2415,26 @@ scope.checkLastEmulationAttachmentsVersionSentToClient = cb => {
 			});
 		}, cb);
 	});
+};
+
+// this code should only run and exists on 3.4.0
+scope.addAvailableSpaceZoneRankingCriteriaToDB = (cb) => {
+	var db = app.get('db');
+	var globalSettingsCollection = db.collection('globalSettings');
+
+	globalSettingsCollection.updateOne(
+		{ 'zoneRanking.criterias.availableSpace': { $exists: 0 } },
+		{ $set: { 'zoneRanking.criterias.availableSpace': 100 }, $inc: { version: 1 } },
+		(err, result) => {
+			if (err) {
+				new MongoError(err).log();
+			} else if (result.modifiedCount) {
+				events.emitEvent(null, objectNotifier.events.generalSettingsChangeEvent);
+			}
+
+			cb(err);
+		}
+	);
 };
 
 module.exports = scope;
