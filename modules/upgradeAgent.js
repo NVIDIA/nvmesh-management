@@ -107,6 +107,8 @@ scope.handleKeepAlive = (message, mainCallback) => {
 			if (err) return callback(err);
 
 			currentTopics = topics;
+			const now = new Date();
+
 			const newUpgradeAgent = {
 				_id: message.upgradeAgentID,
 				uuid: uuid.v1(),
@@ -116,24 +118,26 @@ scope.handleKeepAlive = (message, mainCallback) => {
 				upgradeAgentData: message.payload,
 				status: consts.upgradeAgentStatus.ONLINE,
 				health: scope.getUpgradeAgentHealth(consts.upgradeAgentStatus.ONLINE, message.payload.health),
-				topics: currentTopics
+				topics: currentTopics,
+				dateModified: now,
+				dateCreated: now,
+				lastReceivedKeepAlive: now
 			};
 
-			upgradeAgentCollection.insertOne(newUpgradeAgent,
-				{ $currentDate: { dateModified: true, dateCreated: true, lastReceivedKeepAlive: true } }, (err) => {
-					if (err) {
-						const mongoError = new MongoError(err);
+			upgradeAgentCollection.insertOne(newUpgradeAgent, (err) => {
+				if (err) {
+					const mongoError = new MongoError(err);
 
-						if (mongoError.isDuplicateKeyError) {
-							logger.sysDEBUG(`upgrade agent ${message.upgradeAgentID} already exists - message may have been handled by another management`);
-							return callback();
-						}
-
-						return callback(mongoError);
+					if (mongoError.isDuplicateKeyError) {
+						logger.sysDEBUG(`upgrade agent ${message.upgradeAgentID} already exists - message may have been handled by another management`);
+						return callback();
 					}
 
-					callback(null, newUpgradeAgent);
-				});
+					return callback(mongoError);
+				}
+
+				callback(null, newUpgradeAgent);
+			});
 		});
 	};
 
