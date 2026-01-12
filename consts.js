@@ -94,6 +94,11 @@ consts.kafka = {
 		DEBOUNCER_MINIMUM_WAIT: 5000,
 		INITIAL_BACKOFF: 2000,
 		MAX_BACKOFF: 10000
+	},
+	LOG_COMPACTION: {
+		SEGMENT_BYTES: 1024 * 1024 * 5,
+		MIN_CLEANABLE_DIRTY_RATIO: 0.1,
+		SEGMENT_MS: 300000
 	}
 };
 
@@ -137,6 +142,7 @@ consts.topicSuffix = {
 	TOMA_HARDWARE_CONF: '.TOMA.hardwareConfiguration',
 	MANAGEMENT_PRIORITY: '.management.priority',
 	MANAGEMENT_LOW: '.management.low',
+	MANAGEMENT_KEEPALIVE: '.management.keepalive',
 	AGENT_MAIN: '.managementAgent.main',
 	CLIENT_MAIN: '.client.main',
 	UPGRADE_AGENT_COMMANDS: '.upgradeAgent.commands'

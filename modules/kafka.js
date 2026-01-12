@@ -222,7 +222,13 @@ scope.createTopics = (topics, callback) => {
 		try {
 			// createTopics will resolve to true if topics were created successfully or false if all of them already exists.
 			// The method will throw exceptions in case of errors
-			const params = { topics: topics.map(topic => ({ topic: topic.name, numPartitions: topic.numPartitions })) };
+			const params = {
+				topics: topics.map(topic => ({
+					topic: topic.name,
+					numPartitions: topic.numPartitions,
+					configEntries: topic.configEntries || []
+				}))
+			};
 			topicsCreated = await scope.runKafkaCommand(admin.createTopics, [params]);
 
 			if (!topicsCreated)
@@ -660,9 +666,17 @@ scope.getManagementTopicsToCreate = (rpmVersion, callback) => {
 	const GLOBAL_SETTINGS = app.get('globalSettings');
 
 	scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, '1', topicNames => {
+		const configEntries = [
+			{ name: 'cleanup.policy', value: 'compact' },
+			{ name: 'segment.bytes', value: String(consts.kafka.LOG_COMPACTION.SEGMENT_BYTES) },
+			{ name: 'min.cleanable.dirty.ratio', value: String(consts.kafka.LOG_COMPACTION.MIN_CLEANABLE_DIRTY_RATIO) },
+			{ name: 'segment.ms', value: String(consts.kafka.LOG_COMPACTION.SEGMENT_MS) }
+		];
+
 		const topics = topicNames.map(name => ({
 			name,
 			numPartitions: GLOBAL_SETTINGS.kafka.partitionsFactorForManagementTopics,
+			configEntries: name.includes(consts.topicSuffix.MANAGEMENT_KEEPALIVE) ? configEntries : [],
 			ACL: {
 				allowedHost: '*',
 				principal: '*',
@@ -1405,7 +1419,11 @@ scope.GCUpgradeAgentsTopics = (callback) => {
 scope.GCManagementZoneTopics = (versionDocument, callback) => {
 	const { topics } = versionDocument;
 	const groupID = consts.kafka.MANAGEMENT_GROUP_ID;
-	const managementZoneTopics = [topics[consts.topicSuffix.MANAGEMENT_LOW], topics[consts.topicSuffix.MANAGEMENT_PRIORITY]];
+	const managementZoneTopics = [
+		topics[consts.topicSuffix.MANAGEMENT_LOW],
+		topics[consts.topicSuffix.MANAGEMENT_PRIORITY],
+		topics[consts.topicSuffix.MANAGEMENT_KEEPALIVE],
+	];
 
 	scope.deleteCommittedRecords(groupID, managementZoneTopics, callback);
 };
@@ -1613,7 +1631,7 @@ scope.runKafkaCommand = async(commandFn, args = [], options = {}) => {
 };
 
 scope.isUpstreamTopicByName = topicName => {
-	const managementTopicsSuffixes = [consts.topicSuffix.MANAGEMENT_LOW, consts.topicSuffix.MANAGEMENT_PRIORITY];
+	const managementTopicsSuffixes = [consts.topicSuffix.MANAGEMENT_LOW, consts.topicSuffix.MANAGEMENT_PRIORITY, consts.topicSuffix.MANAGEMENT_KEEPALIVE];
 	return managementTopicsSuffixes.some(suffix => topicName.includes(suffix));
 
 };
@@ -1780,7 +1798,8 @@ function getGroupIdForTopic(topicName) {
 	];
 	const managementConsumingSuffixes = [
 		consts.topicSuffix.MANAGEMENT_LOW,
-		consts.topicSuffix.MANAGEMENT_PRIORITY
+		consts.topicSuffix.MANAGEMENT_PRIORITY,
+		consts.topicSuffix.MANAGEMENT_KEEPALIVE,
 	];
 	const leaderConsumingSuffixes = [
 		consts.topicSuffix.LEADER_INCREMENTAL_UPDATES,
