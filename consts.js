@@ -785,6 +785,7 @@ consts.autoEvictReason = {
 	SYSTEM_PARTITION_FOUND: 'System partition found on drive',
 	DRIVE_FORMATTED_WITH_VOL_SEGMENTS: 'Drive formatted with volume segments',
 	DATA_PARTITION_FOUND_AFTER_FORMAT: 'Data partition was found after format',
+	WRONG_ATTRIBUTES_AFTER_FORMAT: 'Format finished with a wrong block size or metadata values',
 	MISSING_METADATA_PARTITIONS: 'Drive is missing suitable metadata partitions',
 	UNKNOWN_NVMESH_PARTITION: 'Unknown NVMesh partition found on drive',
 	DRIVE_UUID_MISMATCH: 'Drive uuid mismatch found',

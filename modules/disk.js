@@ -113,16 +113,13 @@ function checkFormatRequestCounter(oldDisk, newDisk) {
 		return false;
 }
 
-scope.isFormatFinished = function(oldDisk, newDisk) {
+scope.isFormatFinished = function(oldDisk, newDisk, cb) {
 	if (oldDisk.formatDetails && checkFormatRequestCounter(oldDisk, newDisk)) {
-	// verify if format request details met
-		if (oldDisk.formatDetails.formatType === consts.formatTypes.FORMAT_EC)
-			return Boolean(newDisk.metadata_size);
-
-		return !newDisk.metadata_size;
+		// verify if format request details met
+		return cb(true, oldDisk.formatDetails.blockSize === newDisk.block_size && oldDisk.formatDetails.metadataSize === newDisk.metadata_size);
 	}
 
-	return false;
+	return cb(false, false);
 };
 
 function deleteFormatRequestAttributesFromObj(disk) {
@@ -169,26 +166,37 @@ scope.createDriveFinishedFormatEvent = function(disk, nodeID) {
 
 function checkFormatDriveResult(oldDisk, newDisk, isReappearingDrive, eventsList, nodeID, bootTime, calcDelta, cb) {
 	var updatedDisk = isReappearingDrive || !oldDisk ? newDisk : oldDisk;
+	// the next line purpose is to avoid passing the calcDelta to the callback function of isFormatFinished to be able to run updateDisk
+	var calcDeltaUpdateDisk = this.updateDisk;
 
-	if (!scope.isFormatFinished(oldDisk, newDisk)) {
-		// check if the drive was in format process and we need to re-emit the format event
-		if (oldDisk.formatInProgress) {
+	scope.isFormatFinished(oldDisk, newDisk, (formatFinished, formatDetailsMet) => {
+		if (formatFinished) {
+			deleteFormatRequestAttributesFromObj.bind(calcDelta)(updatedDisk);
+
+			if (formatDetailsMet) {
+				// drive format process finished successfully
+				logger.sysDEBUG(`Drive SN ${newDisk.diskID} in target ${nodeID} initiator initiated format successful.`);
+				return cb(true, true, false);
+			} else {
+				// drive format finished with wrong attributes - should auto evict
+				logger.sysDEBUG(`Drive SN ${newDisk.diskID} in target ${nodeID} finish format with wrong attributes, auto evicting.`);
+				calcDeltaUpdateDisk.bind(calcDelta)(updatedDisk, updatedDisk.uuid, 'autoEvictReason', consts.autoEvictReason.WRONG_ATTRIBUTES_AFTER_FORMAT);
+				calcDeltaUpdateDisk.bind(calcDelta)(updatedDisk, updatedDisk.uuid, 'isOutOfService', true);
+				return cb(true, false, true);
+			}
+		} else if (oldDisk.formatInProgress) { // check if the drive was in format process and we need to re-emit the format event
 			// check if the format was triggered from the management
 			if (oldDisk.formatDetails) {
 				// emit the format event again if got an OK status that doesn't indicate of a successful format
 				eventsList.push(scope.createFormatDriveEvent.bind(calcDelta)(updatedDisk, oldDisk, nodeID, bootTime));
 				logger.sysDEBUG('Going to Re-emit format event again for drive: ' + oldDisk.diskID);
-				return cb(false, false);
+				return cb(false, false, false);
 			} else
 				deleteFormatRequestAttributesFromObj.bind(calcDelta)(updatedDisk);
 		}
-	} else { // drive format process finished successfully
-		logger.sysDEBUG(`Drive SN ${newDisk.diskID} in target ${nodeID} initiator initiated format successful.`);
-		deleteFormatRequestAttributesFromObj.bind(calcDelta)(updatedDisk);
-		return cb(true, true);
-	}
 
-	cb(true, false);
+		cb(true, false, false);
+	});
 }
 
 scope.shouldResendReport = function(newDrive, oldDrive) {
@@ -218,9 +226,7 @@ function checkDriveStatusTransition(oldDisk, newDisk, isReappearingDrive, events
 			+ newDisk.activeFormatRequestCounter + ' DB activeFormatRequestCounter: ' + oldDisk.activeFormatRequestCounter);
 		return cb(false, false);
 	} else if (oldDisk && (newDisk.status === consts.diskStatus.OK || newDisk.status === consts.diskStatus.INITIALIZING)) {
-		checkFormatDriveResult(oldDisk, newDisk, isReappearingDrive, eventsList, nodeID, bootTime, calcDelta, function(validTransition, formatDone) {
-			cb(validTransition, formatDone);
-		});
+		checkFormatDriveResult.bind(calcDelta)(oldDisk, newDisk, isReappearingDrive, eventsList, nodeID, bootTime, calcDelta, cb);
 		return;
 	} else if (oldDisk && (oldDisk.isPendingFormat || consts.driveFormatStatuses.indexOf(oldDisk.status) !== -1) &&
 		newDisk.status === consts.diskStatus.NOT_INITIALIZED && oldDisk.formatDetails) {
@@ -234,9 +240,7 @@ function checkDriveStatusTransition(oldDisk, newDisk, isReappearingDrive, events
 		deleteFormatRequestAttributesFromObj.bind(calcDelta)(updatedDisk);
 	} else if (isReappearingDrive && oldDisk.formatInProgress && consts.driveFormatStatuses.indexOf(newDisk.status) === -1) {
 		// on drive reappearing with format process
-		checkFormatDriveResult(oldDisk, newDisk, isReappearingDrive, eventsList, nodeID, bootTime, calcDelta, function(validTransition, formatDone) {
-			cb(validTransition, formatDone);
-		});
+		checkFormatDriveResult.bind(calcDelta)(oldDisk, newDisk, isReappearingDrive, eventsList, nodeID, bootTime, calcDelta, cb);
 		return;
 	} else if (consts.driveFormatStatuses.indexOf(newDisk.status) !== -1) { // set format in progress if got one of the format statuses
 		this.updateDisk(updatedDisk, updatedDisk.uuid, 'formatInProgress', true);
@@ -247,40 +251,55 @@ function checkDriveStatusTransition(oldDisk, newDisk, isReappearingDrive, events
 
 scope.handleDriveFormatProcessIfNeeded = function(oldDisk, newDisk, isReappearingDrive, eventsList, nodeID, bootTime, calcDelta, cb) {
 	var diskToUpdate = isReappearingDrive || !oldDisk ? newDisk : oldDisk;
+	// the next line purpose is to avoid passing the calcDelta to the callback function of 
+	// checkDriveStatusTransition or isFormatFinished to be able to run updateDisk
+	var calcDeltaUpdateDisk = this.updateDisk;
 
 	// handle drive status change/reappear or new report
 	if (!oldDisk || (oldDisk && newDisk.status !== oldDisk.status)) {
 		if (!oldDisk && (newDisk.status === consts.diskStatus.NOT_INITIALIZED || newDisk.isExcluded))
-			return cb(false);
+			return cb(false, false);
 
-		// the next line purpose is to avoid passing the calcDelta to the callback function of checkDriveStatusTransition to be able to run updateDisk
-		var calcDeltaUpdateDisk = this.updateDisk;
 		// check format drive status transition
 		checkDriveStatusTransition.bind(calcDelta)(oldDisk, newDisk, isReappearingDrive, eventsList, nodeID, bootTime, calcDelta,
-			function(validTransition, formatDone) {
+			function(validTransition, formatDone, shouldAutoEvict) {
 				if (!validTransition) {
 					logger.sysDEBUG('Moving drive ' + newDisk.diskID + ' to pending format state');
 					calcDeltaUpdateDisk.bind(calcDelta)(newDisk, diskToUpdate.uuid, 'isPendingFormat', true);
 				} else if (oldDisk && oldDisk.isPendingFormat)
 					calcDeltaUpdateDisk.bind(calcDelta)(newDisk, diskToUpdate.uuid, 'isPendingFormat', false);
 
-				cb(formatDone);
+				cb(formatDone, shouldAutoEvict);
 			});
 		return;
-	} else if ((newDisk.status === consts.diskStatus.OK || newDisk.status === consts.diskStatus.INITIALIZING)
-		&& scope.isFormatFinished(oldDisk, newDisk)) {
-		// no change in drive status but got OK or Initializing again and format occurred
-		deleteFormatRequestAttributesFromObj.bind(calcDelta)(diskToUpdate);
-		this.updateDisk(diskToUpdate, diskToUpdate.uuid, 'isPendingFormat', false);
-		logger.sysDEBUG(`Drive SN ${newDisk.diskID} in target ${nodeID} initiator initiated format successful.`);
+	} else if ((newDisk.status === consts.diskStatus.OK || newDisk.status === consts.diskStatus.INITIALIZING)) {
+		scope.isFormatFinished(oldDisk, newDisk, (formatFinished, formatDetailsMet) => {
+			if (formatFinished) {
+				deleteFormatRequestAttributesFromObj.bind(calcDelta)(diskToUpdate);
+				calcDeltaUpdateDisk.bind(calcDelta)(diskToUpdate, diskToUpdate.uuid, 'isPendingFormat', false);
 
-		var event = scope.createDriveFinishedFormatEvent(diskToUpdate, nodeID);
-		eventsList.push(event);
+				if (formatDetailsMet) {
+					// no change in drive status but got OK or Initializing again and format occurred					
+					logger.sysDEBUG(`Drive SN ${newDisk.diskID} in target ${nodeID} initiator initiated format successful.`);
+					var event = scope.createDriveFinishedFormatEvent(diskToUpdate, nodeID);
+					eventsList.push(event);
 
-		return cb(true);
+					return cb(true, false);
+				} else {
+					// drive format finished with wrong attributes - should auto evict
+					logger.sysDEBUG(`Drive SN ${newDisk.diskID} in target ${nodeID} finish format with wrong attributes, auto evicting.`);
+					calcDeltaUpdateDisk.bind(calcDelta)(diskToUpdate, diskToUpdate.uuid, 'autoEvictReason',
+						consts.autoEvictReason.WRONG_ATTRIBUTES_AFTER_FORMAT);
+					calcDeltaUpdateDisk.bind(calcDelta)(diskToUpdate, diskToUpdate.uuid, 'isOutOfService', true);
+
+					return cb(false, true);
+				}
+			} else
+				return cb(false, false);
+		});
+	} else {
+		return cb(false, false);
 	}
-
-	return cb(false);
 };
 
 function hasValidPartitionsAfterFormat(drive) {
@@ -549,7 +568,8 @@ scope.processAndValidateDrive = function(newDrive, oldDrive, isReappearingDrive,
 	var driveToUpdate = isReappearingDrive || !oldDrive ? newDrive : oldDrive;
 
 	// check if err occurred while creating gpt partiotions or disk size is not valid (if changed or less than minmum)
-	if (!driveToUpdate.automaticallyEvicted && newDrive.status !== consts.diskStatus.NOT_INITIALIZED && !newDrive.isExcluded) {
+	if (!driveToUpdate.automaticallyEvicted && !driveToUpdate.autoEvictReason
+		&& newDrive.status !== consts.diskStatus.NOT_INITIALIZED && !newDrive.isExcluded) {
 		if (((!isAfterFormat && newDrive.status !== consts.diskStatus.FORMATTING && !isDiskSizeValid.bind(calcDelta)(newDrive, oldDrive, driveToUpdate))
 			|| (consts.driveFormatStatuses.indexOf(newDrive.status) === -1 && !driveToUpdate.formatInProgress &&
 				!tryHandleGptPartitionSegments.bind(calcDelta)(driveToUpdate, server, eventsList, isAfterFormat, calcDelta)))

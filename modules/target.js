@@ -1709,8 +1709,9 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 							node.node_id,
 							node.bootTime,
 							calcDelta,
-							function(formatDone) {
-								if (formatDone && !diskModule.handleFormatDone.bind(calcDelta)(newDisk, null, calcDelta) || shouldAutoEvict)
+							function(formatDone, driveEvictionNeeded) {
+								if (driveEvictionNeeded || (formatDone && !diskModule.handleFormatDone.bind(calcDelta)(newDisk, null, calcDelta))
+									|| shouldAutoEvict)
 									disksToAutoEvict.push(newDisk);
 								else if (formatDone && GLOBAL_SETTINGS_HIDDEN.autoFormatDrive)
 									shouldStartVolumeRebuild = true;
@@ -1850,7 +1851,7 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 					}
 
 					diskModule.handleDriveFormatProcessIfNeeded.bind(calcDelta)(oldDisk, existingReportDisk, false, eventsToEmitOnInsert,
-						node.node_id, node.bootTime, calcDelta, function(formatDone) {
+						node.node_id, node.bootTime, calcDelta, function(formatDone, driveEvictionNeeded) {
 							if (formatDone) {
 								updateConfiguration = true;
 
@@ -1859,7 +1860,7 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 
 								if (!diskModule.handleFormatDone.bind(calcDelta)(oldDisk, existingReportDisk, calcDelta))
 									disksToAutoEvict.push(oldDisk);
-							} else if (!updateGPTProperties.bind(calcDelta)(oldDisk, existingReportDisk, calcDelta))
+							} else if (!updateGPTProperties.bind(calcDelta)(oldDisk, existingReportDisk, calcDelta) || driveEvictionNeeded)
 								disksToAutoEvict.push(oldDisk);
 
 							// process gpt and validate size if needed
