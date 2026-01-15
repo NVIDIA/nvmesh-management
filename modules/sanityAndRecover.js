@@ -2433,75 +2433,132 @@ scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
 	const serverCollection = db.collection('server');
 	const validDiskSegmentStatusesAfterEvict = [consts.diskSegmentStatuses.REMAP, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD];
 
-	// This pipeline find evicted disks with:
-	// 1. volume segments that are not in validDiskSegmentStatusesAfterEvict
-	// 2. volume segments from volumes that are marked for deletion
-	// Expected results structure will look like this:
-	// [{
-	// 		zone: '1',
-	// 		disks: [{
-	// 			_id: 'diskID',
-	// 			serverDisk: {<disk from server collection>},
-	// 			volumeDiskSegments: { withInvalidStatuses: ['uuid1'], toDeprecate: [{id: 'uuid2', volType: 'data', pRaidUUID: 'uuid3'}] }
-	// 		}]
-	// 	}]
 	const pipeline = [
 		{ $match: { 'disks.isOutOfService': true } },
 		// keep only isOutOfService disks to avoid unnecessary unwinds
 		{ $project: { disks: { $filter: { input: '$disks', as: 'disk', cond: { $eq: ['$$disk.isOutOfService', true] } } } } },
 		{ $unwind: '$disks' },
 		{ $addFields: { serverDisk: '$disks' } },
-		{ $unwind: '$disks.diskSegments' },
-		{ $match: { 'disks.diskSegments.type': consts.segmentTypes.DATA } },
+		// keep only data segments to avoid unnecessary unwinds and map only relevant fields from segment
+		{
+			$project: {
+				serverDisk: 1,
+				disks: {
+					diskSegments: {
+						$map: {
+							input: { $filter: { input: '$disks.diskSegments', as: 'segment', cond: { $eq: ['$$segment.type', consts.segmentTypes.DATA] } } },
+							as: 'segment',
+							in: { _id: '$$segment._id', volumeName: '$$segment.volumeName', zone: '$$segment.zone' }
+						}
+					}
+				}
+			}
+		},
+		// remove disks with no relevant segments
+		{ $match: { 'disks.diskSegments.0': { $exists: true } } },
 		{
 			$lookup: {
 				from: 'volume',
-				let: { volumeID: '$disks.diskSegments.volumeName', diskSegmentID: '$disks.diskSegments._id' },
+				let: { volumeNames: { $setUnion: ['$disks.diskSegments.volumeName', []] }, segmentIDs: '$disks.diskSegments._id' },
 				pipeline: [
-					{ $match: { $expr: { $eq: ['$_id', '$$volumeID'] } } },
-					{ $project: { 'chunks.pRaids.diskSegments': 1, action: 1, type: 1 } },
-					{ $unwind: '$chunks' },
-					{ $unwind: '$chunks.pRaids' },
-					{ $unwind: '$chunks.pRaids.diskSegments' },
-					{ $match: { $expr: { $eq: ['$chunks.pRaids.diskSegments._id', '$$diskSegmentID'] } } },
+					{ $match: { $expr: { $in: ['$_id', '$$volumeNames'] } } },
 					{
 						$project: {
-							segmentData: {
-								_id: '$chunks.pRaids.diskSegments._id',
-								pRaidUUID: '$chunks.pRaids.diskSegments.pRaidUUID',
-								volType: '$type'
+							// flatten chunks.pRaids.diskSegments and filter by segmentIDs
+							relevantSegments: {
+								$reduce: {
+									input: '$chunks',
+									initialValue: [],
+									in: {
+										$concatArrays: ['$$value', {
+											$reduce: {
+												input: '$$this.pRaids',
+												initialValue: [],
+												in: {
+													$concatArrays: ['$$value', {
+														$filter: {
+															input: '$$this.diskSegments',
+															as: 'ds',
+															cond: { $in: ['$$ds._id', '$$segmentIDs'] }
+														}
+													}]
+												}
+											}
+										}]
+									}
+								}
 							},
-							isInvalid: { $not: { $in: ['$chunks.pRaids.diskSegments.status', validDiskSegmentStatusesAfterEvict] } },
-							isDeprecate: { $eq: ['$action', consts.volumeActions.MARKED_FOR_DELETION] }
+							action: 1,
+							type: 1
 						}
 					},
-					// keep only results that requires update
-					{ $match: { $or: [{ isInvalid: true }, { isDeprecate: true }] } }
+					// keep only segments that requires update and project relevant fields
+					{
+						$project: {
+							processedSegments: {
+								$filter: {
+									input: {
+										$map: {
+											input: '$relevantSegments',
+											as: 'seg',
+											in: {
+												segmentData: {
+													_id: '$$seg._id',
+													pRaidUUID: '$$seg.pRaidUUID',
+													volType: '$type'
+												},
+												isInvalid: { $not: { $in: ['$$seg.status', validDiskSegmentStatusesAfterEvict] } },
+												isDeprecate: { $eq: ['$action', consts.volumeActions.MARKED_FOR_DELETION] }
+											}
+										}
+									},
+									as: 'processedSegment',
+									// keep only segments that requires update
+									cond: { $or: ['$$processedSegment.isInvalid', '$$processedSegment.isDeprecate'] }
+								}
+							}
+						}
+					},
+					// remove volumes with no segments to update
+					{ $match: { 'processedSegments.0': { $exists: true } } }
 				],
 				as: 'volumeLookupResult'
 			}
 		},
-		{ $unwind: '$volumeLookupResult' },
-		// group by diskID
+		// remove disks where no updates are needed
+		{ $match: { 'volumeLookupResult.0': { $exists: true } } },
 		{
-			$group: {
+			$project: {
 				_id: '$serverDisk.diskID',
-				serverDisk: { $first: '$serverDisk' },
-				zone: { $first: '$disks.diskSegments.zone' },
-				// push only segment IDs with invalid status to match format of diskModule.updateVolumesAfterEvict
-				withInvalidStatuses: { $push: { $cond: ['$volumeLookupResult.isInvalid', '$volumeLookupResult.segmentData._id', '$$REMOVE'] } },
-				// push segment data to deprecate to match format of volumeModule.deprecateSegments
+				serverDisk: '$serverDisk',
+				zone: { $arrayElemAt: ['$disks.diskSegments.zone', 0] },
+				// flatten the results from all volumes
+				allSegments: { $reduce: { input: '$volumeLookupResult', initialValue: [], in: { $concatArrays: ['$$value', '$$this.processedSegments'] } } }
+			}
+		},
+		{
+			$project: {
+				_id: 1,
+				serverDisk: 1,
+				zone: 1,
+		 		// keep segmentIDs with invalid status to match format of diskModule.updateVolumesAfterEvict
+				withInvalidStatuses: {
+					$map: {
+						input: { $filter: { input: '$allSegments', as: 'seg', cond: { $eq: ['$$seg.isInvalid', true] } } },
+						as: 'item',
+						in: '$$item.segmentData._id'
+					}
+				},
+				// keep segment data to deprecate to match format of volumeModule.deprecateSegments
 				toDeprecate: {
-					$push: {
-						$cond: [
-							'$volumeLookupResult.isDeprecate',
-							{
-								id: '$volumeLookupResult.segmentData._id',
-								volType: '$volumeLookupResult.segmentData.volType',
-								pRaidUUID: '$volumeLookupResult.segmentData.pRaidUUID'
-							},
-							'$$REMOVE'
-						]
+					$map: {
+						input: { $filter: { input: '$allSegments', as: 'seg', cond: { $eq: ['$$seg.isDeprecate', true] } } },
+						as: 'item',
+						in: {
+							id: '$$item.segmentData._id',
+							volType: '$$item.segmentData.volType',
+							pRaidUUID: '$$item.segmentData.pRaidUUID'
+						}
 					}
 				}
 			}
