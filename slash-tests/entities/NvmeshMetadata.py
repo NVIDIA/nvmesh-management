@@ -4,6 +4,7 @@ from utils.decorators import requires_management
 
 class NvmeshMetadata(BaseEntity):
 	endpoint = 'nvmeshMetadata'
+	CANT_FIND_IDENTITY_SYSTEM_MESSAGE_ID = -1	# Not implemented
 
 	@classmethod
 	def generate(cls, id):

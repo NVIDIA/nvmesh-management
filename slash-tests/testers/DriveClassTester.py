@@ -17,7 +17,7 @@ class DriveClassTester(BaseTester):
 		id = f"{self.entity_id_prefix}2"
 		description = 'You take the red pill... you stay in Wonderland, and I show you how deep the rabbit hole goes'
 		drives = DriveClass.get_n_drive_class_entries(5)
-		domains = [{ 'scope': 'pill', 'identifier': color } for color in ['red', 'bad_blue']] 
+		domains = [{ 'scope': 'pill', 'identifier': color } for color in ['red', 'bad_blue']]
 		drive_class = DriveClass(_id=id, description=description, disks=drives, domains=domains)
 		self.save_single_entity_with_validations(entity=drive_class)
 

@@ -3,6 +3,7 @@ from entities.Target import Target
 
 class TargetClass(BaseEntity):
 	endpoint = 'serverClasses'
+	CANT_FIND_IDENTITY_SYSTEM_MESSAGE_ID = 327
 
 	@classmethod
 	def generate(cls, id):

@@ -7,14 +7,16 @@ from xlro.infra.fixtures import *
 from entities.BaseEntity import BaseEntity, BaseEntityError
 from utils.validations import ValidationError, validate_attributes, validate_response_uuid
 from utils.decorators import requires_class_attributes
-from consts import SYSTEM_MESSAGES_ID
 
 
 @requires_class_attributes('entity_id_prefix', entity_class=BaseEntity)
 class BaseTester(slash.core.test.Test):
 	_is_setup_called = False
-	entity_class = BaseEntity		# Each subclass must define this
-	entity_id_prefix = ''			# Each subclass must define this
+
+	# Each subclass must define these
+	entity_class = BaseEntity
+	entity_id_prefix = ''
+
 	many_entities_test_count = 10
 	many_entities_test_delete_count = 5
 
@@ -22,7 +24,7 @@ class BaseTester(slash.core.test.Test):
 		'''Setup that should run before any tests in a tester'''
 		BaseEntity.set_management_client(manager)
 		slash.context.existing_common_tests_identifiers = {}
-		
+
 	def before(self):
 		'''Overwrite of slash before method - should run before every test in the tester'''
 		if not self.__class__._is_setup_called:
@@ -77,7 +79,7 @@ class BaseTester(slash.core.test.Test):
 		'''
 		ids = [] if ids is None else ids
 		entities = [] if entities is None else entities
-  
+
 		entities = [cls.entity_class.generate(id) for id in ids] if ids else entities
 		responses = cls.entity_class.save_many(entities)
 		return entities, responses
@@ -127,13 +129,13 @@ class BaseTester(slash.core.test.Test):
 		ids = [] if ids is None else ids
 		entities = [] if entities is None else entities
 		to_update = {} if to_update is None else to_update
-  
+
 		entities = [cls.entity_class.fetch_entity(id) for id in ids] if ids else entities
 
 		for entity in entities:
 			for k, v in to_update.items():
 				setattr(entity, k, v)
-	
+
 		responses = cls.entity_class.update_many(entities)
 		return entities, responses
 
@@ -163,7 +165,7 @@ class BaseTester(slash.core.test.Test):
 
 		except BaseEntityError as e:
 			# Allow the "CANT_FIND_ENTITY" system message to be ignored
-			if len(e.args) != 2 or e.args[1].get('error', {}).get('id') != SYSTEM_MESSAGES_ID.CANT_FIND_IDENTITY:
+			if len(e.args) != 2 or e.args[1].get('error', {}).get('id') != cls.entity_class.CANT_FIND_IDENTITY_SYSTEM_MESSAGE_ID:
 				raise e
 
 	@classmethod

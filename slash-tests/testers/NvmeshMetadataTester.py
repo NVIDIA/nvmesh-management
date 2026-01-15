@@ -8,6 +8,7 @@ from utils.validations import ValidationError
 class NvmeshMetadataTester(BaseTester):
 	entity_class = NvmeshMetadata
 	entity_id_prefix = 'nvmesh_metadata_'
+	CANT_FIND_IDENTITY_SYSTEM_MESSAGE_ID = -1	# Not implemented
 
 	@not_implemented
 	def test_001_save_single_generated_entity_with_validations(self, manager, simulator):

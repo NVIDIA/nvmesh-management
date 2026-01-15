@@ -3,6 +3,7 @@ from entities.BaseEntity import BaseEntity, BaseEntityError
 
 class Drive(BaseEntity):
 	endpoint = 'disks'
+	CANT_FIND_IDENTITY_SYSTEM_MESSAGE_ID = 16271
 
 	@classmethod
 	def generate(cls, id):

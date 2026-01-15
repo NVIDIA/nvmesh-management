@@ -23,6 +23,3 @@ class DISK_STATUS:
 	FROZEN			= 'Frozen'
 	INITIALIZING	= 'Initializing'
 	FORMATTING		= 'Formatting'
-
-class SYSTEM_MESSAGES_ID:
-	CANT_FIND_IDENTITY	= 16271

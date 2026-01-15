@@ -4,6 +4,7 @@ from consts import DISK_STATUS
 
 class DriveClass(BaseEntity):
 	endpoint = 'diskClasses'
+	CANT_FIND_IDENTITY_SYSTEM_MESSAGE_ID = 162521
 
 	@classmethod
 	def generate(cls, id):

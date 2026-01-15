@@ -9,10 +9,14 @@ class BaseEntityError(Exception):
 	'''Custom exception for BaseEntity operations.'''
 	pass
 
-@requires_class_attributes('endpoint')
+@requires_class_attributes('endpoint', 'CANT_FIND_IDENTITY_SYSTEM_MESSAGE_ID')
 class BaseEntity(ABC):
-	endpoint = None		# Each subclass must define this
 	management = None	# Placeholder for management client
+
+	# Each subclass must define these
+	endpoint = None
+	CANT_FIND_IDENTITY_SYSTEM_MESSAGE_ID = None
+
 
 	@staticmethod
 	def get_defaults():

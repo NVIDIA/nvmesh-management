@@ -3,6 +3,7 @@ from consts import REST_OP
 
 class Target(BaseEntity):
 	endpoint = 'servers'
+	CANT_FIND_IDENTITY_SYSTEM_MESSAGE_ID = 15545
 
 	@classmethod
 	def generate(cls, id):
