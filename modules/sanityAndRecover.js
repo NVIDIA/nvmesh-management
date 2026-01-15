@@ -2475,14 +2475,11 @@ scope.addAvailableSpaceZoneRankingCriteriaToDB = (cb) => {
 	);
 };
 
-// Look for volume segments that were not updated after disk eviction and fix it
-scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
-	const db = app.get('db');
-	const serverCollection = db.collection('server');
+const getCheckForNotUpdatedVolumesAfterEvictPipeline = (zone) => {
 	const validDiskSegmentStatusesAfterEvict = [consts.diskSegmentStatuses.REMAP, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD];
 
 	const pipeline = [
-		{ $match: { 'disks.isOutOfService': true } },
+		{ $match: { 'disks.isOutOfService': true, ...(zone ? { zone } : {}) } },
 		// keep only isOutOfService disks to avoid unnecessary unwinds
 		{ $project: { disks: { $filter: { input: '$disks', as: 'disk', cond: { $eq: ['$$disk.isOutOfService', true] } } } } },
 		{ $unwind: '$disks' },
@@ -2589,7 +2586,7 @@ scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
 				_id: 1,
 				serverDisk: 1,
 				zone: 1,
-		 		// keep segmentIDs with invalid status to match format of diskModule.updateVolumesAfterEvict
+				// keep segmentIDs with invalid status to match format of diskModule.updateVolumesAfterEvict
 				withInvalidStatuses: {
 					$map: {
 						input: { $filter: { input: '$allSegments', as: 'seg', cond: { $eq: ['$$seg.isInvalid', true] } } },
@@ -2627,6 +2624,15 @@ scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
 		{ $project: { _id: 0, zone: '$_id', disks: 1 } }
 	];
 
+	return pipeline;
+};
+
+// Look for volume segments that were not updated after disk eviction and fix it
+scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+	const pipeline = getCheckForNotUpdatedVolumesAfterEvictPipeline();
+
 	serverCollection.aggregate(pipeline).toArray((err, disksByZones) => {
 		if (err)
 			return callback(new MongoError(err).log());
@@ -2639,43 +2645,58 @@ scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
 			async.series([
 				cb => lockModule.acquireLockByZone(zone, cb),
 				cb => {
-					async.eachSeries(disks, (disk, nextDisk) => {
-						const { _id, serverDisk, volumeDiskSegments } = disk;
-						const { withInvalidStatuses, toDeprecate } = volumeDiskSegments;
+					const perZonePipeline = getCheckForNotUpdatedVolumesAfterEvictPipeline(zone);
 
-						logger.sysDEBUG(`Disk ${_id} in zone ${zone} has ${withInvalidStatuses.length} segments `
-							+ `with invalid statuses and ${toDeprecate.length} segments to deprecate`);
+					// concluding what to update only when lock acquired to avoid race conditions
+					serverCollection.aggregate(perZonePipeline).toArray((err, disksByZone) => {
+						if (err)
+							return cb(new MongoError(err).log());
 
-						async.series([
-							(cb) => {
-								if (!withInvalidStatuses || !withInvalidStatuses.length)
-									return cb();
+						if (!disksByZone.length)
+							return cb();
 
-								withInvalidStatuses.reduce(
-									(acc, segmentUUID) => acc.addInfo(Entities.DiskSegment.UUID, segmentUUID),
-									new SystemAdminMessage(systemMessages.SANITY_SEGMENTS_WITH_INVALID_STATUS_FOUND)
-										.addInfo(Entities.Drive.ID, _id)
-										.addInfo(Entities.Target.zone, zone)).log();
+						const { disks } = disksByZone[0];
 
-								diskModule.updateVolumesAfterEvict(serverDisk, withInvalidStatuses, new Set([zone]), () => cb());
-							},
-							(cb) => {
-								if (!toDeprecate || !toDeprecate.length)
-									return cb();
+						logger.sysDEBUG(`Handling ${disks.length} evicted disks with volume in zone ${zone} that need to be updated`);
 
-								toDeprecate.reduce(
-									(acc, segment) => acc
-										.addInfo(Entities.DiskSegment.UUID, segment.id)
-										.addInfo(Entities.Volume.type, segment.volType)
-										.addInfo(Entities.PRaid.UUID, segment.pRaidUUID),
-									new SystemAdminMessage(systemMessages.SANITY_SEGMENTS_TO_DEPRECATE_FOUND)
-										.addInfo(Entities.Drive.ID, _id)
-										.addInfo(Entities.Target.zone, zone)).log();
+						async.eachSeries(disks, (disk, nextDisk) => {
+							const { _id, serverDisk, volumeDiskSegments } = disk;
+							const { withInvalidStatuses, toDeprecate } = volumeDiskSegments;
 
-								volumeModule.deprecateSegments(toDeprecate, zone, consts.SYSTEM_USER, cb);
-							},
-						], nextDisk);
-					}, cb);
+							logger.sysDEBUG(`Disk ${_id} in zone ${zone} has ${withInvalidStatuses.length} segments `
+								+ `with invalid statuses and ${toDeprecate.length} segments to deprecate`);
+
+							async.series([
+								(cb) => {
+									if (!withInvalidStatuses || !withInvalidStatuses.length)
+										return cb();
+
+									withInvalidStatuses.reduce(
+										(acc, segmentUUID) => acc.addInfo(Entities.DiskSegment.UUID, segmentUUID),
+										new SystemAdminMessage(systemMessages.SANITY_SEGMENTS_WITH_INVALID_STATUS_FOUND)
+											.addInfo(Entities.Drive.ID, _id)
+											.addInfo(Entities.Target.zone, zone)).log();
+
+									diskModule.updateVolumesAfterEvict(serverDisk, withInvalidStatuses, new Set([zone]), () => cb());
+								},
+								(cb) => {
+									if (!toDeprecate || !toDeprecate.length)
+										return cb();
+
+									toDeprecate.reduce(
+										(acc, segment) => acc
+											.addInfo(Entities.DiskSegment.UUID, segment.id)
+											.addInfo(Entities.Volume.type, segment.volType)
+											.addInfo(Entities.PRaid.UUID, segment.pRaidUUID),
+										new SystemAdminMessage(systemMessages.SANITY_SEGMENTS_TO_DEPRECATE_FOUND)
+											.addInfo(Entities.Drive.ID, _id)
+											.addInfo(Entities.Target.zone, zone)).log();
+
+									volumeModule.deprecateSegments(toDeprecate, zone, consts.SYSTEM_USER, cb);
+								},
+							], nextDisk);
+						}, cb);
+					});
 				}
 			], err => lockModule.releaseLockByZone(zone, () => nextDisksByZone(err)));
 		}, callback);
