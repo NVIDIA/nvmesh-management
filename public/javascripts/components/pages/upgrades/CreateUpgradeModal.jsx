@@ -13,84 +13,18 @@ import RadioInputGroup from '../../core/RadioInputGroup.jsx';
 import UpgradeRedundancyLevelsSelect from './UpgradeRedundancyLevelsSelect.jsx';
 import FormControl from '../../core/FormControl.jsx';
 import Select from '../../core/Select.jsx';
-import { compareV, getBaseVersion, groupBy } from '../../utils.js';
+import { getBaseVersion, groupBy } from '../../utils.js';
 import { ReleasesService } from '../../services/api/release.service.js';
 import Input from '../../core/Input.jsx';
+import { NDUService } from '../../services/ndu.service.js';
 
 const { useForm, Controller } = ReactHookForm;
 const { useRef, useState, useEffect, useMemo } = React;
-
-const getUpgradeAgentSourceVersions = (upgradeAgent) => {
-	const clientVersion = upgradeAgent.upgradeAgentData.nvmeshVersions[consts.components.CLIENT];
-	const managementVersion = upgradeAgent.upgradeAgentData.nvmeshVersions[consts.components.MANAGEMENT];
-
-	const sourceVersions = [{ name: consts.components.CLIENT, version: clientVersion }];
-
-	if (managementVersion) {
-		sourceVersions.push({ name: consts.components.MANAGEMENT, version: managementVersion });
-	}
-	return sourceVersions;
-};
-
-const getUpgradeAgentsSourceVersions = (upgradeAgents) => {
-	// collect all source versions from all upgrade agents, distinct by name and version
-	const versions = {};
-	upgradeAgents.forEach(upgradeAgent => {
-		getUpgradeAgentSourceVersions(upgradeAgent).forEach(sourceVersion => versions[`${sourceVersion.name}-${sourceVersion.version}`] = sourceVersion);
-	});
-	return Object.values(versions);
-};
-
-const parseArtifactName = (artifactName) => {
-	// Supports:
-	//   nvmesh-base_3.3.0-3000.ubuntu2404.0.0_amd64.deb
-	//   nvmesh-client-3.3.0-3000.el8_10.0.0.x86_64.rpm
-	const match = artifactName.match(/^([^-_]+(?:-[^-_]+)*?)[_-](\d+\.\d+\.\d+)-(\d+)\./);
-	if (!match) return null;
-	return {
-		packageName: match[1],
-		baseVersion: match[2],
-		releaseNumber: match[3]
-	};
-};
-
-const isReleaseMatchMachineDestVersion = (release, machineDestVersions) => {
-	return machineDestVersions.every(machineDestVersion => {
-		const match = machineDestVersion.version.match(/^(\d+\.\d+\.\d+)-(\d+)/);
-		if (!match) return false;
-		const baseVersion = match[1];
-		const releaseNumber = match[2];
-		return release.artifacts.some(artifact => {
-			// check the release version is not lower than the machine dest version
-			const parsedArtifact = parseArtifactName(artifact.name);
-
-			return parsedArtifact
-				&& parsedArtifact.packageName === machineDestVersion.name
-				&& parsedArtifact.baseVersion === baseVersion
-				&& parseInt(parsedArtifact.releaseNumber, 10) >= parseInt(releaseNumber, 10);
-		});
-	});
-};
 
 const getReleaseByVersion = async(version) => {
 	const response = await ReleasesService.loadReleases({ version }, {}, 0, 1);
 	if (!response.length) return null;
 	return response[0];
-};
-
-const extractBaseVersions = (versionsByBaseVersion) => {
-	const baseVersions = Object.keys(versionsByBaseVersion);
-
-	if (baseVersions.length === 1) return { sourceBaseVersion: baseVersions[0], targetBaseVersion: null };
-	if (baseVersions.length > 2) return { sourceBaseVersion: null, targetBaseVersion: null };
-
-	let source = baseVersions[0];
-	let target = baseVersions[1];
-
-	if (compareV(source, target) > 0) {
-		[source, target] = [target, source];
-	}
-	return { sourceBaseVersion: source, targetBaseVersion: target };
 };
 
 const isSourceVersionValid = async(machineDestVersions, destinationVersion) => {
@@ -100,7 +34,7 @@ const isSourceVersionValid = async(machineDestVersions, destinationVersion) => {
 	if (!release) return false;
 
 	// check every target version is matched the release
-	return isReleaseMatchMachineDestVersion(release, machineDestVersions);
+	return NDUService.isReleaseMatchMachineDestVersion(release, machineDestVersions);
 };
 
 const CreateUpgrade = ({
@@ -118,11 +52,12 @@ const CreateUpgrade = ({
 	const destinationVersion = watch('destinationVersion');
 
 	const versionsByBaseVersion = useMemo(() => {
-		const sourceVersions = getUpgradeAgentsSourceVersions(selectedUpgradeAgents);
+		const sourceVersions = NDUService.getUpgradeAgentsSourceVersions(selectedUpgradeAgents);
 		return groupBy(sourceVersions, sourceVersion => getBaseVersion(sourceVersion.version));
 	}, [selectedUpgradeAgents]);
 
-	const { sourceBaseVersion, targetBaseVersion } = useMemo(() => extractBaseVersions(versionsByBaseVersion), [versionsByBaseVersion]);
+	const { sourceBaseVersion, targetBaseVersion } = useMemo(() =>
+		NDUService.extractSourceAndTargetBaseVersions(versionsByBaseVersion), [versionsByBaseVersion]);
 
 	useEffect(() => {
 		if (!sourceBaseVersion) {
@@ -143,6 +78,7 @@ const CreateUpgrade = ({
 			setIsDestVersionValid(true);
 			return;
 		}
+
 		// if we have target version, check if upgradeable
 		async function checkIfDestVersionIsValid() {
 			const isValid = await isSourceVersionValid(versionsByBaseVersion[targetBaseVersion], destinationVersion);
@@ -243,13 +179,13 @@ const CreateUpgrade = ({
 
 				<FormControl label="Skip machine on failure" name="skipMachinesOnFailure">
 					<Toggle isChecked={skipMachinesOnFailure}
-						onChange={value => setSkipMachinesOnFailure(value)}/>
+					        onChange={value => setSkipMachinesOnFailure(value)}/>
 				</FormControl>
 
 				{skipMachinesOnFailure && (
 					<FormControl label="Max Error Threshold" name="maxErrorsThreshold"
-						 topHint="The amount of machines to skip before stopping the upgrade"
-						 errorMessage={formState.errors?.maxErrorsThreshold?.message}>
+					             topHint="The amount of machines to skip before stopping the upgrade"
+					             errorMessage={formState.errors?.maxErrorsThreshold?.message}>
 						<Controller
 							control={control}
 							name="maxErrorsThreshold"
@@ -273,8 +209,8 @@ const CreateUpgrade = ({
 				)}
 
 				<FormControl label="Max concurrent clients" name="maxConcurrentClients"
-					topHint="The amount of clients that can be upgraded concurrently"
-					errorMessage={formState.errors?.maxConcurrentClients?.message}>
+				             topHint="The amount of clients that can be upgraded concurrently"
+				             errorMessage={formState.errors?.maxConcurrentClients?.message}>
 					<Controller
 						control={control}
 						name="maxConcurrentClients"
@@ -297,6 +233,7 @@ const CreateUpgrade = ({
 
 				<UpgradeAgentsFiltSort
 					ref={tableRef}
+					queryParamsEnabled={false}
 					tableId="editUpgradeModal"
 					rowIdentifier="hostname"
 					onSelectedRowsChange={setSelectedUpgradeAgents}
@@ -305,8 +242,8 @@ const CreateUpgrade = ({
 			</div>
 			<div className="modal-footer">
 				<button className="btn btn-primary mgmt-btn-primary"
-					onClick={handleSubmit(onFormSubmit)}
-					disabled={!formState.isValid || !selectedUpgradeAgents.length || !isDestVersionValid}>
+				        onClick={handleSubmit(onFormSubmit)}
+				        disabled={!formState.isValid || !selectedUpgradeAgents.length || !isDestVersionValid}>
 					Add
 				</button>
 				<button className="btn btn-default" onClick={() => handleCancel()}>Cancel</button>

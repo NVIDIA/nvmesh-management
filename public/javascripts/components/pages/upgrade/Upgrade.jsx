@@ -12,11 +12,12 @@ import FiltSortTable from '../../filtsort-table/FiltSortTable.jsx';
 import UpgradeStatus from './UpgradeStatus.jsx';
 import UpgradeStepModal from './UpgradeStepModal.jsx';
 import UpgradeStepStatus, { statusToLabelMap } from './UpgradeStepStatus.jsx';
-import { extractErrorMsg } from '../../utils.js';
+import { extractErrorMsg, getBaseVersion, groupBy } from '../../utils.js';
 import { useAlerts } from '../../core/Alert.jsx';
 import ExpandableList from '../../core/ExpandableList.jsx';
+import { NDUService } from '../../services/ndu.service.js';
 
-const { useEffect, useState, useRef } = React;
+const { useEffect, useState, useRef, useMemo } = React;
 
 const Upgrade = () => {
 	const tableRef = useRef(null);
@@ -25,9 +26,15 @@ const Upgrade = () => {
 	const [upgrade, setUpgrade] = useState(null);
 	const [isUpgradeStepModalOpen, setIsUpgradeStepModalOpen] = useState(false);
 	const [upgradeStep, setUpgradeStep] = useState(null);
-	// todo: this needs to be changed to support upgrading machines with different source version
-	const sourceVersion = upgrade?.machinesToUpgrade[0]?.upgradeAgentData?.nvmeshVersions[consts.components.CLIENT].split('-')[0];
 	const upgradeId = window.location.pathname.match(/upgrades\/upgrade\/([^/]+)/)[1];
+
+	const { sourceBaseVersion } = useMemo(() => {
+		if (!upgrade?.machinesToUpgrade) return { sourceBaseVersion: null };
+		
+		const sourceVersions = NDUService.getUpgradeAgentsSourceVersions(upgrade?.machinesToUpgrade);
+		const versionsByBaseVersion = groupBy(sourceVersions, sourceVersion => getBaseVersion(sourceVersion.version));
+		return NDUService.extractSourceAndTargetBaseVersions(versionsByBaseVersion);
+	}, [upgrade?.machinesToUpgrade]);
 
 	useEffect(() => {
 		const fetchUpgrade = async() => {
@@ -237,7 +244,7 @@ const Upgrade = () => {
 				onToggleBreakpoint={handleToggleBreakpoint}
 			/>
 
-			<h1>Upgrade <span className="text-muted">{sourceVersion} &rarr; {upgrade.destinationVersion}</span></h1>
+			<h1>Upgrade <span className="text-muted">{sourceBaseVersion} &rarr; {upgrade.destinationVersion}</span></h1>
 
 			<div className="action-container" style={{ 'marginBottom': '10px' }}>
 				<button
