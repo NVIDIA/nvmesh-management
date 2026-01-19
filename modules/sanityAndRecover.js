@@ -194,7 +194,7 @@ scope.run = cb => {
 		cleanupUnusedTopics,
 		dbUpgradeModule.upgradeDBIfNeeded,
 		scope.addAvailableSpaceZoneRankingCriteriaToDB,
-		scope.checkForNotUpdatedVolumesAfterEvict
+		scope.verifySegmentStatusAfterEvict
 	], err => {
 		if (err)
 			logger.sysDEBUG(`Sanity and Recover encountered an error: ${err}`);
@@ -2475,19 +2475,24 @@ scope.addAvailableSpaceZoneRankingCriteriaToDB = (cb) => {
 	);
 };
 
-const getCheckForNotUpdatedVolumesAfterEvictPipeline = (zone) => {
+const getVerifySegmentStatusAfterEvictByZonePipeline = (zone) => {
 	const validDiskSegmentStatusesAfterEvict = [consts.diskSegmentStatuses.REMAP, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD];
+	const redundantRaidLevels = [
+		consts.RAIDLevel.MIRRORED_RAID_1,
+		consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10,
+		consts.RAIDLevel.ERASURE_CODING,
+		consts.RAIDLevel.STRIPED_ERASURE_CODING
+	];
 
 	const pipeline = [
-		{ $match: { 'disks.isOutOfService': true, ...(zone ? { zone } : {}) } },
+		{ $match: { zone, 'disks.isOutOfService': true } },
 		// keep only isOutOfService disks to avoid unnecessary unwinds
 		{ $project: { disks: { $filter: { input: '$disks', as: 'disk', cond: { $eq: ['$$disk.isOutOfService', true] } } } } },
 		{ $unwind: '$disks' },
-		{ $addFields: { serverDisk: '$disks' } },
 		// keep only data segments to avoid unnecessary unwinds and map only relevant fields from segment
 		{
 			$project: {
-				serverDisk: 1,
+				diskID: '$disks.diskID',
 				disks: {
 					diskSegments: {
 						$map: {
@@ -2500,7 +2505,7 @@ const getCheckForNotUpdatedVolumesAfterEvictPipeline = (zone) => {
 			}
 		},
 		// remove disks with no relevant segments
-		{ $match: { 'disks.diskSegments.0': { $exists: true } } },
+		{ $match: { $expr: { $gt: [{ $size: '$disks.diskSegments' }, 0] } } },
 		{
 			$lookup: {
 				from: 'volume',
@@ -2534,7 +2539,8 @@ const getCheckForNotUpdatedVolumesAfterEvictPipeline = (zone) => {
 								}
 							},
 							action: 1,
-							type: 1
+							type: 1,
+							RAIDLevel: 1
 						}
 					},
 					// keep only segments that requires update and project relevant fields
@@ -2547,13 +2553,33 @@ const getCheckForNotUpdatedVolumesAfterEvictPipeline = (zone) => {
 											input: '$relevantSegments',
 											as: 'seg',
 											in: {
-												segmentData: {
-													_id: '$$seg._id',
-													pRaidUUID: '$$seg.pRaidUUID',
-													volType: '$type'
-												},
-												isInvalid: { $not: { $in: ['$$seg.status', validDiskSegmentStatusesAfterEvict] } },
-												isDeprecate: { $eq: ['$action', consts.volumeActions.MARKED_FOR_DELETION] }
+												$let: {
+													vars: { isDeprecate: { $eq: ['$action', consts.volumeActions.MARKED_FOR_DELETION] } },
+													in: {
+														$let: {
+															vars: {
+																isInvalid: {
+																	$and: [
+																		{ $not: '$$isDeprecate' },
+																		{ $not: { $in: ['$$seg.status', validDiskSegmentStatusesAfterEvict] } },
+																		{ $in: ['$RAIDLevel', redundantRaidLevels] }
+																	]
+																}
+															},
+															in: {
+																isInvalid: '$$isInvalid',
+																isDeprecate: '$$isDeprecate',
+																segmentData: {
+																	$cond: {
+																		if: '$$isDeprecate',
+																		then: { _id: '$$seg._id', pRaidUUID: '$$seg.pRaidUUID', volType: '$type' },
+																		else: { $cond: { if: '$$isInvalid', then: '$$seg', else: null } }
+																	}
+																}
+															}
+														}
+													}
+												}
 											}
 										}
 									},
@@ -2565,105 +2591,87 @@ const getCheckForNotUpdatedVolumesAfterEvictPipeline = (zone) => {
 						}
 					},
 					// remove volumes with no segments to update
-					{ $match: { 'processedSegments.0': { $exists: true } } }
+					{ $match: { $expr: { $gt: [{ $size: '$processedSegments' }, 0] } } }
 				],
 				as: 'volumeLookupResult'
 			}
 		},
 		// remove disks where no updates are needed
-		{ $match: { 'volumeLookupResult.0': { $exists: true } } },
+		{ $match: { $expr: { $gt: [{ $size: '$volumeLookupResult' }, 0] } } },
 		{
 			$project: {
-				_id: '$serverDisk.diskID',
-				serverDisk: '$serverDisk',
-				zone: { $arrayElemAt: ['$disks.diskSegments.zone', 0] },
-				// flatten the results from all volumes
-				allSegments: { $reduce: { input: '$volumeLookupResult', initialValue: [], in: { $concatArrays: ['$$value', '$$this.processedSegments'] } } }
-			}
-		},
-		{
-			$project: {
-				_id: 1,
-				serverDisk: 1,
-				zone: 1,
-				// keep segmentIDs with invalid status to match format of diskModule.updateVolumesAfterEvict
-				withInvalidStatuses: {
-					$map: {
-						input: { $filter: { input: '$allSegments', as: 'seg', cond: { $eq: ['$$seg.isInvalid', true] } } },
-						as: 'item',
-						in: '$$item.segmentData._id'
-					}
-				},
-				// keep segment data to deprecate to match format of volumeModule.deprecateSegments
-				toDeprecate: {
-					$map: {
-						input: { $filter: { input: '$allSegments', as: 'seg', cond: { $eq: ['$$seg.isDeprecate', true] } } },
-						as: 'item',
+				diskID: 1,
+				volumeDiskSegments: {
+					$let: {
+						vars: {
+							allSegments: {
+								$reduce: {
+									input: '$volumeLookupResult',
+									initialValue: [],
+									in: { $concatArrays: ['$$value', '$$this.processedSegments'] }
+								}
+							}
+						},
 						in: {
-							id: '$$item.segmentData._id',
-							volType: '$$item.segmentData.volType',
-							pRaidUUID: '$$item.segmentData.pRaidUUID'
+							// keep full segment data with invalid status to match format of diskModule.updateVolumesAfterEvict
+							withInvalidStatuses: {
+								$map: {
+									input: { $filter: { input: '$$allSegments', as: 'seg', cond: { $eq: ['$$seg.isInvalid', true] } } },
+									as: 'item',
+									in: '$$item.segmentData'
+								}
+							},
+							// keep and adapt segment data to deprecate to match format of volumeModule.deprecateSegments
+							toDeprecate: {
+								$map: {
+									input: { $filter: { input: '$$allSegments', as: 'seg', cond: { $eq: ['$$seg.isDeprecate', true] } } },
+									as: 'item',
+									in: {
+										id: '$$item.segmentData._id',
+										volType: '$$item.segmentData.volType',
+										pRaidUUID: '$$item.segmentData.pRaidUUID'
+									}
+								}
+							}
 						}
 					}
 				}
 			}
-		},
-		// group by zone
-		{
-			$group: {
-				_id: '$zone',
-				disks: {
-					$push: {
-						_id: '$_id',
-						serverDisk: '$serverDisk',
-						volumeDiskSegments: { withInvalidStatuses: '$withInvalidStatuses', toDeprecate: '$toDeprecate' }
-					}
-				}
-			}
-		},
-		{ $project: { _id: 0, zone: '$_id', disks: 1 } }
+		}
 	];
 
 	return pipeline;
 };
 
 // Look for volume segments that were not updated after disk eviction and fix it
-scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
-	const db = app.get('db');
-	const serverCollection = db.collection('server');
-	const pipeline = getCheckForNotUpdatedVolumesAfterEvictPipeline();
-
-	serverCollection.aggregate(pipeline).toArray((err, disksByZones) => {
+scope.verifySegmentStatusAfterEvict = (callback) => {
+	zoneModule.getZones([], (err, zones) => {
 		if (err)
-			return callback(new MongoError(err).log());
+			return callback(err);
 
-		async.eachSeries(disksByZones, (disksByZone, nextDisksByZone) => {
-			const { zone, disks } = disksByZone;
+		const db = app.get('db');
+		const serverCollection = db.collection('server');
 
-			logger.sysDEBUG(`Found ${disks.length} evicted disks with volume in zone ${zone} that need to be updated`);
-
+		async.eachSeries(zones.map(zone => zone._id), (zone, nextZone) => {
 			async.series([
 				cb => lockModule.acquireLockByZone(zone, cb),
 				cb => {
-					const perZonePipeline = getCheckForNotUpdatedVolumesAfterEvictPipeline(zone);
+					const pipeline = getVerifySegmentStatusAfterEvictByZonePipeline(zone);
 
-					// concluding what to update only when lock acquired to avoid race conditions
-					serverCollection.aggregate(perZonePipeline).toArray((err, disksByZone) => {
+					serverCollection.aggregate(pipeline).toArray((err, disks) => {
 						if (err)
 							return cb(new MongoError(err).log());
 
-						if (!disksByZone.length)
+						if (!disks.length)
 							return cb();
-
-						const { disks } = disksByZone[0];
 
 						logger.sysDEBUG(`Handling ${disks.length} evicted disks with volume in zone ${zone} that need to be updated`);
 
 						async.eachSeries(disks, (disk, nextDisk) => {
-							const { _id, serverDisk, volumeDiskSegments } = disk;
+							const { diskID, volumeDiskSegments } = disk;
 							const { withInvalidStatuses, toDeprecate } = volumeDiskSegments;
 
-							logger.sysDEBUG(`Disk ${_id} in zone ${zone} has ${withInvalidStatuses.length} segments `
+							logger.sysDEBUG(`Disk ${diskID} in zone ${zone} has ${withInvalidStatuses.length} segments `
 								+ `with invalid statuses and ${toDeprecate.length} segments to deprecate`);
 
 							async.series([
@@ -2671,13 +2679,20 @@ scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
 									if (!withInvalidStatuses || !withInvalidStatuses.length)
 										return cb();
 
-									withInvalidStatuses.reduce(
-										(acc, segmentUUID) => acc.addInfo(Entities.DiskSegment.UUID, segmentUUID),
+									const invalidStatusSegmentIDs = withInvalidStatuses.map(segment => segment._id);
+
+									invalidStatusSegmentIDs.reduce(
+										(acc, segmentID) => acc.addInfo(Entities.DiskSegment.UUID, segmentID),
 										new SystemAdminMessage(systemMessages.SANITY_SEGMENTS_WITH_INVALID_STATUS_FOUND)
-											.addInfo(Entities.Drive.ID, _id)
+											.addInfo(Entities.Drive.ID, diskID)
 											.addInfo(Entities.Target.zone, zone)).log();
 
-									diskModule.updateVolumesAfterEvict(serverDisk, withInvalidStatuses, new Set([zone]), () => cb());
+									diskModule.updateVolumesAfterEvict(
+										{ diskSegments: withInvalidStatuses },
+										invalidStatusSegmentIDs,
+										new Set([zone]),
+										() => cb()
+									);
 								},
 								(cb) => {
 									if (!toDeprecate || !toDeprecate.length)
@@ -2689,7 +2704,7 @@ scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
 											.addInfo(Entities.Volume.type, segment.volType)
 											.addInfo(Entities.PRaid.UUID, segment.pRaidUUID),
 										new SystemAdminMessage(systemMessages.SANITY_SEGMENTS_TO_DEPRECATE_FOUND)
-											.addInfo(Entities.Drive.ID, _id)
+											.addInfo(Entities.Drive.ID, diskID)
 											.addInfo(Entities.Target.zone, zone)).log();
 
 									volumeModule.deprecateSegments(toDeprecate, zone, consts.SYSTEM_USER, cb);
@@ -2698,7 +2713,7 @@ scope.checkForNotUpdatedVolumesAfterEvict = (callback) => {
 						}, cb);
 					});
 				}
-			], err => lockModule.releaseLockByZone(zone, () => nextDisksByZone(err)));
+			], err => lockModule.releaseLockByZone(zone, () => nextZone(err)));
 		}, callback);
 	});
 };
