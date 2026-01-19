@@ -98,6 +98,7 @@ function getCommandFromStep(machine, destinationVersion, step, cb) {
 				interopDB: artifacts.filter(artifact => artifact.includes(consts.components.INTEROP_DB)),
 				target: artifacts.filter(artifact => artifact.includes(consts.components.TARGET)),
 				upgradeAgent: artifacts.filter(artifact => artifact.includes(consts.components.UPGRADE_AGENT)),
+				utils: artifacts.filter(artifact => artifact.includes(consts.components.UTILS)),
 				other: artifacts.filter(artifact =>
 					!artifact.includes(consts.components.MANAGEMENT) &&
 					!artifact.includes(consts.components.INTEROP_DB) &&
@@ -106,7 +107,7 @@ function getCommandFromStep(machine, destinationVersion, step, cb) {
 			};
 
 			const artifactsPerUpgradeType = {
-				[consts.upgradeTypes.MANAGEMENT]: [...artifactsByComponent.management, ...artifactsByComponent.interopDB],
+				[consts.upgradeTypes.MANAGEMENT]: [...artifactsByComponent.management, ...artifactsByComponent.interopDB, ...artifactsByComponent.utils],
 				[consts.upgradeTypes.UPGRADE_AGENT]: artifactsByComponent.upgradeAgent,
 				[consts.upgradeTypes.CLIENT_ONLY]: artifactsByComponent.other,
 				[consts.upgradeTypes.CLIENT_AND_TARGET]: [...artifactsByComponent.target, ...artifactsByComponent.other]
