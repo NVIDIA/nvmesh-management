@@ -936,7 +936,7 @@ scope.checkAndRemovePendingUpgrades = function(cb) {
 
 			upgradeModule.deleteUpgrades(upgrades, cb);
 		}
-	], cb);
+	], () => cb());
 };
 
 scope.checkAndResumeStuckUpgrades = function(cb) {
