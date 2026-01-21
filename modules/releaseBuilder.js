@@ -333,15 +333,13 @@ const createOrUpdateRelease = (releaseName, requestedArtifacts, callback) => {
 		const existingRelease = existingReleases[0];
 
 		function performReleaseAction(artifacts) {
+			// in case of update, the artifacts are replaced with the new ones
 			const release = { version: releaseName, artifacts };
 			const action = existingRelease ? updateReleases : createReleases;
 			const actionName = existingRelease ? 'update' : 'create';
 
-			if (existingRelease) {
+			if (existingRelease)
 				release.ID = existingRelease.ID;
-				// this will append the new artifacts to the existing release artifacts
-				release.artifacts = [...existingRelease.artifacts, ...artifacts];
-			}
 
 			logger.sysDEBUG(`Going to ${actionName} release ${releaseName} with artifacts:`, release.artifacts.map(a => a.name));
 
