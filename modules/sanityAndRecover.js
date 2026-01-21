@@ -932,16 +932,34 @@ function categorizeStaleEntities(entities, cb, getHandledBy = entity => entity.h
 
 scope.checkAndRemovePendingUpgrades = function(cb) {
 	async.waterfall([
-		(cb) => {
-			getStaleEntitiesQuery({ isPending: true }, 'handledBy', 'dateModified', cb);
+		function getPendingUpgrades(callback) {
+			utils.loadCollection('upgrade', { filter: { isPending: true } }, callback);
 		},
-		(query, cb) => {
-			utils.loadCollection('upgrade', { filter: query }, cb);
-		},
-		(upgrades, cb) => {
-			if (!upgrades.length) return cb();
+		function categorizeUpgrades(pendingUpgrades, callback) {
+			if (!pendingUpgrades.length)
+				return callback(null, [], []);
 
-			upgradeModule.deleteUpgrades(upgrades, cb);
+			categorizeStaleEntities(pendingUpgrades,
+				(upgradesToDeleteCreatedByThisMgmt, upgradesToDeleteCreatedByOtherMgmt) => {
+					callback(null, upgradesToDeleteCreatedByThisMgmt, upgradesToDeleteCreatedByOtherMgmt);
+				});
+		},
+		function deletePendingUpgrades(upgradesToDeleteCreatedByThisMgmt, upgradesToDeleteCreatedByOtherMgmt, callback) {
+			const defaultQuery = upgrade => ({ _id: upgrade._id, isPending: true });
+			const query = getDeleteStaleEntitiesQuery(defaultQuery, upgradesToDeleteCreatedByThisMgmt, upgradesToDeleteCreatedByOtherMgmt);
+
+			if (!query)
+				return callback();
+
+			utils.loadCollection('upgrade', { filter: query }, (err, upgrades) => {
+				if (err)
+					return callback(err);
+
+				if (!upgrades.length)
+					return callback();
+
+				upgradeModule.deleteUpgrades(upgrades, callback);
+			});
 		}
 	], cb);
 };
@@ -952,15 +970,41 @@ scope.checkAndResumeStuckUpgrades = function(cb) {
 	const upgradeCollection = db.collection('upgrade');
 
 	async.waterfall([
-		(cb) => {
-			getStaleEntitiesQuery({ runningUpgrade: { $exists: true } }, 'runningUpgrade.createdBy', 'runningUpgrade.dateModified', cb);
+		function getRunningUpgradeConfVersions(callback) {
+			confVersionCollection.find({ runningUpgrade: { $exists: true } }).toArray((err, confVersions) => {
+				if (err)
+					return callback(new MongoError(err).log());
+
+				callback(null, confVersions);
+			});
 		},
-		(query, cb) => {
+		function categorizeConfVersions(confVersions, callback) {
+			if (!confVersions.length)
+				return callback(null, [], []);
+
+			const getHandledBy = entity => entity.runningUpgrade.createdBy;
+			categorizeStaleEntities(confVersions,
+				(confVersionsCreatedByThisMgmt, confVersionsCreatedByOtherMgmt) => {
+					callback(null, confVersionsCreatedByThisMgmt, confVersionsCreatedByOtherMgmt);
+				},
+				getHandledBy);
+		},
+		function getStaleConfVersion(confVersionsCreatedByThisMgmt, confVersionsCreatedByOtherMgmt, callback) {
+			const defaultQuery = confVersion => ({ _id: confVersion._id, runningUpgrade: { $exists: true } });
+			const getHandledBy = entity => entity.runningUpgrade.createdBy;
+			const query = getDeleteStaleEntitiesQuery(
+				defaultQuery, confVersionsCreatedByThisMgmt, confVersionsCreatedByOtherMgmt,
+				'runningUpgrade.createdBy', getHandledBy
+			);
+
+			if (!query)
+				return callback(true);
+
 			confVersionCollection.findOne(query, (err, confVersion) => {
 				if (err)
-					err = new MongoError(err).log();
+					return callback(new MongoError(err).log());
 
-				cb(err, confVersion);
+				callback(null, confVersion);
 			});
 		},
 		(confVersionDoc, cb) => {
@@ -1023,15 +1067,15 @@ scope.checkAndRemovePendingVolumes = function(cb) {
 				});
 		},
 		function deletePendingVolumes(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt, callback) {
-			if (!volumesToDeleteCreatedByThisMgmt.length && !volumesToDeleteCreatedByOtherMgmt.length)
-				return callback();
-
 			const defaultQuery = volume => ({
 				uuid: volume.uuid,
 				status: consts.volumeStatuses.PENDING
 			});
 
 			const query = getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
+
+			if (!query)
+				return callback();
 
 			deleteVolumesByQuery(
 				query,
@@ -1043,41 +1087,22 @@ scope.checkAndRemovePendingVolumes = function(cb) {
 	], err => cb(err));
 };
 
-function getStaleEntitiesQuery(defaultQuery, handledByPath, dateModifiedPath, cb) {
-	const db = app.get('db');
-	const managementClusterCollection = db.collection('managementCluster');
+function getDeleteStaleEntitiesQuery(
+	defaultQuery,
+	entitiesToDeleteCreatedByThisMgmt,
+	entitiesToDeleteCreatedByOtherMgmt,
+	handledByPath = 'handledBy',
+	getHandledBy = entity => entity.handledBy) {
+	if (!entitiesToDeleteCreatedByThisMgmt.length && !entitiesToDeleteCreatedByOtherMgmt.length)
+		return null;
 
-	const handledBy = utils.getHandlingMgmtParams();
-
-	managementClusterCollection.find({}).toArray((err, managementCluster) => {
-		if (err)
-			return cb(new MongoError(err).log());
-
-		const managementsState = utils.getMgmtClusterState(managementCluster);
-
-		return cb(null, {
-			...defaultQuery,
-			$or: [
-				{
-					[dateModifiedPath]: getMongoTimeoutQuery().dateModified,
-					[`${handledByPath}.managementId`]: {
-						$in: Object.values(managementsState).filter(m => m.status === consts.managementStatuses.DOWN).map(m => m._id)
-					}
-				},
-				{
-					[`${handledByPath}.managementId`]: handledBy.managementId,
-					[`${handledByPath}.bootVersion`]: { $lt: handledBy.bootVersion }
-				}
-			]
-		});
-	});
-}
-
-function getDeleteStaleEntitiesQuery(defaultQuery, entitiesToDeleteCreatedByThisMgmt, entitiesToDeleteCreatedByOtherMgmt) {
-	const matchHandledBy = entity => ({
-		'handledBy.managementId': entity.handledBy.managementId,
-		'handledBy.bootVersion': entity.handledBy.bootVersion
-	});
+	const matchHandledBy = entity => {
+		const handledBy = getHandledBy(entity);
+		return {
+			[`${handledByPath}.managementId`]: handledBy.managementId,
+			[`${handledByPath}.bootVersion`]: handledBy.bootVersion
+		};
+	};
 
 	const queryForEntityCreatedByThisMgmt = entity => ({
 		...defaultQuery(entity),
@@ -1171,15 +1196,15 @@ scope.checkAndRemoveToBeExtendedVolumes = function(cb) {
 						});
 				},
 				function deleteExtentionVolumes(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt, callback) {
-					if (!volumesToDeleteCreatedByThisMgmt.length && !volumesToDeleteCreatedByOtherMgmt.length)
-						return callback();
-
 					const defaultQuery = volume => ({
 						uuid: volume.uuid,
 						isExtension: true
 					});
 
 					const query = getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
+
+					if (!query)
+						return callback();
 
 					deleteVolumesByQuery(query,
 						systemMessages.SANITY_AUTO_REMOVE_IS_EXTENSION_VOLUME_FAILED,
@@ -1859,16 +1884,18 @@ function getIncompleteSnapshots(initialMatchQuery, pipeline, cb) {
 				});
 		},
 		function getStaleIncompleteSnapshots(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt, callback) {
-			if (!volumesToDeleteCreatedByThisMgmt.length && !volumesToDeleteCreatedByOtherMgmt.length)
-				return callback();
-
 			const defaultQuery = volume => ({
 				uuid: volume.uuid,
 				...initialMatchQuery
 			});
 
+			const query = getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
+
+			if (!query)
+				return callback();
+
 			const staleSnapshotsMatch = {
-				$match: getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt)
+				$match: query
 			};
 			const staleSnapshotsPipeline = [staleSnapshotsMatch, ...incompleteSnapshotsPipeline.slice(1)];
 
