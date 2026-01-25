@@ -1,6 +1,9 @@
 #!/bin/bash
 
-# ================================= UNINSTALLING EXCELERO MANAGEMENT ==================================
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ================================= UNINSTALLING NVMESH MANAGEMENT ==================================
 
 TARGETDIR=/opt/nvmesh
 MDIR="$TARGETDIR/management"
@@ -73,7 +76,7 @@ stop_service() {
 
 #not upgrade
 if [ "$1" = "0" -o "$1" = "remove" ]; then
-	echo "Uninstalling Excelero NVMesh(r) management"
+	echo "Uninstalling NVMesh(r) management"
 
 	isSysD=false
 	if ! pidof systemd > /dev/null 2>&1; then

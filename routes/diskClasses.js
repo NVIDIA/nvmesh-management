@@ -1,11 +1,8 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 
 /* global app */
 
@@ -60,7 +57,7 @@ router.use(isAdminRole);
 * 		"model": "INTEL_SSDPE2ME400G4_____________________",
 * 		"disks": [{
 * 			"diskID": "CVMD439000DE400FGN.1",
-* 			"node_id": "nvme31.excelero.com'
+* 			"node_id": "nvme31.acme.com'
 *		}],
 	}],
 * 	"name": "highEndurance",
@@ -76,7 +73,7 @@ router.use(isAdminRole);
 * 		"model": "INTEL_SSDPEDME400G4_____________________",
 * 		"disks": [{
 * 			"diskID": "CVMD4381005Q400AGN.1",
-* 			"node_id": "nvme21.excelero.com"
+* 			"node_id": "nvme21.acme.com"
 *		}]
 * 	}],
 * 	"name": "writeIntensive",
@@ -148,11 +145,11 @@ router.get('/tags', (req, res) => {
 * [{
 * 	"disks": [{
 * 			"diskID": "CVCQ523400G9400AGN.1",
-* 			"node_id": "nvme50.excelero.com",
+* 			"node_id": "nvme50.acme.com",
 *			"model" : "SAMSUNG MZQKW480HMHQ-00003______________"
 *		}, {
 * 			"diskID": "CVCQ52430008400AGN.1",
-* 			"node_id": "nvme51.excelero.com",
+* 			"node_id": "nvme51.acme.com",
 *			"model" : "SAMSUNG MZQKW480HMHQ-00003______________"
 * 		}],
 * 	"_id": "highPerformance",
@@ -256,11 +253,11 @@ router.post('/delete', function(req, res) {
 * 	"description": "Super duper fast disks",
 * 	"disks": [{
 * 			"diskID": "CVCQ523400G9400AGN.1",
-* 			"node_id": "nvme50.excelero.com",
+* 			"node_id": "nvme50.acme.com",
 *			"model" : "SAMSUNG MZQKW480HMHQ-00003______________"
 *		}, {
 * 			"diskID": "CVCQ52430008400AGN.1",
-* 			"node_id": "nvme51.excelero.com",
+* 			"node_id": "nvme51.acme.com",
 *			"model" : "SAMSUNG MZQKW480HMHQ-00003______________"
 * 		}],
 * 	"domains": [{ "scope": "Rack", "identifier": "B" }]

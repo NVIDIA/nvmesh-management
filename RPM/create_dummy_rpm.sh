@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
 	echo "USAGE:"
 	echo "./create_dummy_rpm <version> <release>        (if not passed the version and release will be taken from 'git-describe')"
@@ -10,7 +13,7 @@ fi
 
 VERSION="$1"
 RELEASE="$2"
-EXCELERO_PREFIX="NVMesh-"
+NVMESH_PREFIX="NVMesh-"
 ARCH=`uname -m`
 kind="management"
 rpm_build_dir=`readlink -f ~/rpmbuild`
@@ -89,8 +92,8 @@ fi
 
 command -v rpmbuild >/dev/null 2>&1 || { echo nvmesh_management rpm creator require rpmbuild but it is not installed.  Aborting. >&2; exit 1; }
 
-rpm_source_path="$rpm_build_dir/SOURCES/$EXCELERO_PREFIX$kind"
-spec_file="$EXCELERO_PREFIX$kind-dummy.spec"
+rpm_source_path="$rpm_build_dir/SOURCES/$NVMESH_PREFIX$kind"
+spec_file="$NVMESH_PREFIX$kind-dummy.spec"
 
 mkdir -p $rpm_source_path/upgrade_scripts
 cp -r ../upgradeScripts $rpm_source_path/upgradeScripts
@@ -110,7 +113,7 @@ rpmbuild --define "branch $BRANCH_NAME" --define "commit_id $COMMIT_ID" --define
 
 
 echo Bringing the RPM...
-cp $rpm_build_dir/RPMS/${ARCH}/${EXCELERO_PREFIX}${kind}* .
+cp $rpm_build_dir/RPMS/${ARCH}/${NVMESH_PREFIX}${kind}* .
 
 if [[ "$DISTRIBUTION_INFO" =~ "Ubuntu" ]] || [ "$DISTRO" == "Ubuntu" ]; then
 	ubuntu_dir="ubuntu_deb_build"
@@ -118,9 +121,9 @@ if [[ "$DISTRIBUTION_INFO" =~ "Ubuntu" ]] || [ "$DISTRO" == "Ubuntu" ]; then
 	mkdir -p $ubuntu_dir
 	cd $ubuntu_dir
 
-	fakeroot alien --generate -k --script ../${EXCELERO_PREFIX}${kind}*.rpm
+	fakeroot alien --generate -k --script ../${NVMESH_PREFIX}${kind}*.rpm
 
-	packDir=${EXCELERO_PREFIX}${kind}-$VERSION
+	packDir=${NVMESH_PREFIX}${kind}-$VERSION
 
 	if [ -e $packDir/debian ]; then
 		echo "Configuring deb dependencies..."
@@ -134,8 +137,8 @@ if [[ "$DISTRIBUTION_INFO" =~ "Ubuntu" ]] || [ "$DISTRO" == "Ubuntu" ]; then
 
 	cd ..
 	rm -rf $ubuntu_dir
-	rm -f ${EXCELERO_PREFIX}${kind}*.rpm
+	rm -f ${NVMESH_PREFIX}${kind}*.rpm
 fi
 
 echo Cleaning up...
-rm -rf $rpm_build_dir/SPECS/$spec_file_name $rpm_source_path $rpm_build_dir/BUILD/${EXCELERO_PREFIX}${kind}* $rpm_build_dir/BUILDROOT/* $rpm_build_dir/RPMS/${ARCH}/${EXCELERO_PREFIX}${kind}*.${ARCH}.rpm
+rm -rf $rpm_build_dir/SPECS/$spec_file_name $rpm_source_path $rpm_build_dir/BUILD/${NVMESH_PREFIX}${kind}* $rpm_build_dir/BUILDROOT/* $rpm_build_dir/RPMS/${ARCH}/${NVMESH_PREFIX}${kind}*.${ARCH}.rpm

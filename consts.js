@@ -1,18 +1,14 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 var consts = {};
 
 consts.UNDEFINED = 'undefined';
 consts.ADMIN_USER = 'admin@nvidia.com';
 consts.SYSTEM_USER = 'system@nvidia.com';
-consts.PHONE_HOME_USER = 'phoneHome@excelero.com';
+consts.PHONE_HOME_USER = 'phoneHome@acme.com';
 consts.defaultItemsPerPage = 10;
 consts.installDir = '/opt/nvmesh/management';
 consts.INTEROP_DB_RELATIVE_PATH = '../interop-db/InteropDB';
@@ -831,10 +827,10 @@ consts.defaultFormat = {
 	}
 };
 
-consts.userManualURL = 'https://www.excelero.com/nvmesh-user-guide';
-consts.releaseNotesURL = 'https://www.excelero.com/release-notes';
+consts.userManualURL = 'TBD';
+consts.releaseNotesURL = 'TBD';
 consts.restAPIURL = '/docs/index.html';
-consts.defaultExceleroEmail = 'customer.stats+customername@excelero.com';
+consts.defaultEmail = 'customer.stats+customerName@acme.com';
 
 consts.HANDLE_TIMEDOUT_COMPONENT_INTERVAL = 5 * 1000; // 5 seconds
 

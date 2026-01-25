@@ -1,11 +1,7 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 /* global app */
 
@@ -5675,7 +5671,7 @@ scope.swapObjValues = (obj, key1, key2) => {
 	[obj[key1], obj[key2]] = [obj[key2], obj[key1]];
 };
 
-scope.sendStatsToExceleroPeriodically = function(callback) {
+scope.sendStatsPeriodically = function(callback) {
 	callback();
 	var minimumIntervalValue = 1000 * 60 * 60; // one hour
 	var sendStatsIntervalMS;
@@ -5685,14 +5681,14 @@ scope.sendStatsToExceleroPeriodically = function(callback) {
 	if (sendStatsIntervalMS < minimumIntervalValue)
 		new SystemMessage(systemMessages.APP_STATS_CONF_PARSE_FAILED).log();
 
-	sendStatsToExcelero(sendStatsIntervalMS);
+	sendStatsHome(sendStatsIntervalMS);
 
 	setInterval(function() {
-		sendStatsToExcelero(sendStatsIntervalMS);
+		sendStatsHome(sendStatsIntervalMS);
 	}, sendStatsIntervalMS);
 };
 
-function sendStatsToExcelero(sendStatsIntervalMS) {
+function sendStatsHome(sendStatsIntervalMS) {
 	var db = app.get('db');
 	var userCollection = db.collection('user');
 
@@ -5712,10 +5708,10 @@ function sendStatsToExcelero(sendStatsIntervalMS) {
 				data.errors = data.errors.slice(0, 50);
 			}
 
-			logger.sendMail([config.get('exceleroEmail')], 'Client Statistics', JSON.stringify(data), function(err, shouldLog) {
+			logger.sendMail([config.get('supportEmail')], 'Client Statistics', JSON.stringify(data), function(err, shouldLog) {
 				if (!err)
 					userCollection.updateOne(
-						{ _id: 'phoneHome@excelero.com' },
+						{ _id: 'phoneHome@acme.com' },
 						{ $set: { lastTimeSentStats: new Date() } },
 						function(err) {
 							if (err)

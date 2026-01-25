@@ -1,3 +1,7 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 /* global React */
 
@@ -72,11 +76,8 @@ const About = () => {
 				<br/>
 				<br/>
 
-				<h2>Excelero NVMesh Management {aboutInfo.managementVersion}</h2>
-				<p>© Copyright 2015-2020 Excelero, Inc. All rights reserved. </p>
-				<br/>
-				<p>This document contains the confidential and proprietary information of Excelero, Inc.
-                    Do not reproduce or distribute without the prior written consent of Excelero.</p>
+				<h2>NVIDIA NVMesh Management {aboutInfo.managementVersion}</h2>
+				<p>Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.</p>
 				<br/>
 				<br /><br />
 				<hr />

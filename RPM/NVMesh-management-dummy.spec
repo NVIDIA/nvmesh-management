@@ -1,22 +1,19 @@
 Name:				NVMesh-management
 Version:			%{version}
 Release:			%{release}
-Summary:			"NVMesh-management" by Excelero
+Summary:			"NVMesh-management" by NVIDIA
 
-License:			Commercial Non OSI
-URL:				http://www.excelero.com
+License:			Apache-2.0
+URL:				http://www.nvidia.com
 Source0:			%{name}
 
 Requires:			%{requires_pkgs}
 
 %description
 
-© Copyright 2015-2020 Excelero, Inc. All rights reserved. This document contains the confidential and proprietary information of Excelero, Inc. Do not reproduce or distribute without the prior written consent of Excelero.
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
-transitional package
-This is a transitional package of NVMesh-management. It can safely be removed.
-
-"Excelero" NVMesh-management Web App
+"NVIDIA" NVMesh-management Web App
 	Branch: %{branch}
 	Commit: %{commit_id}
 	ChangeId: %{change_id}
@@ -70,5 +67,5 @@ fi
 /opt/NVMesh/management/transitionUpgradeScripts
 
 %changelog
-* Wed Oct 7 2015 Excelero
-- Installing Excelero NVMesh-management transitional package
+* Wed Jan 1 2026 NVIDIA
+- Installing NVIDIA NVMesh-management transitional package

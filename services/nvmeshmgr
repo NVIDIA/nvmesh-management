@@ -1,7 +1,10 @@
 #!/bin/bash
 #
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
 # nvmeshmgr	This shell script takes care of starting and stopping
-#		the Excelero NVMesh(r) management services
+#		the NVMesh(r) management services
 #
 # chkconfig: 345 86 14
 # description: NVMesh management services are a web based GUI and RESTful \
@@ -14,7 +17,7 @@
 # Default-Start: 3 4 5
 # Default-Stop: 0 1 2 6
 # Short-Description: Start and stop nvmeshmgr
-# Description: nvmeshmgr proivdes the Management Service of Excelero NVMesh(r)
+# Description: nvmeshmgr provides the NVMesh Management Service
 ### END INIT INFO
 
 #For production - only logging warning and error, removing stack trace from client and enable enhance caching.

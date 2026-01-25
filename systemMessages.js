@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /* eslint-disable max-len */
 
 const consts = require('./consts');
@@ -26,7 +31,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	MONGO_CONNECTION_ERROR: {
-		message: 'Failed to connect to mongo, so shutting down; if mongo is up and restarting both management and mongo does not help, contact Excelero support.',
+		message: 'Failed to connect to mongo, so shutting down; if mongo is up and restarting both management and mongo does not help, contact support.',
 		id: 20010,
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
@@ -46,53 +51,53 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	MONGO_CONNECTION_CLOSED: {
-		message: 'Connection to mongo closed, so shutting down; if mongo is up and restarting both management and mongo does not help, contact Excelero support.',
+		message: 'Connection to mongo closed, so shutting down; if mongo is up and restarting both management and mongo does not help, contact support.',
 		id: 20011,
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_CONNECTION_ERROR: {
-		message: 'Connection to kafka closed, so shutting down; if kafka is up and restarting both management and kafka does not help, contact Excelero support.',
+		message: 'Connection to kafka closed, so shutting down; if kafka is up and restarting both management and kafka does not help, contact support.',
 		id: 3000,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_SEND_MESSAGE_ERROR: {
-		message: 'Failed to send a message to Kafka, contact Excelero support.',
+		message: 'Failed to send a message to Kafka, contact support.',
 		id: 3001,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_CREATE_TOPIC_ERROR: {
-		message: 'Failed to create Kafka topics, contact Excelero support.',
+		message: 'Failed to create Kafka topics, contact support.',
 		id: 3002,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_GENERIC_CONSUMER_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka consumer, contact Excelero support.',
+		message: 'Management received an unexpected generic error from Kafka consumer, contact support.',
 		id: 3003,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_COMMIT_OFFSET_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to commit offsets, contact Excelero support.',
+		message: 'Management received an unexpected generic error from Kafka while trying to commit offsets, contact support.',
 		id: 3004,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_DELETE_TOPICS_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to delete topics, contact Excelero support.',
+		message: 'Management received an unexpected generic error from Kafka while trying to delete topics, contact support.',
 		id: 3005,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_LIST_TOPICS_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to list topics, contact Excelero support.',
+		message: 'Management received an unexpected generic error from Kafka while trying to list topics, contact support.',
 		id: 3006,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_FETCH_OFFSETS_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to fetch offsets, contact Excelero support.',
+		message: 'Management received an unexpected generic error from Kafka while trying to fetch offsets, contact support.',
 		id: 3007,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_DELETE_RECORDS_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to delete topic records, contact Excelero support.',
+		message: 'Management received an unexpected generic error from Kafka while trying to delete topic records, contact support.',
 		id: 3008,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
@@ -142,7 +147,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	APP_UNCAUGHT_EXCEPTION: {
-		message: 'An unexpected application error occurred in the management, shutting down, contact Excelero support.',
+		message: 'An unexpected application error occurred in the management, shutting down, contact support.',
 		id: 1000,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
@@ -197,7 +202,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	APP_MGMT_ID_VERIFY_FAILED: {
-		message: 'It seems that the identity of management based upon the IP address and port to use is inconsistent with that used previously, sleeping for 10 seconds and trying again, contact Excelero support if this persists.',
+		message: 'It seems that the identity of management based upon the IP address and port to use is inconsistent with that used previously, sleeping for 10 seconds and trying again, contact support if this persists.',
 		id: 1033,
 		sysLogLevel: consts.loggingLevel.WARNING
 	},
@@ -372,7 +377,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DBBACKUP_BACKUP_DUMP_FAILED: {
-		message: 'An unexpected error occurred while trying to generate a backup file, this may be a result of lack of storage space, contact Excelero if the root cause is unclear.',
+		message: 'An unexpected error occurred while trying to generate a backup file, this may be a result of lack of storage space, contact support if the root cause is unclear.',
 		id: 1069,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
@@ -387,17 +392,17 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DBBACKUP_RELEASE_LOCK_FAILED: {
-		message: 'An unexpected error occurred when completing a backup, contact Excelero support if this happens on subsequent backups.',
+		message: 'An unexpected error occurred when completing a backup, contact support if this happens on subsequent backups.',
 		id: 1075,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DBBACKUP_CLOSE_LOCK_FD_FAILED: {
-		message: 'An unexpected error occurred when completing a backup, contact Excelero support if this happens on subsequent backups.',
+		message: 'An unexpected error occurred when completing a backup, contact support if this happens on subsequent backups.',
 		id: 1076,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DBBACKUP_EXEC_FCNTL_FAILED: {
-		message: 'An unexpected error occurred when doing a backup, contact Excelero support if this happens on subsequent backups.',
+		message: 'An unexpected error occurred when doing a backup, contact support if this happens on subsequent backups.',
 		id: 1077,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},

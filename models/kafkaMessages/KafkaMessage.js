@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 exports.KafkaMessage = class KafkaMessage {
 	constructor(type, version, rawMsg, originType, originID, opcode) {
 		this.type = type;

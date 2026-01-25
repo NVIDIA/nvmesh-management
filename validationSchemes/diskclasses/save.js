@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 const utils = require('../../utils');
 const diskClassSchema = require('../definitions/diskClass');
 const diskClassSaveSchema = utils.extend(true, {}, diskClassSchema);

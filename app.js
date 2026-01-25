@@ -1,11 +1,7 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 /* global app */
 
@@ -638,8 +634,8 @@ function doAfterDatabasesArePopulatedAndConnected() {
 
 		//Configure PhoneHome email.
 		userCollection.updateOne(
-			{ _id: 'phoneHome@excelero.com', email: consts.PHONE_HOME_USER },
-			{ $set: { email: config.get('exceleroEmail').toLowerCase() } },
+			{ _id: 'phoneHome@acme.com', email: consts.PHONE_HOME_USER },
+			{ $set: { email: config.get('supportEmail').toLowerCase() } },
 			function(err) {
 				if (err)
 					new MongoError(err).log();

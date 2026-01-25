@@ -1,11 +1,8 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 
 /* global app */
 
@@ -67,14 +64,14 @@ router.use(isAdminRole);
 * @apiSuccessExample Example data on success
 * [{
 * 	"_id": "groupAServers",
-* 	"targetNodes": ["nvme21.excelero.com", "nvme6"],
+* 	"targetNodes": ["nvme21.acme.com", "nvme6"],
 * 	"name": "groupAServers",
 * 	"description": "All the servers of group A",
 *	"domains": [{ scope: "Rack", identifier: "A" }, { scope: "DRSite", identifier: "C" }],
 * 	"dateModified": "2015-07-14T11:21:10.592Z"
 * }, {
 * 	"_id": "1Server",
-* 	"targetNodes": ["nvme21.excelero.com"],
+* 	"targetNodes": ["nvme21.acme.com"],
 * 	"name": "1Server",
 * 	"description": "This is just 1 server",
 *	"domains": [{ scope: "Rack", identifier: "B" }],
@@ -124,7 +121,7 @@ router.get('/count', getCountEntitiesHandler('serverClass'));
 * @apiParam {object[]} [serverClasses.domains] `Domains` of the `serverClass`.
 * @apiParamExample {string} Payload example
 * [{
-* 	"targetNodes": ["nvme31.excelero.com"],
+* 	"targetNodes": ["nvme31.acme.com"],
 * 	"name": "RandomServer",
 * 	"description": "This server wasn't really randomized",
 *	"domains": [{ "scope": "Rack", "identifier": "A" }]
@@ -235,7 +232,7 @@ router.post('/delete', (req, res) => {
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
 * 	"description": "sss",
 * 	"domains": [{ "scope": "Rack", "identifier": "B" }],
-* 	"targetNodes": ["nvme31.excelero.com", "nvme50.excelero.com"]
+* 	"targetNodes": ["nvme31.acme.com", "nvme50.acme.com"]
 * }]
 *
 * @apiSuccess {object[]} results Results for the serverClasses we tried to update.

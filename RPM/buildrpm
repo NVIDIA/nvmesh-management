@@ -1,5 +1,8 @@
 #!/bin/bash -x
 
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 source ../transfer_lists
 
 print_help() {
@@ -351,12 +354,12 @@ for rpm in "${rpmsToCreate[@]}"; do
         find ~/"rpmbuild/SOURCES/$packagePrefix/upgradeScripts/" -maxdepth 1 ! -name '[0-9a-zA-Z]*' -type f -exec rm -f {} +
 
         #handling other vendors resources (public dir)
-        if [ "$skin" == "micron" ]; then
-            cp -Rp ~/"rpmbuild/SOURCES/$packagePrefix/public_micron"/* ~/"rpmbuild/SOURCES/$packagePrefix/public/"
+        if [ "$skin" == "acme" ]; then
+            cp -Rp ~/"rpmbuild/SOURCES/$packagePrefix/public_acme"/* ~/"rpmbuild/SOURCES/$packagePrefix/public/"
         fi
 
         #deleting other skins
-        rm -rf ~/"rpmbuild/SOURCES/$packagePrefix/public_micron"
+        # rm -rf ~/"rpmbuild/SOURCES/$packagePrefix/public_acme"
 
         mkdir ~/"rpmbuild/SOURCES/$packagePrefix/installation"
         cd RPM
@@ -453,7 +456,7 @@ build_docker_image() {
 export_docker_image() {
     full_tag="$rpm_version-$rpm_release_num"
     tar_file_name="nvmesh-management-$full_tag.tar"
-    image_name="registry.excelero.com/nvmesh-management:$full_tag"
+    image_name="registry.acme.com/nvmesh-management:$full_tag"
 
     echo "Saving docker image $image_name to file $tar_file_name"
 

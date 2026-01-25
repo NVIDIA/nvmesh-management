@@ -1,11 +1,8 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 
 /* global app */
 
@@ -86,7 +83,7 @@ router.get('/nvmfDefault', function(req, res) {
 * 	"status": "online",
 * 	"blocks": 24414063,
 * 	"enableNVMf": true,
-* 	"selectedClientsForNvmf": ["nvme48.excelero.com","nvme67.excelero.com"],
+* 	"selectedClientsForNvmf": ["nvme48.acme.com","nvme67.acme.com"],
 * 	"chunks": [{
 * 		"_id": "1ca95530-4bc8-11e5-b932-53542b263b32",
 * 		"vlbs": 0,
@@ -97,7 +94,7 @@ router.get('/nvmfDefault', function(req, res) {
 * 			"_id": "1ca97c40-4bc8-11e5-b932-53542b263b32",
 * 			"diskID": "CVCQ5246004B400AGN.1",
 * 			"volumeName": "V1",
-* 			"node_id": "nvme50.excelero.com",
+* 			"node_id": "nvme50.acme.com",
 * 			"allocationIndex": 0
 * 		}, {
 * 			"lbs": 32,
@@ -105,7 +102,7 @@ router.get('/nvmfDefault', function(req, res) {
 * 			"_id": "1caa8db0-4bc8-11e5-b932-53542b263b32",
 * 			"diskID": "CVCQ52430008400AGN.1",
 * 			"volumeName": "V1",
-* 			"node_id": "nvme51.excelero.com",
+* 			"node_id": "nvme51.acme.com",
 * 			"allocationIndex": 1
 * 		}]
 * 	}]
@@ -205,7 +202,7 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 * 			"_id": "1ca97c40-4bc8-11e5-b932-53542b263b32",
 * 			"diskID": "CVCQ5246004B400AGN.1",
 * 			"volumeName": "V1",
-* 			"node_id": "nvme50.excelero.com",
+* 			"node_id": "nvme50.acme.com",
 * 			"allocationIndex": 0
 * 		}, {
 * 			"lbs": 32,
@@ -213,7 +210,7 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 * 			"_id": "1caa8db0-4bc8-11e5-b932-53542b263b32",
 * 			"diskID": "CVCQ52430008400AGN.1",
 * 			"volumeName": "V1",
-* 			"node_id": "nvme51.excelero.com",
+* 			"node_id": "nvme51.acme.com",
 * 			"allocationIndex": 1
 * 		}]
 * 	}]
@@ -569,7 +566,7 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 *		"description": "Plain text",
 *		"diskClasses": ["highPerformance"],
 * 		"limitByDisks": ["CVMD439000DE400FGN.1"],
-*	 	"limitByNodes": ["nvme31.excelero.com"],
+*	 	"limitByNodes": ["nvme31.acme.com"],
 *		"name": "V4",
 *		"serverClasses": [],
 *		"stripeSize": 32,

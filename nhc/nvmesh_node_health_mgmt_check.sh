@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-# NHC -- Excelero - Node health check from the management perspective
-#
-# /***************************************************************************
-#  * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
-#  *
-#  * This file is part of Excelero NVMesh software.
-#  *
-#  * Unauthorized copying of this file, via any medium is strictly prohibited
-#  * Proprietary and confidential
-#  ****************************************************************************/
+# NHC -- Node health check from the management perspective
+
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 source /etc/nhc/scripts/nvmesh_nhc_cache.sh
 
 export NVMESH_CONF='/etc/opt/NVMesh/nvmesh.conf'

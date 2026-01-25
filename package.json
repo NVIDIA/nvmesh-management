@@ -16,7 +16,7 @@
   },
   "apidoc": {
     "name": "Management",
-    "description": "Excelero Management",
+    "description": "NVMesh Management",
     "template": {
       "withCompare": false
     }

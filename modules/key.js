@@ -1,11 +1,7 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 /* global app */
 
@@ -32,8 +28,8 @@ scope.deleteKeys = (keys, callback) => {
 				error = new SystemMessage(systemMessages.KEYS_DELETE_NOT_FOUND);
 			}
 
-			messages.push((error ? 
-				new SystemAdminMessage(systemMessages.KEYS_DELETE_FAILED).addInfo(Entities.Error, error) : 
+			messages.push((error ?
+				new SystemAdminMessage(systemMessages.KEYS_DELETE_FAILED).addInfo(Entities.Error, error) :
 				new SystemAdminMessage(systemMessages.KEYS_DELETED))
 				.addInfo(Entities.Keys.ID, key._id)
 				.addInfo(Entities.Keys.UUID, key.uuid));
@@ -51,9 +47,9 @@ scope.saveKeys = (keys, user, callback) => {
 		key.createdBy = key.modifiedBy = user.email;
 
 		utils.insertToCollection(key, 'key', (err) => {
-			messages.push((err ? 
+			messages.push((err ?
 				new SystemAdminMessage(systemMessages.KEYS_SAVE_FAILED)
-					.addInfo(Entities.Error, err.isDuplicateKeyError ? new SystemMessage(systemMessages.KEY_SAVE_FAILURE_DUP_KEY) : err) : 
+					.addInfo(Entities.Error, err.isDuplicateKeyError ? new SystemMessage(systemMessages.KEY_SAVE_FAILURE_DUP_KEY) : err) :
 				new SystemAdminMessage(systemMessages.KEYS_SAVED))
 				.addInfo(Entities.Keys.ID, key._id)
 				.addInfo(Entities.Keys.UUID, key.uuid));
@@ -73,13 +69,13 @@ scope.updateKeys = (keys, user, callback) => {
 		async.series([
 			(callback) => {
 				keyCollection.findOne({ _id: key._id, uuid: key.uuid }, (err, result) => {
-					let error; 
-					
+					let error;
+
 					if (err)
 						error = new MongoError(err).log();
 					else if (!result)
 						error = new SystemMessage(systemMessages.UPDATE_KEY_NOT_FOUND);
-					
+
 					keyFromDB = result;
 					callback(error);
 				});
@@ -96,11 +92,11 @@ scope.updateKeys = (keys, user, callback) => {
 				});
 			}
 		], (error) => {
-			messages.push((error ? 
-				new SystemAdminMessage(systemMessages.KEYS_UPDATE_FAILED).addInfo(Entities.Error, error) : 
+			messages.push((error ?
+				new SystemAdminMessage(systemMessages.KEYS_UPDATE_FAILED).addInfo(Entities.Error, error) :
 				new SystemAdminMessage(systemMessages.KEYS_UPDATED))
 				.addInfo(Entities.Keys.ID, key._id)
-				.addInfo(Entities.Keys.UUID, key.uuid));			
+				.addInfo(Entities.Keys.UUID, key.uuid));
 			callback();
 		});
 	}, () => callback(messages));

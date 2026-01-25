@@ -1,9 +1,9 @@
 Name:				nvmesh-management
 Version:			%{version}
 Release:			%{release}
-Summary:			"nvmesh-management" by Nvidia
+Summary:			"nvmesh-management" by NVIDIA
 
-License:			Commercial Non OSI
+License:			Apache-2.0
 URL:				http://www.nvidia.com
 Source0:			%{name}
 
@@ -16,9 +16,9 @@ Requires:			%{requires}
 
 %description
 
-© Copyright 2025 Nvidia Corporation. All rights reserved. This document contains the confidential and proprietary information of Nvidia Corporation. Do not reproduce or distribute without the prior written consent of Nvidia.
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
-"Excelero" nvmesh_management Web App
+"NVIDIA" nvmesh_management Web App
         Branch: %{branch}
         Commit: %{commit_id}
 	ChangeId: %{change_id}
@@ -124,5 +124,5 @@ exit 0
 %config(noreplace) /etc/nvmesh/management.js.conf
 
 %changelog
-* Tue Mar 5 2024 Nvidia Corporation
-- Installing Nvidia nvmesh_management
+* Tue Mar 5 2024 NVIDIA Corporation
+- Installing NVIDIA nvmesh_management

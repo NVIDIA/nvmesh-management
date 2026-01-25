@@ -1,3 +1,7 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
 
 # Setting up GitLab CI 
 
@@ -12,9 +16,6 @@ cd ci/container
 
 ### Acquire GitLab Access Token
 
-to get an access token please see: 
-https://confluence.nvidia.com/pages/viewpage.action?pageId=732766723
-
 ### Login local docker client to GitLab Container Registry
 
 In order to push the image you should first login to GitLab registry:
@@ -24,7 +25,7 @@ docker login gitlab-master.nvidia.com:5005
 
 ### Push image to regisrty
 
-Once you have logged in to the gitlab reigstry locally you can push:
+Once you have logged in to the gitlab registry locally you can push:
 
 **WARNING:** This will override the current image used for CI runs
 ```

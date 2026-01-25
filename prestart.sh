@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 cp consts.js ./public/javascripts/
 if which scss; then
 	scss ./public/stylesheets/site.scss ./public/stylesheets/site.css

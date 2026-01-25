@@ -1,11 +1,7 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 /* global app */
 
@@ -1779,7 +1775,7 @@ function isFollowingSegmentsOverlapping(firstSegment, secondSegment) {
 function calculateDiskUsableBlocks(disk) {
 	function sum(a, b) { return a + b; }
 	function mapSegmentBlockSize(segment) { return segment.lbe - segment.lbs + 1; }
-	// filter only excelero data segment and not from reserved
+	// filter only nvmesh data segment and not from reserved
 	function filterDataOnly(segment) {
 		return (!segment.owner || segment.owner === consts.segmentOwners.NVMESH) && segment.type === consts.segmentTypes.DATA && !segment.fromReserved;
 	}

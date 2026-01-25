@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /* global app,log,describe,before,beforeEach,it,after */
 
 const assert = require('assert');
@@ -27,10 +32,10 @@ function setupEnvironment() {
 		})
 		.then(() => {
 			targets = [
-				generateTarget('server1.excelero.com', '1'),
-				generateTarget('server2.excelero.com', '2'),
-				generateTarget('server3.excelero.com', '3'),
-				generateTarget('server4.excelero.com', '4'),
+				generateTarget('server1.acme.com', '1'),
+				generateTarget('server2.acme.com', '2'),
+				generateTarget('server3.acme.com', '3'),
+				generateTarget('server4.acme.com', '4'),
 			];
 			return Promise.all(targets.map(t => t.save()));
 		})
@@ -45,7 +50,7 @@ async function setupSingleTargetEnvironment() {
 		let opts = new SetupOptions().setEnableZones(false);
 		await setup.newSetup(opts);
 		log.debug('enableZones: ' + app.get('globalSettings').enableZones);
-		targets = [generateTarget('server1.excelero.com', '1')];
+		targets = [generateTarget('server1.acme.com', '1')];
 		await Promise.all(targets.map(t => t.save()));
 		log.debug('setupSingleTargetEnvironment finished');
 	} catch (err) {
@@ -91,7 +96,7 @@ describe('Targets', function() {
 			beforeEach(async() => {
 				await setupSingleTargetEnvironment();
 				// Add another target to zone 1
-				await generateTarget('zone1serverB.excelero.com', '1').save();
+				await generateTarget('zone1serverB.acme.com', '1').save();
 				targetToDelete = targets[0];
 			});
 
@@ -370,7 +375,7 @@ describe('Targets', function() {
 
 		it('Fail if there is no redundancy', function(done) {
 			let diskID = 'SERVER1.1';
-			let serverNodeID = 'server1.excelero.com';
+			let serverNodeID = 'server1.acme.com';
 			// create non-redundant volume
 			Promise.resolve()
 				.then(() => {
@@ -385,7 +390,7 @@ describe('Targets', function() {
 					diskModule.evictDiskByDiskIDsAndUUIDs([disk], consts.SYSTEM_USER, false, null, null, null, (logs) => {
 						const results = logs.map(l => l.createApiResponse());
 						assert(!results[0].success);
-						serverCollection.findOne({ node_id: 'server1.excelero.com' })
+						serverCollection.findOne({ node_id: 'server1.acme.com' })
 							.then(target => {
 								// make sure target not deleted
 								assert(target);
@@ -401,7 +406,7 @@ describe('Targets', function() {
 		it('should succeed', function(done) {
 			var diskID;
 			var diskUUID;
-			var nodeID = 'server1.excelero.com';
+			var nodeID = 'server1.acme.com';
 
 			serverCollection.findOne({ node_id: nodeID }, (err, target) => {
 				assert(!err);

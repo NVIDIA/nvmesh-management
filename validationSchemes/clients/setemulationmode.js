@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 var consts = require('../../consts.js');
 const utils = require('../../utils');
 const attachVolumeScheme = require('../definitions/attachVolume.js');

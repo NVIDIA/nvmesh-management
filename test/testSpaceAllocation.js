@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /* global app,describe,before,it,after */
 
 const dbManager = require('./testUtils/dbManager.js');
@@ -50,7 +55,7 @@ describe('Get Space Allocation', function() {
 		const TOTAL_CAPACITY = 1597.21;
 
 		before(() => {
-			let target1 = generateTarget('server1.excelero.com', '1');
+			let target1 = generateTarget('server1.acme.com', '1');
 			return setup.newSetup()
 				.then(() => target1.save());
 		});
@@ -77,8 +82,8 @@ describe('Get Space Allocation', function() {
 		const TOTAL_CAPACITY = 1597.21;
 
 		before(() => {
-			let target1 = generateTarget('server1.excelero.com', '1');
-			let target2 = generateTarget('server2.excelero.com', '1');
+			let target1 = generateTarget('server1.acme.com', '1');
+			let target2 = generateTarget('server2.acme.com', '1');
 			return setup.newSetup()
 				.then(() => target1.save())
 				.then(() => target2.save());
@@ -88,7 +93,7 @@ describe('Get Space Allocation', function() {
 			let nodeMatch = {
 				node_status: 1,
 				isPending: { '$ne': true },
-				node_id: { '$in': ['server1.excelero.com'] }
+				node_id: { '$in': ['server1.acme.com'] }
 			};
 			let diskMatch = {};
 			utils.getSpaceAllocation(nodeMatch, diskMatch, (err, results) => {
@@ -111,7 +116,7 @@ describe('Get Space Allocation', function() {
 		const TOTAL_CAPACITY = 798.6;
 
 		before(() => {
-			let target1 = generateTarget('server1.excelero.com', '1');
+			let target1 = generateTarget('server1.acme.com', '1');
 			return setup.newSetup()
 				.then(() => target1.save());
 		});
@@ -120,7 +125,7 @@ describe('Get Space Allocation', function() {
 			let nodeMatch = {
 				node_status: 1,
 				isPending: { '$ne': true },
-				node_id: { '$in': ['server1.excelero.com'] }
+				node_id: { '$in': ['server1.acme.com'] }
 			};
 			let diskMatch = {
 				'disks.status': { $in: ['Ok', 'Initializing'] },

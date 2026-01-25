@@ -1,5 +1,10 @@
 # Running Management Slash-Tests with a Debugger
 
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 Welcome to the guide for running **slash-tests** in the management project! 
 These tests are designed for local debugging and development and are also part of the CI pipeline triggered by new merge requests in the management project. 🚀 
 

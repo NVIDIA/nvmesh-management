@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /* global app,log,describe,before,it,afterEach,after */
 
 const dbManager = require('./testUtils/dbManager.js');
@@ -29,15 +34,15 @@ function setupMultiZoneEnvironment() {
 	let opts = new SetupOptions().setEnableZones(true);
 	return setup.newSetup(opts)
 		// Zone 1
-		.then(() => generateTarget('nvme81.excelero.com', ZONE_1).save())
-		.then(() => generateTarget('nvme82.excelero.com', ZONE_1).save())
-		.then(() => generateTarget('nvme83.excelero.com', ZONE_1).save())
-		.then(() => generateTarget('nvme84.excelero.com', ZONE_1).save())
+		.then(() => generateTarget('nvme81.acme.com', ZONE_1).save())
+		.then(() => generateTarget('nvme82.acme.com', ZONE_1).save())
+		.then(() => generateTarget('nvme83.acme.com', ZONE_1).save())
+		.then(() => generateTarget('nvme84.acme.com', ZONE_1).save())
 		// Zone 2
-		.then(() => generateTarget('nvme91.excelero.com', ZONE_2).save())
-		.then(() => generateTarget('nvme92.excelero.com', ZONE_2).save())
-		.then(() => generateTarget('nvme93.excelero.com', ZONE_2).save())
-		.then(() => generateTarget('nvme94.excelero.com', ZONE_2).save())
+		.then(() => generateTarget('nvme91.acme.com', ZONE_2).save())
+		.then(() => generateTarget('nvme92.acme.com', ZONE_2).save())
+		.then(() => generateTarget('nvme93.acme.com', ZONE_2).save())
+		.then(() => generateTarget('nvme94.acme.com', ZONE_2).save())
 
 		.then(() => log.debug('setupZoneLockingEnvironment finished'));
 }
@@ -178,15 +183,15 @@ describe('ZoneLocking', function() {
 	});
 
 	describe('#TakeZoneLockByTargetID', () => {
-		const TARGET_ON_ZONE_1 = 'nvme82.excelero.com';
+		const TARGET_ON_ZONE_1 = 'nvme82.acme.com';
 		before(() => {
 			let opts = new SetupOptions().setEnableZones(true);
 			return setup.newSetup(opts)
 				// Set Targets with no zone and we will set the zone later in the test
-				.then(() => generateTarget('nvme81.excelero.com', '2').save())
-				.then(() => generateTarget('nvme82.excelero.com', '1').save())
-				.then(() => generateTarget('nvme83.excelero.com', '2').save())
-				.then(() => generateTarget('nvme84.excelero.com', '2').save())
+				.then(() => generateTarget('nvme81.acme.com', '2').save())
+				.then(() => generateTarget('nvme82.acme.com', '1').save())
+				.then(() => generateTarget('nvme83.acme.com', '2').save())
+				.then(() => generateTarget('nvme84.acme.com', '2').save())
 				.then(() => {
 					log.debug('setupZoneLockingEnvironment finished');
 				});
@@ -207,7 +212,7 @@ describe('ZoneLocking', function() {
 		});
 
 		it('Zone 1 lock should be taken', (done) => {
-			lockModule.acquireLockByTarget('nvme82.excelero.com', (err, zone) => {
+			lockModule.acquireLockByTarget('nvme82.acme.com', (err, zone) => {
 				assert(!err);
 				assert(zone == ZONE_1);
 				lockUtils.makeSureLockIsLocked(ZONE_1).then(done);
@@ -298,14 +303,14 @@ describe('ZoneLocking', function() {
 		});
 
 		it('Acquire zone 1 by target limit', (done) => {
-			lockModule.acquireZoneLockForAllocation(['nvme81.excelero.com'], [], [], (err, zone) => {
+			lockModule.acquireZoneLockForAllocation(['nvme81.acme.com'], [], [], (err, zone) => {
 				assert.strictEqual(zone, ZONE_1);
 				done();
 			});
 		});
 
 		it('Acquire zone 2 by target limit', (done) => {
-			lockModule.acquireZoneLockForAllocation(['nvme91.excelero.com'], [], [], (err, zone) => {
+			lockModule.acquireZoneLockForAllocation(['nvme91.acme.com'], [], [], (err, zone) => {
 				assert.strictEqual(zone, ZONE_2);
 				done();
 			});
@@ -334,14 +339,14 @@ describe('ZoneLocking', function() {
 		});
 
 		it('No zone meets all conditions, any zone returned - volume creation will fail at the query stage', (done) => {
-			lockModule.acquireZoneLockForAllocation(['nvme81.excelero.com'], ['NVME91.1'], [], (err, zone) => {
+			lockModule.acquireZoneLockForAllocation(['nvme81.acme.com'], ['NVME91.1'], [], (err, zone) => {
 				assert(zone);
 				done();
 			});
 		});
 
 		it('should acquire lock of ZONE 1 with both target and disk limitations', (done) => {
-			lockModule.acquireZoneLockForAllocation(['nvme81.excelero.com'], ['NVME81.1'], [], (err, zone) => {
+			lockModule.acquireZoneLockForAllocation(['nvme81.acme.com'], ['NVME81.1'], [], (err, zone) => {
 				assert.strictEqual(zone, ZONE_1);
 				done();
 			});
@@ -354,10 +359,10 @@ describe('ZoneLocking', function() {
 		before(() => {
 			return setup.newSetup()
 				.then(() => setEnabledZones(false))
-				.then(() => generateTarget('nvme81.excelero.com', NO_ZONE).save())
-				.then(() => generateTarget('nvme82.excelero.com', NO_ZONE).save())
-				.then(() => generateTarget('nvme83.excelero.com', NO_ZONE).save())
-				.then(() => generateTarget('nvme84.excelero.com', NO_ZONE).save())
+				.then(() => generateTarget('nvme81.acme.com', NO_ZONE).save())
+				.then(() => generateTarget('nvme82.acme.com', NO_ZONE).save())
+				.then(() => generateTarget('nvme83.acme.com', NO_ZONE).save())
+				.then(() => generateTarget('nvme84.acme.com', NO_ZONE).save())
 				.then(() => log.debug('setupZoneLockingEnvironment finished'));
 		});
 
@@ -375,14 +380,14 @@ describe('ZoneLocking', function() {
 		});
 
 		it('Should acquire zone 1 by target limit', (done) => {
-			lockModule.acquireZoneLockForAllocation(['nvme81.excelero.com'], [], [], (err, zone) => {
+			lockModule.acquireZoneLockForAllocation(['nvme81.acme.com'], [], [], (err, zone) => {
 				assert.strictEqual(zone, ZONE_1);
 				done();
 			});
 		});
 
 		it('should acquire zone 1 with both target and disk limitations', (done) => {
-			lockModule.acquireZoneLockForAllocation(['nvme81.excelero.com'], ['NVME81.1'], [], (err, zone) => {
+			lockModule.acquireZoneLockForAllocation(['nvme81.acme.com'], ['NVME81.1'], [], (err, zone) => {
 				assert.strictEqual(zone, ZONE_1);
 				done();
 			});

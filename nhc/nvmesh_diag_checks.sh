@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
-# NHC -- Excelero - Reports about errors found with nvmesh_diag
-# /***************************************************************************
-#  * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
-#  *
-#  * This file is part of Excelero NVMesh software.
-#  *
-#  * Unauthorized copying of this file, via any medium is strictly prohibited
-#  * Proprietary and confidential
-#  ****************************************************************************/
+# NHC -- Reports about errors found with nvmesh_diag
+
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 source /etc/nhc/scripts/nvmesh_nhc_cache.sh
 
 declare NVMESH_DIAG_RUN=0

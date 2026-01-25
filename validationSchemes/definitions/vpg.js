@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 const consts = require('../../consts.js');
 const { pRaidOptionsPropertiesConditions } = require('../common/pRaidOptions.js');
 const { encryptionPropertiesConditions } = require('../common/encryption.js');

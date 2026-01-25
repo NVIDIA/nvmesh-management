@@ -1,11 +1,8 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /* global app */
 
 var express = require('express');
@@ -120,9 +117,9 @@ router.use(isAdminRole);
 * @apiParam {object} generalSettings `generalSettings` to update.
 * @apiParam {string} [generalSettings.domain] The default domain.
 * @apiParam {integer} [generalSettings.MAX_JSON_SIZE]  The size of the largest JSON message supported by the Management Server.
-* Do not modify this setting unless explicitly authorized by Excelero..
+* Do not modify this setting unless explicitly authorized by SREs.
 * @apiParam {double} [generalSettings.RESERVED_BLOCKS] The percentage of reserved blocks at the start of a managed NVMe device.
-* Do not modify this setting unless explicitly authorized by Excelero.
+* Do not modify this setting unless explicitly authorized by SREs.
 * @apiParam {integer} [generalSettings.autoLogOutThreshold] The timeout of the GUI and API access (in seconds).
 * After the timeout expires the GUI and API will automatically logout all logged in users.
 * @apiParam {integer} [generalSettings.keepaliveGracePeriod] The grace period, in milliseconds, since the last message from every component.
@@ -144,7 +141,7 @@ router.use(isAdminRole);
 * @apiParam {boolean} [generalSettings.debugComponents.HA] Log HA debug messages.
 * @apiParam {boolean} [generalSettings.debugComponents.kafka] Log kafka debug messages.
 * @apiParam {boolean} [generalSettings.debugComponents.updatePRaidStatus] `perf.updatePRaidStatus` Log PRAID Status debug messages.
-* @apiParam {integer} [generalSettings.sendStatsInterval] The interval of time passing after which the "phone home" statistics should be sent to excelero in ms.
+* @apiParam {integer} [generalSettings.sendStatsInterval] The interval of time passing after which the "phone home" statistics should be sent home in ms.
 * @apiParam {integer} [generalSettings.cacheUpdateInterval] Statistics cache update interval. Modifying the following options impacts the overall load on
 * the Management Server and the NVMesh clients and targets, and may make the system unstable.
 * @apiParam {integer} [generalSettings.requestStatsInterval] The frequency of statistics updates from the node machines to the management server.

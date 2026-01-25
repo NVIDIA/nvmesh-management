@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 const loginMiddleware = require('./login');
 const utils = require('../utils');
 const { SystemMessage } = require('../modules/error');

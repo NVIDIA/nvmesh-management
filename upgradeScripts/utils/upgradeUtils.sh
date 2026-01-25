@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 managementconffile="/etc/nvmesh/management.js.conf"
 MDIR=/opt/nvmesh/management
 libraries=$MDIR/libraries

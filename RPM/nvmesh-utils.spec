@@ -2,9 +2,9 @@ Name:                           nvmesh-utils
 Version:                        %{version}
 Release:                        %{release}
 Group:                          System Environment/Kernel
-Summary:                        "nvmesh-utils" by Nvidia
+Summary:                        "nvmesh-utils" by NVIDIA
 
-License:                        Commercial Non OSI
+License:                        Apache-2.0
 URL:                            http://www.nvidia.com
 Source0:                        %{name}
 Requires:                       %{requires}
@@ -16,9 +16,9 @@ AutoReqProv:                    no
 
 %description
 
-© Copyright 2025 Nvidia Corporation. All rights reserved. This document contains the confidential and proprietary information of Nvidia Corporation, Inc. Do not reproduce or distribute without the prior written consent of Nvidia.
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
-"Nvidia nvmesh-cli" components.
+"NVIDIA nvmesh-cli" components.
         Branch: %{branch}
         Commit: %{commit_id}
 

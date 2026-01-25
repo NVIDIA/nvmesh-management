@@ -1,8 +1,13 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 const { Entities } = require('../../modules/error');
 const { saveKeys, updateKeys, deleteKeys } = require('../../modules/key');
 const { Entity } = require('./entity');
 
-const user = { email: 'admin@excelero.com' };
+const user = { email: 'admin@acme.com' };
 
 exports.Key = class Key extends Entity {
 	constructor(name, description) {

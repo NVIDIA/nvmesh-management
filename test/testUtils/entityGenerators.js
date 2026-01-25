@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /* global log */
 
 const { Target } = require('../models/target');
@@ -106,7 +111,7 @@ exports.generateTarget = function(nodeID, zone, numOfDisks, numOfNics) {
 
 exports.generateDisk = function(nodeID, nodeUUID, i) {
 	// Serial will be in the following format:
-	// assuming server node.id = 'target-1.excelero.com' -> serial numbers will be TARGET-1.1, TARGET-1.2, ...
+	// assuming server node.id = 'target-1.acme.com' -> serial numbers will be TARGET-1.1, TARGET-1.2, ...
 	let serial = nodeID.split('.')[0].toUpperCase() + '.' + (i + 1);
 	return new Disk(serial, nodeID, nodeUUID);
 };

@@ -1,11 +1,7 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 /* global app */
 
@@ -725,7 +721,7 @@ scope.bootstrap = function(callback) {
 		lastMessageLog.startKeepaliveValidationInterval,
 		validation.init,
 		diskModule.startMissingDriveCheckupInterval,
-		utils.sendStatsToExceleroPeriodically,
+		utils.sendStatsPeriodically,
 		zoneModule.dispatchAllZonesHardwareConfiguration,
 		scope.removeOldMessages
 	], function(err) {

@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /* global app, log */
 
 const moment = require('moment');
@@ -106,7 +111,7 @@ exports.Target = class Target extends Entity {
 			TOMA → MGMT Keepalive { zone: ‘-1’ }
 			...
 		After zone approval
-			MGMT → TOMA UpdateTomaKeepaliveToken { nodeID: ‘nvme1.excelero.com’, token: 1, zone: ‘2’ }
+			MGMT → TOMA UpdateTomaKeepaliveToken { nodeID: ‘nvme1.acme.com’, token: 1, zone: ‘2’ }
 			TOMA → MGMT Keepalive { zone: ‘2’}
 			TOMA → MGMT reportTarget {zone: ‘2’, ...} 	(Due to zone change)
 		*/

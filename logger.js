@@ -1,11 +1,7 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 /* global app */
 var Syslog = require('modern-syslog');
@@ -358,7 +354,7 @@ scope.sendMail = function(recipients, subject, msg, cb) {
 	}
 
 	var mailOptions = {
-		from: 'Management System Mails <management@excelero.com>',
+		from: 'Management System Mails <management@acme.com>',
 		to: recipients.join(','),
 		subject: subject,
 		text: msg
@@ -392,7 +388,7 @@ scope.sendMails = function(level, msg) {
 
 		if (results && results.length > 0){
 			results.forEach(function(u) {
-				if (u._id == 'phoneHome@excelero.com')
+				if (u._id == 'phoneHome@acme.com')
 					phoneHomeUser = u;
 				else
 					allUsersExceptPhoneHome.push(u);
@@ -403,8 +399,8 @@ scope.sendMails = function(level, msg) {
 				msg = clusterInfoMsg + msg;
 
 				if (phoneHomeUser) {
-					var messageToExcelero = JSON.stringify({ messageType: 'log', timestamp: new Date(), level: level, message: msg });
-					scope.sendMail([phoneHomeUser.email], level + ' has been logged', messageToExcelero);
+					var messageForPhoneHome = JSON.stringify({ messageType: 'log', timestamp: new Date(), level: level, message: msg });
+					scope.sendMail([phoneHomeUser.email], level + ' has been logged', messageForPhoneHome);
 				}
 
 				var recipients = allUsersExceptPhoneHome.map(function(e) { return e.email; });

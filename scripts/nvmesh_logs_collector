@@ -1,13 +1,7 @@
 #!/usr/bin/python3
-##############################################################################
-#  Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.               #
-#                                                                            #
-#  This file is part of Excelero NVMesh software.                            #
-#                                                                            #
-#  Unauthorized copying of this file, via any medium is strictly prohibited  #
-#  Proprietary and confidential                                              #
-##############################################################################
 
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 import sys, subprocess, json, os.path, os, fcntl
 from abc import ABCMeta, abstractmethod
@@ -976,7 +970,7 @@ def collect_host_logs():
     if is_mgmt_installed:
         print_to_stdout("Collecting management stats...")
         collect_mgmt_stats()
-    print_to_stdout("Copying excelero system files...")
+    print_to_stdout("Copying nvmesh system files...")
     copy_sys_files(args.COPY_SOURCES)
     print_to_stdout("Collecting nvme and network interfaces interrupts and information...")
     collect_nvme_and_network_interrupts_and_logs()

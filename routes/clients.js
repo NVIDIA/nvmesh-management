@@ -1,11 +1,8 @@
-/***************************************************************************
- * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
- *
- * This file is part of Excelero NVMesh software.
- *
- * Unauthorized copying of this file, via any medium is strictly prohibited
- * Proprietary and confidential
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 
 var express = require('express');
 
@@ -68,8 +65,8 @@ router.get('/', function(req, res) {
 	<br/><code>5</code> Failed to attach block device.
 * @apiSuccessExample Example data on success
 * [{
-* 		"_id": "nvme13.excelero.com",
-* 		"clientID": "nvme13.excelero.com",
+* 		"_id": "nvme13.acme.com",
+* 		"clientID": "nvme13.acme.com",
 * 		"client_status": 1,
 *		"block_devices": [{
 			"trim_latency": 0,
@@ -89,8 +86,8 @@ router.get('/', function(req, res) {
 		}],
 *		"dateModified: ISODate("2015-08-17T12:26:08.939Z")
 * }, {
-*		"_id": "nvme48.excelero.com",
-*		"clientID": "nvme48.excelero.com",
+*		"_id": "nvme48.acme.com",
+*		"clientID": "nvme48.acme.com",
 * 		"client_status": 1,
 *		"block_devices": [],
 *		"dateModified: ISODate("2015-08-17T12:26:08.939Z")
@@ -144,13 +141,13 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 * @apiDescription Get combined status data attachment.
 *
 * @apiParamExample Example request {object[]}
-* /clients/combinedStatus/nvme13.excelero.com/snapshot_test
+* /clients/combinedStatus/nvme13.acme.com/snapshot_test
 *
 * @apiSuccess object combined status attachment.
 *
 * @apiSuccessExample Example data on success
 {
-    "_id" : "nvme13.excelero.com",
+    "_id" : "nvme13.acme.com",
     "snapshot_test" : {
         "io_perm" : 15,
 		"name" : "snapshot_test",
@@ -193,7 +190,7 @@ router.get('/combinedStatus/:clientID/:volumeID', isAdminRole, (req, res) => {
 * @apiParam {string} delete.uuid The `UUID` of the `client` to delete.
 * @apiParamExample {string} Payload example
 * [{
-*		"_id": "nvme31.excelero.com"
+*		"_id": "nvme31.acme.com"
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
 * @apiSuccess {object} results success statuses
@@ -201,7 +198,7 @@ router.get('/combinedStatus/:clientID/:volumeID', isAdminRole, (req, res) => {
 * [{
 *      "success": true,
 *	   "uuid": "",
-*      "_id": "nvme31.excelero.com",
+*      "_id": "nvme31.acme.com",
 *      "error": null,
 *	   "payload": null
 * }]*/
@@ -260,7 +257,7 @@ router.get('/count', getCountEntitiesHandler('client'));
 * <small><i>Available options are: `NONE` (default), `STATIC` or `HOTPLUG`</i></small>
 * @apiParamExample {string} Payload example
 * {
-* 	"client": "nvme21.excelero.com",
+* 	"client": "nvme21.acme.com",
 * 	"clientUUID": "f02abf10-6bfb-11ed-a62f-d1b4ca08eef3",
 * 	"volumes": [{
 * 		"name": "V1",
@@ -323,7 +320,7 @@ router.post('/attach', isAdminRole, (req, res) => {
 
 * @apiParamExample {string} Payload example
 * {
-* 	"client": "nvme21.excelero.com",
+* 	"client": "nvme21.acme.com",
 * 	"clientUUID": "f02abf10-6bfb-11ed-a62f-d1b4ca08eef3",
 * 	"volumes": [{
 * 		"name": "V1",
@@ -446,7 +443,7 @@ router.get('/:id', (req, res) => {
 * <small><i>Available options are: `NONE` (default), `STATIC` or `HOTPLUG`</i></small>
 * @apiParamExample {string} Payload example
 * {
-* 	"client": "nvme21.excelero.com",
+* 	"client": "nvme21.acme.com",
 * 	"clientUUID": "f02abf10-6bfb-11ed-a62f-d1b4ca08eef3",
 * 	"volumes": [{
 * 		"name": "V1",
