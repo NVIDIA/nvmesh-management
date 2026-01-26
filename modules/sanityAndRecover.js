@@ -19,7 +19,6 @@ var clientModule = require('./client.js');
 var kafkaModule = require('./kafka.js');
 var lockModule = require('./lock.js');
 var upgradeModule = require('./upgrade.js');
-var dbUpgradeModule = require('./dbUpgrade.js');
 var encryptionModule = require('./volumeEncryption.js');
 var config = require('./config.js');
 var { Entities, Differentiators, SystemMessage, SystemAdminMessage, MongoError, getDriveID } = require('./error.js');
@@ -192,7 +191,6 @@ scope.run = cb => {
 		scope.checkLastEmulationAttachmentsVersionSentToClient,
 		scope.checkAndResumeStuckUpgrades,
 		cleanupUnusedTopics,
-		dbUpgradeModule.upgradeDBIfNeeded,
 		scope.verifySegmentStatusAfterEvict
 	], err => {
 		if (err)

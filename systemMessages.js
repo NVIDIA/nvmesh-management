@@ -4516,62 +4516,6 @@ var systemMessages = {
 		id: 17004,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
-	INCOMPATIBLE_DB_ERA: {
-		message: 'Management has an incompatible DB Era, existing...',
-		id: 17005,
-		header: getAuditHeader(consts.entity.management, consts.operation.start),
-		logLevel: consts.loggingLevel.ERROR,
-		sysLogLevel: consts.loggingLevel.ERROR,
-		isAudit: true
-	},
-	DB_UPGRADE_FAILED_TO_TAKE_LOCK: {
-		message: 'Failed to take a lock while trying to upgrade the DB',
-		id: 17007,
-		header: getAuditHeader(consts.entity.dbUpgrade, consts.operation.start),
-		logLevel: consts.loggingLevel.ERROR,
-		sysLogLevel: consts.loggingLevel.ERROR,
-		isAudit: true
-	},
-	DB_UPGRADE_FAILED_TO_RELEASE_LOCK: {
-		message: 'Failed to release lock while trying to end or abort DB upgrade',
-		id: 17008,
-		header: getAuditHeader(consts.entity.dbUpgrade, consts.operation.end),
-		logLevel: consts.loggingLevel.ERROR,
-		sysLogLevel: consts.loggingLevel.ERROR,
-		isAudit: true
-	},
-	DB_UPGRADE_FAILED_TO_READ_DB_VERSION_FILE: {
-		message: 'Failed to read dbVersion file',
-		id: 17009,
-		header: getAuditHeader(consts.entity.dbUpgrade, consts.operation.start),
-		logLevel: consts.loggingLevel.ERROR,
-		sysLogLevel: consts.loggingLevel.ERROR,
-		isAudit: true
-	},
-	DB_UPGRADE_FAILED_TO_RUN_UPGRADE_SCRIPT: {
-		message: 'A mandatory upgrade script failed, so shutting down to avoid damaging system data, contact Nvidia support',
-		id: 17010,
-		header: getAuditHeader(consts.entity.dbUpgrade, consts.operation.execute),
-		logLevel: consts.loggingLevel.ERROR,
-		sysLogLevel: consts.loggingLevel.ERROR,
-		isAudit: true
-	},
-	DB_UPGRADE_FAILED_TO_EXECUTE_DOCUMENT_UPGRADE: {
-		message: 'Failed to execute document upgrade',
-		id: 17011,
-		header: getAuditHeader(consts.entity.dbUpgrade, consts.operation.execute),
-		logLevel: consts.loggingLevel.ERROR,
-		sysLogLevel: consts.loggingLevel.ERROR,
-		isAudit: true
-	},
-	DB_UPGRADE_SCRIPT_MISSING_COLLECTION_NAME: {
-		message: 'Upgrade script is missing the collection name',
-		id: 17012,
-		header: getAuditHeader(consts.entity.dbUpgrade, consts.operation.execute),
-		logLevel: consts.loggingLevel.ERROR,
-		sysLogLevel: consts.loggingLevel.ERROR,
-		isAudit: true
-	},
 	ZONE_HARDWARE_CONFIGURATION_FAILED: {
 		message: 'Failed to get zone hardware configuration',
 		id: 168071,

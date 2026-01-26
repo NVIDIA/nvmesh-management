@@ -48,7 +48,6 @@ var generalSettingsModule = require('./modules/generalSettings.js');
 var mongoDBModule = require('./modules/mongoDB.js');
 var lockModule = require('./modules/lock.js');
 var managementClusterModule = require('./modules/managementCluster.js');
-var dbUpgradeModule = require('./modules/dbUpgrade.js');
 var systemMessages = require('./systemMessages.js');
 var cert = require('./modules/cert.js');
 var ClientCertStrategy = require('./modules/clientCertStrategy').Strategy;
@@ -827,7 +826,6 @@ mongoDBModule.initDBsConnections(() => {
 		app.set('managementVersion', rpmVersion);
 		app.set('versionsFromFile', versions.versionsFromFile);
 		app.set('managementCompatibilityVersion', '1');
-		app.set('dbEra', '1');
 
 		interopDB.getSupportedMongoCollections(rpmVersion.split('-')[0], (results) => {
 			const allDBsCollectionNames = Object.values(consts.dbCollections).concat(Object.values(consts.metadataDBCollections));
@@ -849,16 +847,14 @@ mongoDBModule.initDBsConnections(() => {
 
 			app.set('supportedDBCollectionVersions', results.data);
 
-			dbUpgradeModule.checkDBEraCompatibility(app.get('dbEra'), () => {
-				mongoDBModule.populateInitialDBCollections((err) => {
-					if (err) {
-						logger.sysDEBUG('Failed to populate DB collections on startup');
-						new MongoError(err).log();
-						process.exit(1);
-					}
+			mongoDBModule.populateInitialDBCollections((err) => {
+				if (err) {
+					logger.sysDEBUG('Failed to populate DB collections on startup');
+					new MongoError(err).log();
+					process.exit(1);
+				}
 
-					doAfterDatabasesArePopulatedAndConnected();
-				});
+				doAfterDatabasesArePopulatedAndConnected();
 			});
 		});
 	});

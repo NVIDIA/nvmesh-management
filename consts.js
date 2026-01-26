@@ -985,7 +985,6 @@ consts.entity = {
 	platform: 'Platform',
 	component: 'Component',
 	upgrade: 'Upgrade',
-	dbUpgrade: 'DBUpgrade',
 	documentUpgradeInterceptor: 'Document Upgrade Interceptor',
 	release: 'Release',
 	artifact: 'Artifact',

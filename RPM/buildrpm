@@ -347,12 +347,6 @@ for rpm in "${rpmsToCreate[@]}"; do
         rsync -aRPq --exclude=*~ $management_transfer_list ~/"rpmbuild/SOURCES/$packagePrefix"
         rm -rf ./interop-db/
 
-        #making sure all the upgrade scripts have executable permissions before packaging them
-        echo "Chmoding upgrade scripts..."
-        chmod +x ~/rpmbuild/SOURCES/$packagePrefix/upgradeScripts/*
-
-        find ~/"rpmbuild/SOURCES/$packagePrefix/upgradeScripts/" -maxdepth 1 ! -name '[0-9a-zA-Z]*' -type f -exec rm -f {} +
-
         #handling other vendors resources (public dir)
         if [ "$skin" == "acme" ]; then
             cp -Rp ~/"rpmbuild/SOURCES/$packagePrefix/public_acme"/* ~/"rpmbuild/SOURCES/$packagePrefix/public/"

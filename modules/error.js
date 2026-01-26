@@ -77,7 +77,6 @@ scope.Entities = {
 	InterfaceName: 'interfaceName',
 	FeatureCompatibilityType: 'featureCompatibilityType',
 	FeatureCompatibilityVersion: 'featureCompatibilityVersion',
-	dbEra: 'dbEra',
 	DocumentID: 'DocumentID',
 	Collection: 'Collection',
 	UpgradeScript: 'UpgradeScript',
