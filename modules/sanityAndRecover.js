@@ -208,6 +208,11 @@ scope.run = cb => {
 let checkForUnusedTopicsTime, topicsToOffsetsInfoFound;
 
 function checkForUnusedTopics(callback) {
+	if (app.get('nonLatestVersion')) {
+		logger.sysDEBUG('This management is not the latest version, skipping checkForUnusedTopics');
+		return callback();
+	}
+
 	let unusedTopicsFound;
 	let skip;
 
