@@ -1051,7 +1051,6 @@ consts.componentsPages = {
 	upgradeStepsScenarios: 'upgradeStepsScenarios',
 	upgradeAgents: 'upgradeAgents',
 	clients: 'clients',
-	serviceUnavailable: 'serviceUnavailable',
 	drives: 'drives',
 	cluster: 'cluster',
 	upgrade: 'upgrade',

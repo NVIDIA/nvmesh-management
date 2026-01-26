@@ -24,8 +24,6 @@ router.get('/', function(req, res) {
 		renderData.layout = false;
 
 	renderData.user = { email: req.user.email, isAdmin: req.user.role === consts.userRoles.ADMIN };
-
-	renderData.isReact = true;
 	renderData.componentName = consts.componentsPages.upgrades;
 
 	res.render('react', renderData);
@@ -38,8 +36,6 @@ router.get('/upgrade/:id', function(req, res) {
 		renderData.layout = false;
 
 	renderData.user = { email: req.user.email, isAdmin: req.user.role === consts.userRoles.ADMIN };
-
-	renderData.isReact = true;
 	renderData.componentName = consts.componentsPages.upgrade;
 
 	res.render('react', renderData);

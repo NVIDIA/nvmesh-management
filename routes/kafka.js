@@ -20,7 +20,6 @@ router.get('/', (req, res) => {
 		email: req.user.email,
 		isAdmin: req.user.role === consts.userRoles.ADMIN
 	};
-	renderData.isReact = true;
 	renderData.componentName = consts.componentsPages.kafka;
 
 	res.render('react', renderData);

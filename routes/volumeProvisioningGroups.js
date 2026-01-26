@@ -39,7 +39,6 @@ router.get('/', function(req, res) {
 	renderData.user = { email: req.user.email, isAdmin: req.user.role === consts.userRoles.ADMIN };
 
 	if (consts.userRoles.ADMIN === req.user.role) {
-		renderData.isReact = true;
 		renderData.componentName = consts.componentsPages.vpg;
 
 		res.render('react', renderData);

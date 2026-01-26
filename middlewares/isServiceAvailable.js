@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-const consts = require('../consts.js');
 const { SystemMessage } = require('../modules/error');
 const systemMessages = require('../systemMessages');
 
@@ -42,9 +41,8 @@ function renderServiceUnavailable(req, sysMessage) {
 	const renderData = {};
 	renderData.layout = false;
 
-	renderData.isReact = true;
-	renderData.componentName = consts.componentsPages.serviceUnavailable;
 	renderData.additionalData = sysMessage.systemMessage.message;
+
 	return renderData;
 }
 

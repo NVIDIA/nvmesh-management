@@ -35,13 +35,11 @@ const componentsRegistry = {
 	[consts.componentsPages.backups]: `${pagesFolder}/Backups.js`,
 	[consts.componentsPages.upgrades]: `${pagesFolder}/upgrades/Upgrades.js`,
 	[consts.componentsPages.target]: `${pagesFolder}/target/Target.js`,
-	[consts.componentsPages.upgrades]: `${pagesFolder}/upgrades/Upgrades.js`,
 	[consts.componentsPages.upgradeScenarios]: `${pagesFolder}/upgradeScenarios/UpgradeScenarios.js`,
 	[consts.componentsPages.upgradeStepsScenarios]: `${pagesFolder}/upgradeStepsScenarios/UpgradeStepsScenarios.js`,
 	[consts.componentsPages.upgradeAgents]: `${pagesFolder}/upgradeAgents/UpgradeAgents.js`,
 	[consts.componentsPages.clients]: `${pagesFolder}/clients/Clients.js`,
 	[consts.componentsPages.techniciansScreen]: `${pagesFolder}/techniciansScreen/TechniciansScreen.js`,
-	[consts.componentsPages.serviceUnavailable]: `${pagesFolder}/ServiceUnavailable.js`,
 	[consts.componentsPages.upgrade]: `${pagesFolder}/upgrade/Upgrade.js`,
 	[consts.componentsPages.drives]: `${pagesFolder}/drives/Drives.js`,
 	[consts.componentsPages.cluster]: `${pagesFolder}/cluster/Cluster.js`,
@@ -49,7 +47,6 @@ const componentsRegistry = {
 	[consts.componentsPages.artifacts]: `${pagesFolder}/artifacts/Artifacts.js`,
 	[consts.componentsPages.about]: `${pagesFolder}/About.js`,
 	[consts.componentsPages.pageNotFound]: `${pagesFolder}/PageNotFound.js`,
-	[consts.componentsPages.serviceUnavailable]: `${pagesFolder}/ServiceUnavailable.js`,
 	[consts.componentsPages.configurationProfiles]: `${pagesFolder}/configProfiles/ConfigProfiles.js`
 };
 

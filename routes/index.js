@@ -37,7 +37,6 @@ router.get('/', function(req, res) {
 		isAdmin: req.user.role === consts.userRoles.ADMIN
 	};
 
-	renderData.isReact = true;
 	renderData.componentName = consts.componentsPages.dashboard;
 
 	res.render('react', renderData);
@@ -70,7 +69,6 @@ router.get('/about', function(req, res) {
 		renderData.layout = false;
 
 	renderData.user = { email: req.user.email, isAdmin: req.user.role === consts.userRoles.ADMIN };
-	renderData.isReact = true;
 	renderData.componentName = consts.componentsPages.about;
 
 	res.render('react', renderData);

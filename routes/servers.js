@@ -39,7 +39,6 @@ router.get('/', function(req, res) {
 			res.render('server', renderData);
 		});
 	} else {
-		renderData.isReact = true;
 		renderData.componentName = consts.componentsPages.targets;
 
 		res.render('react', renderData);
@@ -82,7 +81,6 @@ router.get('/server/:id', function(req, res) {
 			new MongoError(err).log();
 
 		renderData.server = data;
-		renderData.isReact = true;
 		renderData.componentName = consts.componentsPages.target;
 
 		res.render('react', renderData);
