@@ -131,6 +131,11 @@ var systemMessages = {
 		id: 3014,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	RUN_KAFKA_COMMAND_ON_SUCCESS_ERROR: {
+		message: 'Error in onSuccessFn of runKafkaCommand',
+		id: 3015,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	CERT_CREATE_DIRECTORY_FAILED: {
 		message: 'Failed to create certificates directory, shutting down.',
 		id: 3018,

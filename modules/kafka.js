@@ -846,7 +846,7 @@ function commitOffsets(topic, partition) {
 	(async() => {
 		try {
 			await scope.runKafkaCommand(
-				consumer?.commitOffsets, [[{ topic, partition, offset: (Number(offsetToCommit) + 1).toString() }]]
+				consumer?.commitOffsets, [[{ topic, partition, offset: (Number(offsetToCommit) + 1).toString() }]], getConsumerOptions()
 			);
 
 			let offsets = Object.keys(scope.offsetsRegistry[topic][partition].offsets);
@@ -955,7 +955,7 @@ scope.pauseConsumer = function() {
 		consumer.pause(Array.from(scope.subscribableTopics).map(topicName => ({ topic: topicName })));
 	} catch (ex) {
 		new SystemMessage(systemMessages.KAFKA_CONSUMER_PAUSE_FAILED).addInfo(Entities.Exception, ex).log();
-		defaultOnKafkaCommandError(ex, consumer.customConsumerInstanceID);
+		onConsumerError(ex, consumer.customConsumerInstanceID);
 		return;
 	}
 
@@ -977,7 +977,7 @@ scope.resumeConsumer = function() {
 		consumer.resume(Array.from(scope.subscribableTopics).map(topicName => ({ topic: topicName })));
 	} catch (ex) {
 		new SystemMessage(systemMessages.KAFKA_CONSUMER_RESUME_FAILED).addInfo(Entities.Exception, ex).log();
-		defaultOnKafkaCommandError(ex, consumer.customConsumerInstanceID);
+		onConsumerError(ex, consumer.customConsumerInstanceID);
 		// we have to retry, in case this is the last messageInProcess.
 		if (scope.messagesInProcess < 2)
 			setTimeout(() => scope.resumeConsumerIfNeeded(), 5 * 1000);
@@ -1113,13 +1113,14 @@ scope.initConsumers = async function(id = app.get('managementId')) {
 		const topics = Array.from(scope.subscribableTopics);
 		logger.sysDEBUG(`Starting Kafka Consumer and subscribe on ${topics}`);
 
-		await scope.runKafkaCommand(consumer.connect);
-		await scope.runKafkaCommand(consumer.subscribe, [{ topics: topics, fromBeginning: true }]);
+		const consumerOptions = getConsumerOptions();
+		await scope.runKafkaCommand(consumer.connect, [], consumerOptions);
+		await scope.runKafkaCommand(consumer.subscribe, [{ topics: topics, fromBeginning: true }], consumerOptions);
 
 		await scope.runKafkaCommand(consumer.run, [{
 			autoCommit: false,
 			eachMessage: scope.handleMessage
-		}]);
+		}], consumerOptions);
 
 		consumer.subscribedTopics = new Set(scope.subscribableTopics);
 		consumer.debug = { runCalled: true };
@@ -1550,40 +1551,52 @@ const recycleConsumerAfterGracePeriod = (consumerId) => {
 	scope.requestConsumerRecycle(consumerId);
 };
 
-async function defaultOnKafkaCommandError(ex, consumerId) {
+const getConsumerInstanceID = () => app.get('kafkaConsumer')?.customConsumerInstanceID;
+
+const onConsumerSuccess = () => {
+	if (consumerErrorsGraceTimer) {
+		logger.sysDEBUG('onConsumerSuccess: command succeeded, resetting grace period');
+		clearTimeout(consumerErrorsGraceTimer);
+		consumerErrorsGraceTimer = null;
+	}
+};
+
+const onConsumerError = async(ex, consumerId) => {
 	// May happen during recycle consumer - after consumer is disconnected and before it is reconnected
 	const isNotInitializedConsumerError = ex.message.includes('Consumer group was not initialized, consumer#run must be called first');
 
 	// This is a non-retriable exception that requires rejoining the group to get the correct generation id
 	const isGenerationIdError = ex.message.includes('Specified group generation id is not valid');
-	let currentConsumerId = app.get('kafkaConsumer')?.customConsumerInstanceID;
+	let currentConsumerId = getConsumerInstanceID();
 
-	logger.sysDEBUG(`defaultOnKafkaCommandError: consumer (req consumer ID: ${consumerId}, current: ${currentConsumerId}) error ${ex.message}`);
+	logger.sysDEBUG(`onConsumerError: consumer (req consumer ID: ${consumerId}, current: ${currentConsumerId}) error ${ex.message}`);
 	if (isNotInitializedConsumerError || isGenerationIdError) {
 		if (consumerId == currentConsumerId) {
-			logger.sysDEBUG(`defaultOnKafkaCommandError: consumer (req consumer ID: ${consumerId}, current: ${currentConsumerId}) error ${ex.message}`);
+			logger.sysDEBUG(`onConsumerError: consumer (req consumer ID: ${consumerId}, current: ${currentConsumerId}) error ${ex.message}`);
 			if (!consumerErrorsGraceTimer) {
-				logger.sysWARNING(`defaultOnKafkaCommandError: ex.message: ${ex.message}, consumer ID ${consumerId} `
+				logger.sysWARNING(`onConsumerError: ex.message: ${ex.message}, consumer ID ${consumerId} `
 						+ ' is the same as the current consumer ID, starting grace period');
 				consumerErrorsGraceTimer = setTimeout(recycleConsumerAfterGracePeriod, consts.kafka.NON_RETRYABLE_ERRORS_GRACE_PERIOD, consumerId);
 				consumerErrorsGracePeriodStartedAt = new Date();
 			} else {
-				logger.sysDEBUG(`defaultOnKafkaCommandError: ex.message: ${ex.message}, consumer ID ${consumerId} `
+				logger.sysDEBUG(`onConsumerError: ex.message: ${ex.message}, consumer ID ${consumerId} `
 					+ ` grace period is active since ${consumerErrorsGracePeriodStartedAt}`);
 			}
 			//retry - during grace period
-			logger.sysDEBUG('defaultOnKafkaCommandError: retrying...');
+			logger.sysDEBUG('onConsumerError: retrying...');
 			return true;
 		} else {
 			// now that consumer is reconnected, we can retry the command
-			logger.sysDEBUG(`defaultOnKafkaCommandError: current consumer ID ${currentConsumerId} is different than the failed consumer ID: ${consumerId},
-				the consumer was prabably recycled already, continuing...`);
+			logger.sysDEBUG(`onConsumerError: current consumer ID ${currentConsumerId} is different than the failed consumer ID: ${consumerId},
+				the consumer was probably recycled already, continuing...`);
 			return true;
 		}
 	}
 
 	return isRetriableException(ex);
-}
+};
+
+const getConsumerOptions = () => ({ onSuccessFn: onConsumerSuccess, getInstanceID: getConsumerInstanceID, onErrorFn: onConsumerError });
 
 // Executes an asynchronous Kafka command with automatic retries of retriable exceptions.
 // It employs exponential backoff for retries with configurable delay between attempts.
@@ -1594,22 +1607,17 @@ scope.runKafkaCommand = async(commandFn, args = [], options = {}) => {
 		retriesLeft = consts.kafka.RETRY.LEFT,
 		retryDelayMs = consts.kafka.RETRY.DELAY,
 		retryDelayFactor = consts.kafka.RETRY.FACTOR,
-		onErrorFn = defaultOnKafkaCommandError
+		onErrorFn = isRetriableException,
+		onSuccessFn = () => {},
+		getInstanceID = () => {}
 	} = options;
 
-	const consumerId = app.get('kafkaConsumer')?.customConsumerInstanceID;
+	const instanceID = getInstanceID();
 
 	try {
 		result = await commandFn(...args);
-
-		// command succeeded
-		if (consumerErrorsGraceTimer) {
-			logger.sysDEBUG('defaultOnKafkaCommandError: command succeeded, resetting grace period');
-			clearTimeout(consumerErrorsGraceTimer);
-			consumerErrorsGraceTimer = null;
-		}
 	} catch (ex) {
-		const shouldRetry = await onErrorFn(ex, consumerId);
+		const shouldRetry = await onErrorFn(ex, instanceID);
 		if (!shouldRetry || !retriesLeft)
 			throw ex;
 
@@ -1624,6 +1632,12 @@ scope.runKafkaCommand = async(commandFn, args = [], options = {}) => {
 					.then(resolve)
 					.catch(reject);
 			}, options.retryDelayMs));
+	}
+
+	try {
+		onSuccessFn();
+	} catch (ex) {
+		new SystemMessage(systemMessages.RUN_KAFKA_COMMAND_ON_SUCCESS_ERROR).addInfo(Entities.Exception, ex).log();
 	}
 
 	return result;
