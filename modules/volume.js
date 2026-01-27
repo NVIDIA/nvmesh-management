@@ -1578,7 +1578,7 @@ scope.deprecateSegments = function(segmentIds, lockedZone, user, callback) {
 	var newLockedZones;
 
 	async.eachSeries(segmentIds, function onEach(segment, eachCallback) {
-		var segmentID = segment.id;
+		var segmentID = segment.id || segment._id;
 
 		var query = {
 			'chunks.pRaids.uuid': segment.pRaidUUID,
