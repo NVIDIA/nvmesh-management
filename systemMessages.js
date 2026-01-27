@@ -3379,18 +3379,18 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.WARNING
 	},
 	SANITY_SEGMENTS_WITH_INVALID_STATUS_FOUND: {
-		message: 'Found volume segments with invalid statuses on drive that need to be remapped.',
+		message: 'Handling volume segments with invalid statuses on drive that need to be remapped.',
 		header: 'Sanity Failed',
 		id: 16181,
-		logLevel: consts.loggingLevel.INFO,
-		sysLogLevel: consts.loggingLevel.WARNING
+		logLevel: consts.loggingLevel.DEBUG,
+		sysLogLevel: consts.loggingLevel.DEBUG
 	},
 	SANITY_SEGMENTS_TO_DEPRECATE_FOUND: {
-		message: 'Found volume segments to deprecate on drive that need to be deprecated.',
+		message: 'Handling volume segments to deprecate on drive that need to be deprecated.',
 		header: 'Sanity Failed',
 		id: 16182,
-		logLevel: consts.loggingLevel.INFO,
-		sysLogLevel: consts.loggingLevel.WARNING
+		logLevel: consts.loggingLevel.DEBUG,
+		sysLogLevel: consts.loggingLevel.DEBUG
 	},
 	EXTEND_VOLUME_VERSION_FAILED: {
 		message: 'Failed to extend volume. It looks like the volume version changed during the extend operation. Please try again.',

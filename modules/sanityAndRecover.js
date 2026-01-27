@@ -2438,24 +2438,35 @@ const getVerifySegmentStatusAfterEvictByZonePipeline = (zone) => {
 
 	const pipeline = [
 		{ $match: { zone, 'disks.isOutOfService': true } },
-		// keep only isOutOfService disks to avoid unnecessary unwinds
-		{ $project: { disks: { $filter: { input: '$disks', as: 'disk', cond: { $eq: ['$$disk.isOutOfService', true] } } } } },
-		{ $unwind: '$disks' },
-		// keep only data segments to avoid unnecessary unwinds and map only relevant fields from segment
+		// keep only isOutOfService disks to avoid unnecessary unwinds and map only diskSegments that are data segments
 		{
 			$project: {
-				diskID: '$disks.diskID',
 				disks: {
-					diskSegments: {
-						$map: {
-							input: { $filter: { input: '$disks.diskSegments', as: 'segment', cond: { $eq: ['$$segment.type', consts.segmentTypes.DATA] } } },
-							as: 'segment',
-							in: { _id: '$$segment._id', volumeName: '$$segment.volumeName', zone: '$$segment.zone' }
+					$map: {
+						input: { $filter: { input: '$disks', as: 'disk', cond: { $eq: ['$$disk.isOutOfService', true] } } },
+						as: 'disk',
+						in: {
+							diskID: '$$disk.diskID',
+							diskSegments: {
+								$map: {
+									input: {
+										$filter: {
+											input: '$$disk.diskSegments',
+											as: 'segment',
+											cond: { $eq: ['$$segment.type', consts.segmentTypes.DATA] }
+										}
+									},
+									as: 'segment',
+									in: { _id: '$$segment._id', volumeName: '$$segment.volumeName', zone: '$$segment.zone' }
+								}
+							}
 						}
 					}
 				}
 			}
 		},
+		{ $unwind: '$disks' },
+		{ $addFields: { diskID: '$disks.diskID' } },
 		// remove disks with no relevant segments
 		{ $match: { $expr: { $gt: [{ $size: '$disks.diskSegments' }, 0] } } },
 		{
@@ -2495,7 +2506,7 @@ const getVerifySegmentStatusAfterEvictByZonePipeline = (zone) => {
 							RAIDLevel: 1
 						}
 					},
-					// keep only segments that requires update and project relevant fields
+					// keep only segments that requires update
 					{
 						$project: {
 							processedSegments: {
@@ -2518,17 +2529,7 @@ const getVerifySegmentStatusAfterEvictByZonePipeline = (zone) => {
 																	]
 																}
 															},
-															in: {
-																isInvalid: '$$isInvalid',
-																isDeprecate: '$$isDeprecate',
-																segmentData: {
-																	$cond: {
-																		if: '$$isDeprecate',
-																		then: { _id: '$$seg._id', pRaidUUID: '$$seg.pRaidUUID', volType: '$type' },
-																		else: { $cond: { if: '$$isInvalid', then: '$$seg', else: null } }
-																	}
-																}
-															}
+															in: { isInvalid: '$$isInvalid', isDeprecate: '$$isDeprecate', segmentData: '$$seg' }
 														}
 													}
 												}
@@ -2554,36 +2555,33 @@ const getVerifySegmentStatusAfterEvictByZonePipeline = (zone) => {
 			$project: {
 				diskID: 1,
 				volumeDiskSegments: {
-					$let: {
-						vars: {
-							allSegments: {
-								$reduce: {
-									input: '$volumeLookupResult',
-									initialValue: [],
-									in: { $concatArrays: ['$$value', '$$this.processedSegments'] }
-								}
-							}
-						},
+					$reduce: {
+						input: '$volumeLookupResult',
+						initialValue: { withInvalidStatuses: [], toDeprecate: [] },
 						in: {
-							// keep full segment data with invalid status to match format of diskModule.updateVolumesAfterEvict
 							withInvalidStatuses: {
-								$map: {
-									input: { $filter: { input: '$$allSegments', as: 'seg', cond: { $eq: ['$$seg.isInvalid', true] } } },
-									as: 'item',
-									in: '$$item.segmentData'
-								}
-							},
-							// keep and adapt segment data to deprecate to match format of volumeModule.deprecateSegments
-							toDeprecate: {
-								$map: {
-									input: { $filter: { input: '$$allSegments', as: 'seg', cond: { $eq: ['$$seg.isDeprecate', true] } } },
-									as: 'item',
-									in: {
-										id: '$$item.segmentData._id',
-										volType: '$$item.segmentData.volType',
-										pRaidUUID: '$$item.segmentData.pRaidUUID'
+								$concatArrays: [
+									'$$value.withInvalidStatuses',
+									{
+										$map: {
+											input: { $filter: { input: '$$this.processedSegments', as: 'seg', cond: '$$seg.isInvalid' } },
+											as: 'item',
+											in: '$$item.segmentData'
+										}
 									}
-								}
+								]
+							},
+							toDeprecate: {
+								$concatArrays: [
+									'$$value.toDeprecate',
+									{
+										$map: {
+											input: { $filter: { input: '$$this.processedSegments', as: 'seg', cond: '$$seg.isDeprecate' } },
+											as: 'item',
+											in: '$$item.segmentData'
+										}
+									}
+								]
 							}
 						}
 					}
