@@ -307,6 +307,11 @@ function cleanupUnusedTopics(callback) {
 			);
 		},
 		cb => {
+			if (!skip && app.get('nonLatestVersion')) {
+				logger.sysDEBUG('This management is not the latest version, skipping cleanupUnusedTopics');
+				skip = true;
+			}
+
 			if (skip)
 				return cb();
 
