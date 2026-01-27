@@ -325,7 +325,7 @@ function sendUpdateUpgradeAgentKeepaliveTokenMessage(upgradeAgentID, token, mess
 	const keepaliveInterval = app.get('globalSettings').keepaliveIntervals.UPGRADE_AGENT;
 	const message = new UpdateUpgradeAgentKeepaliveToken(upgradeAgentID, token, keepaliveInterval, messageSequence);
 
-	kafkaModule.sendMessages(topic, [message], callback, true);
+	kafkaModule.sendMessages(topic, [message], callback);
 }
 
 function deleteUpgradeAgent(upgradeAgent, callback) {

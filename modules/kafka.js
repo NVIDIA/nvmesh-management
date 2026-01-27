@@ -32,6 +32,7 @@ let isRecycleProducerInProgress = false;
 let lastConsumerRecycleTime = null;
 let consumerIdOnRecycle = null;
 let currentConsumerIdCounter = 0;
+let currentProducerIdCounter = 0;
 let consumerRecycleBackoff = new Backoff({
 	name: 'consumerRecycleBackoff',
 	initialBackoff: consts.kafka.RECYCLE_CONSUMER.INITIAL_BACKOFF,
@@ -321,37 +322,30 @@ function toggleForceSanityAndRecoverIfNeeded() {
 	});
 }
 
-scope.sendMessages = (topicOrGetterFn, messages, callback, shouldRetryOnFailure = true) => {
+scope.sendMessages = (topicOrGetterFn, messages, callback = () => {}) => {
 	const kafkaProducer = app.get('kafkaProducer');
-	let err, topic;
+	let topic, serializedMsgs;
 
 	(async() => {
 		try {
 			topic = await new Promise(resolve => typeof topicOrGetterFn === 'function' ? topicOrGetterFn(resolve) : resolve(topicOrGetterFn));
-			const serializedMsgs = messages.map(m => m.toJSON());
+			serializedMsgs = messages.map(m => m.toJSON());
 			serializedMsgs.forEach(m => logger.sysDEBUG(`Sending ${m.messageType} to topic ${topic}:`, m));
-			await kafkaProducer.send({ topic: topic, messages: serializedMsgs.map((m) => ({ value: JSON.stringify(m) })) });
-			scope.totalSent++;
-			serializedMsgs.forEach(m => addMetricsEvent(`sendMessage-${topic}`, topic, m.messageType));
-
 		} catch (ex) {
-			if (!shouldRetryOnFailure)
-				logger.sysDEBUG('No more retry attempts for sending message, going to fail sendMessages');
-
-			else if (await shouldRetryToSendMessages(topic, ex)) {
-				await recycleProducerIfNeeded(kafkaProducer);
-				return scope.sendMessages(topicOrGetterFn, messages, callback, false);
-			}
-
-			err = new SystemMessage(systemMessages.KAFKA_SEND_MESSAGE_ERROR).addInfo(Entities.Exception, ex).addInfo(Entities.KafkaTopics, topic).log();
-
-			toggleForceSanityAndRecoverIfNeeded();
-
-			scope.totalSentFailed++;
+			const err = new SystemMessage(systemMessages.KAFKA_PREP_SEND_MSG_ERROR).addInfo(Entities.Exception, ex).addInfo(Entities.KafkaTopics, topic).log();
+			return callback(err);
 		}
 
-		if (callback)
-			callback(err);
+		try {
+			const options = getSendMessagesRunCommandOptions(topic, serializedMsgs, kafkaProducer);
+			await scope.runKafkaCommand(kafkaProducer.send, [{ topic, messages: serializedMsgs.map((m) => ({ value: JSON.stringify(m) })) }], options);
+		} catch (ex) {
+			const err = new SystemMessage(systemMessages.KAFKA_SEND_MESSAGE_ERROR).addInfo(Entities.Exception, ex).addInfo(Entities.KafkaTopics, topic).log();
+			toggleForceSanityAndRecoverIfNeeded();
+			return callback(err);
+		}
+
+		callback();
 	})();
 };
 
@@ -846,7 +840,7 @@ function commitOffsets(topic, partition) {
 	(async() => {
 		try {
 			await scope.runKafkaCommand(
-				consumer?.commitOffsets, [[{ topic, partition, offset: (Number(offsetToCommit) + 1).toString() }]], getConsumerOptions()
+				consumer?.commitOffsets, [[{ topic, partition, offset: (Number(offsetToCommit) + 1).toString() }]], getConsumerRunCommandOptions()
 			);
 
 			let offsets = Object.keys(scope.offsetsRegistry[topic][partition].offsets);
@@ -1081,13 +1075,14 @@ async function initKafkaAdmin(kafkaClient = app.get('kafkaClient')) {
 }
 
 async function initProducer(kafkaClient = app.get('kafkaClient')) {
-	logger.sysDEBUG('Initializing Kafka Producer');
-
 	try {
 		const kafkaProducer = kafkaClient.producer();
+		kafkaProducer.customProducerInstanceID = ++currentProducerIdCounter;
+		logger.sysDEBUG(`Initializing Kafka Producer with ID: ${kafkaProducer.customProducerInstanceID}`);
 		await kafkaProducer.connect();
 
 		app.set('kafkaProducer', kafkaProducer);
+		logger.sysDEBUG(`Kafka Producer initialized with ID: ${kafkaProducer.customProducerInstanceID}`);
 	} catch (ex) {
 		new SystemMessage(systemMessages.FAILED_TO_INIT_KAFKA_PRODUCER).addInfo(Entities.Exception, ex).log();
 		throw ex;
@@ -1113,7 +1108,7 @@ scope.initConsumers = async function(id = app.get('managementId')) {
 		const topics = Array.from(scope.subscribableTopics);
 		logger.sysDEBUG(`Starting Kafka Consumer and subscribe on ${topics}`);
 
-		const consumerOptions = getConsumerOptions();
+		const consumerOptions = getConsumerRunCommandOptions();
 		await scope.runKafkaCommand(consumer.connect, [], consumerOptions);
 		await scope.runKafkaCommand(consumer.subscribe, [{ topics: topics, fromBeginning: true }], consumerOptions);
 
@@ -1152,7 +1147,9 @@ async function disconnectProducer() {
 		return;
 
 	try {
+		logger.sysDEBUG(`Disconnecting producer: ${producer.customProducerInstanceID}`);
 		await producer.disconnect();
+		logger.sysDEBUG(`Producer disconnected: ${producer.customProducerInstanceID}`);
 	} catch (ex) {
 		new SystemMessage(systemMessages.KAFKA_DISCONNECT_PRODUCER_ERROR).addInfo(Entities.Exception, ex).log();
 		throw ex;
@@ -1241,17 +1238,17 @@ scope.clearRecycleConsumerCooldown = () => {
 };
 
 async function recycleProducer() {
-	logger.sysDEBUG('recycleProducer:: Disconnecting existing producer');
+	logger.sysDEBUG(`recycleProducer:: Disconnecting existing producer with ID: ${getProducerInstanceID()}`);
 	await disconnectProducer();
 
 	logger.sysDEBUG('recycleProducer:: Initializing new producer');
 	await initProducer();
 
-	logger.sysDEBUG('recycleProducer:: Producer recycled successfully');
+	logger.sysDEBUG(`recycleProducer:: Producer recycled successfully with ID: ${getProducerInstanceID()}`);
 }
 
-async function recycleProducerIfNeeded(currentProducer) {
-	const isProducerChanged = currentProducer !== app.get('kafkaProducer');
+async function recycleProducerIfNeeded(producerID) {
+	const isProducerChanged = producerID !== getProducerInstanceID();
 	const shouldRecycleProducer = !isProducerChanged && !isRecycleProducerInProgress;
 
 	if (shouldRecycleProducer) {
@@ -1552,6 +1549,7 @@ const recycleConsumerAfterGracePeriod = (consumerId) => {
 };
 
 const getConsumerInstanceID = () => app.get('kafkaConsumer')?.customConsumerInstanceID;
+const getProducerInstanceID = () => app.get('kafkaProducer')?.customProducerInstanceID;
 
 const onConsumerSuccess = () => {
 	if (consumerErrorsGraceTimer) {
@@ -1596,7 +1594,31 @@ const onConsumerError = async(ex, consumerId) => {
 	return isRetriableException(ex);
 };
 
-const getConsumerOptions = () => ({ onSuccessFn: onConsumerSuccess, getInstanceID: getConsumerInstanceID, onErrorFn: onConsumerError });
+const onSendMessagesSuccess = (topic, serializedMsgs) => {
+	scope.totalSent++;
+	serializedMsgs.forEach(m => addMetricsEvent(`sendMessage-${topic}`, topic, m.messageType));
+};
+const onSendMessagesError = async(ex, topic, producerID) => {
+	scope.totalSentFailed++;
+
+	if (await shouldRetryToSendMessages(topic, ex)) {
+		await recycleProducerIfNeeded(producerID);
+		return true;
+	}
+};
+
+const getConsumerRunCommandOptions = () => ({
+	getInstanceID: getConsumerInstanceID,
+	onSuccessFn: onConsumerSuccess,
+	onErrorFn: onConsumerError
+});
+
+const getSendMessagesRunCommandOptions = (topic, serializedMsgs) => ({
+	getInstanceID: getProducerInstanceID,
+	onSuccessFn: () => onSendMessagesSuccess(topic, serializedMsgs),
+	onErrorFn: (ex, producerID) => onSendMessagesError(ex, topic, producerID),
+	retriesLeft: consts.kafka.RETRY.SEND_LEFT
+});
 
 // Executes an asynchronous Kafka command with automatic retries of retriable exceptions.
 // It employs exponential backoff for retries with configurable delay between attempts.

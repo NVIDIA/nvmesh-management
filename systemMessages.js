@@ -136,6 +136,11 @@ var systemMessages = {
 		id: 3015,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	KAFKA_PREP_SEND_MSG_ERROR: {
+		message: 'Failed to prepare a message to send to Kafka, contact support.',
+		id: 3016,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	CERT_CREATE_DIRECTORY_FAILED: {
 		message: 'Failed to create certificates directory, shutting down.',
 		id: 3018,
