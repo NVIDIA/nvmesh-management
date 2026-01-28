@@ -2987,7 +2987,8 @@ scope.getAvailableSegments = function(minValue, maxValue, diskSegments) {
 		if (diskSegments.length > 1)
 			sortedDiskSegments = diskSegments.sort(function(a, b) { return a.lbs - b.lbs; });
 
-		sortedDiskSegments.forEach(function(ds, i) {
+		for (let i = 0; i < sortedDiskSegments.length; i++) {
+			const ds = sortedDiskSegments[i];
 			var blocksFromLeft = ds.lbs - minVal;
 			if (blocksFromLeft > 0) {
 				segments.push({
@@ -3000,7 +3001,7 @@ scope.getAvailableSegments = function(minValue, maxValue, diskSegments) {
 				minVal = ds.lbe + 1;
 
 			if (maxValue <= minVal)
-				return false;
+				break;
 
 			//If last segment check for available blocks in the end of the disk.
 			if (diskSegments.length - 1 == i) {
@@ -3011,7 +3012,7 @@ scope.getAvailableSegments = function(minValue, maxValue, diskSegments) {
 						lbe: totalBlocks - 1
 					});
 			}
-		});
+		}
 	} else {
 		segments.push({
 			lbs: minValue,
