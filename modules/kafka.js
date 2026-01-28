@@ -1754,7 +1754,7 @@ function getManagementTopicsInUse(callback) {
 
 		async.each(rpmVersions, (rpmVersion, cb) => {
 			scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, null, topics => {
-				topicsInUse.add(...topics);
+				topics.forEach(topic => topicsInUse.add(topic));
 				cb();
 			});
 		}, () => callback(null, topicsInUse));
