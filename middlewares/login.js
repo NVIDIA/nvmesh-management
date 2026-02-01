@@ -115,7 +115,7 @@ scope.login = function(req, res, isAcceptHTML, next) {
 
 	if (httpsServerAuthenticationMethod === consts.HTTPSServerAuthenticationMethods.MTLS)
 		return passportAuth();
-	
+
 	utils.getAuthenticationEmail(req.body.username, authenticationEmail => { req.body.username = authenticationEmail; passportAuth(); });
 };
 

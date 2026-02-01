@@ -39,7 +39,6 @@ fi
 %install
 mkdir -pv %{buildroot}/opt/nvmesh/cli
 mkdir -pv %{buildroot}/usr/bin
-mkdir -pv %{buildroot}/opt/nvmesh/kubernetes/examples
 
 cp -rf %{_builddir}/%{name}/* %{buildroot}/opt/nvmesh/cli/
 cp -rf %{_builddir}/%{name}/scripts/nvmesh_diag %{buildroot}/usr/bin
@@ -47,7 +46,6 @@ cp -rf %{_builddir}/nvmesh-utils/infrastructure/dist/infra %{buildroot}/opt/nvme
 ln -s /opt/nvmesh/infra/infra %{buildroot}/usr/bin/nvmesh
 ln -s /opt/nvmesh/infra/infra %{buildroot}/usr/bin/nvmesh_check
 cp -rf %{_builddir}/%{name}/scripts/nvmesh_logs_collector %{buildroot}/usr/bin
-cp -rf %{_builddir}/%{name}/RPM/docker/kubernetes/examples/* %{buildroot}/opt/nvmesh/kubernetes/examples
 
 echo "version=\"%{version}-%{release}\"" > %{buildroot}/opt/nvmesh/cli/version
 echo "commit=\"%{commit_id}\"" >> %{buildroot}/opt/nvmesh/cli/version
@@ -77,7 +75,6 @@ fi
 %attr(0755, -, -)/usr/bin/nvmesh_logs_collector
 /usr/bin/nvmesh
 /usr/bin/nvmesh_check
-/opt/nvmesh/kubernetes/examples
 
 %changelog
 * Wed Oct 7 2015 Nvidia
