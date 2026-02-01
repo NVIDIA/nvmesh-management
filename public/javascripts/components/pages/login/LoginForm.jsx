@@ -24,7 +24,7 @@ const LoginForm = () => {
 
 	return (
 		<form action="/login" method="post" role="form">
-			<img id="nvmeshLogo" src="/images/NVMeshLogoLogin.png" alt="NVMesh Logo"/>
+			<img className="nvmesh-logo" src="/images/NVMeshLogoLogin.png" alt="NVMesh Logo"/>
 			<div className="form-group">
 				<i className="icon fa fa-user placeholder-icon"></i>
 				<Input placeholder="Username"
