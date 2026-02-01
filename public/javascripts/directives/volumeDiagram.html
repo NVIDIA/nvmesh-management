@@ -1,0 +1,68 @@
+<div class="modal fade" id="displayVolumeDiagram" role="dialog" data-backdrop="static" tabindex="-1"
+    data-keyboard="false">
+    <div class="modal-dialog large-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" ng-click="closeModal()" data-dismiss="modal">&times;</button>
+                <h2 class="modal-title">Volume Diagram - {{ diagrams[0].volumeID }}</h2>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-lg-8">
+                      <table class="table">
+                               <tr ng-repeat="(key, value) in diagrams[0].additionalInfo">
+                                    <th class="col-3">{{key}}</th>
+                                    <td class="text-muted">{{value}}</td>
+                                </tr>
+                      </table>
+                    </div>
+                </div>
+
+                <!-- single diagram volume -->
+                <tabset ng-if="diagrams.length <= 1">
+                    <tab heading="Layout">
+                        <div class="tab-body">
+                            <volume-diagram-layout data="diagrams[0].layout"></volume-diagram-layout>
+                        </div>
+                    </tab>
+                    <tab heading="Targets">
+                        <div class="tab-body">
+                            <volume-diagram-targets-view targets="diagrams[0].targets"></volume-diagram-targets-view>
+                        </div>
+                    </tab>
+                    <tab heading="CSI Metadata" ng-if="diagrams[0].csiMetadata">
+                        <div class="tab-body">
+                            <table class="table">
+                                <tr ng-repeat="(key, value) in diagrams[0].csiMetadata">
+                                    <th class="col-3">{{key}}</th>
+                                    <td class="text-muted">{{value}}</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </tab>
+                </tabset>
+
+                <!-- multi-tiered volume (multiple diagrams) -->
+                <tabset ng-if="diagrams.length > 1">
+                    <tab heading="{{diagram.title || diagram.volumeID}}" ng-repeat="diagram in diagrams">
+                        <div class="tab-body">
+                            <div class="form-group">RAID Level: {{diagram.layout.RAIDLevel}}</div>
+                            <tabset>
+                                <tab heading="Layout">
+                                    <div class="tab-body">
+                                        <volume-diagram-layout data="diagram.layout"></volume-diagram-layout>
+                                    </div>
+                                </tab>
+                                <tab heading="Targets">
+                                    <div class="tab-body">
+                                        <volume-diagram-targets-view targets="diagram.targets"></volume-diagram-targets-view>
+                                    </div>
+                                </tab>
+                            </tabset>
+                        </div>
+                    </tab>
+                </tabset>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+###########################################
+   NVMesh Management {{ .Chart.AppVersion }} Installed!
+###########################################
+
+1. NVMesh Management WebUI:
+---------------------------
+{{ if eq .Values.guiService.type "LoadBalancer" -}}
+   {{ if .Values.guiService.externalIP -}}
+
+To access the NVMesh Management WebUI please visit: {{ if .Values.config.useSSL }}https{{ else }}http{{ end }}://{{ .Values.guiService.externalIP }}:{{.Values.guiService.port}}/
+
+   {{- else -}}
+
+To get the URL for the NVMesh Management WebUI please run the following commands:
+
+EXTERNAL_IP=$(kubectl get -n {{ .Release.Namespace }} service nvmesh-management-gui --no-headers | awk '{ print $4 }')
+echo {{ if .Values.config.useSSL }}https{{ else }}http{{ end }}://$EXTERNAL_IP:{{.Values.guiService.port}}/
+
+   {{- end }}
+
+
+{{- else if eq .Values.guiService.type "ClusterIP" -}}
+
+To access the NVMesh Management WebUI please use the externalIP defined on your Ingress Service https://<ingress-ip>/
+If you are not sure how to get to your ingress service, try the following command:
+kubectl get service --all-namespaces | grep LoadBalancer
+
+{{- else if eq .Values.guiService.type "NodePort" -}}
+
+To access the NVMesh Management WebUI please use any of your hosts address with port {{ .Values.guiService.nodePort }} e.g: {{ if .Values.config.useSSL }}https{{ else }}http{{ end }}://<your-host-ip>:{{ .Values.guiService.nodePort }}/
+
+{{- end }}
+
+
+2. NVMesh Host Configuration:
+-----------------------------
+{{ if .Values.ingressType -}}
+
+Make sure to configure in /etc/nvmesh/nvmesh.conf MANAGEMENT_SERVERS="nvmesh-management-0:443,nvmesh-management-1:443,nvmesh-management-2:443"
+
+NOTE: Make sure the host resolves each of the hostnames to your ingress entryPoint IP (Your ingress controller service externalIP)
+This could be done by adding the following line to you /etc/hosts on each host, replace INGRESS_IP with your ingress externalIP:
+
+<INGRESS IP> {{ range $replicaIndex := until (.Values.replicas|int) -}}nvmesh-management-{{- $replicaIndex }} {{ end }}
+{{- range $replicaIndex := until (.Values.replicas|int) -}}
+   {{- range $statIndex := until ($.Values.config.statisticsCores|int) }}nvmesh-management-{{- $replicaIndex -}}-{{- $statIndex }} {{ end }}
+{{- end }}
+
+{{- else if eq .Values.service.type "LoadBalancer" -}}
+
+Make sure to configure on each NVMesh host's /etc/nvmesh/nvmesh.conf
+MANAGEMENT_SERVERS="<IP1>:{{.Values.service.port}},<IP2>:{{.Values.service.port}},.."
+
+Where <IP1>, <IP2> .. are each of your service externalIPs ({{.Values.service.externalIPs}})
+
+{{- else -}}
+
+Make sure to configure in /etc/nvmesh/nvmesh.conf MANAGEMENT_SERVERS="nvmesh-management-0:<port>,nvmesh-management-1:<port>,nvmesh-management-2:<port>"
+
+NOTE: Each nvmesh-management-<n>:<port> should resolve to the corresponding entryPoint for the corresponding service (i.e nvmesh-management-svc-0, nvmesh-management-svc-1, ..)
+
+{{- end }}
+
+
+3. User Guide:
+--------------
+Please visit TBD for the NVMesh User Guide
+
+{{ if eq .Values.service.type "ClusterIP" }}
+WARNING:
+Please replace ingress-tls-cert with your own certificate information
+{{ end }}
+
+Happy NVMeshing!

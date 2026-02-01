@@ -1,0 +1,109 @@
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ================================= UNINSTALLING NVMESH MANAGEMENT ==================================
+
+TARGETDIR=/opt/nvmesh
+MDIR="$TARGETDIR/management"
+NVMLOGDIR=/var/log/nvmesh
+BACKUPSDIR=/var/opt/nvmesh/backups
+UPGRADEERRORFILE=/var/opt/nvmesh/management-upgrade.err
+mgmt_prog=nvmeshmgr
+mgmt_startup_file=app.js
+MGMT_PIDDIR=/var/run/nvmesh/$mgmt_prog
+MGMT_PIDFILE="$MGMT_PIDDIR/management.pid"
+
+echo_success() {
+  [ "$BOOTUP" = "color" ] && $MOVE_TO_COL
+  echo -n "["
+  [ "$BOOTUP" = "color" ] && $SETCOLOR_SUCCESS
+  echo -n $"  OK  "
+  [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
+  echo -n "]"
+  echo -ne "\r"
+  return 0
+}
+
+echo_failure() {
+  [ "$BOOTUP" = "color" ] && $MOVE_TO_COL
+  echo -n "["
+  [ "$BOOTUP" = "color" ] && $SETCOLOR_FAILURE
+  echo -n $"FAILED"
+  [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
+  echo -n "]"
+  echo -ne "\r"
+  return 1
+}
+
+# Log that something succeeded
+success() {
+  [ "$BOOTUP" != "verbose" -a -z "${LSB:-}" ] && echo_success
+  return 0
+}
+
+# Log that something failed
+failure() {
+  local rc=$?
+  [ "$BOOTUP" != "verbose" -a -z "${LSB:-}" ] && echo_failure
+  [ -x /bin/plymouth ] && /bin/plymouth --details
+  return $rc
+}
+
+process_up() {
+        ps -ef | grep -v grep | grep "$1".*"$2" > /dev/null 2>&1
+        return $?
+}
+
+stop_service() {
+	prog=$1
+	pidfile=$2
+	startup_file=$3
+
+	if [ -r "$pidfile" ] ; then
+		PID=`cat $pidfile`
+		if [ "$PID" -gt 0 ] && process_up $PID $MDIR/$startup_file; then
+			echo "Stopping $prog"
+			service $prog stop
+                fi
+        fi
+
+	if $isSysD && systemctl is-failed $prog > /dev/null 2>&1; then
+		systemctl reset-failed $prog
+	fi
+}
+
+#not upgrade
+if [ "$1" = "0" -o "$1" = "remove" ]; then
+	echo "Uninstalling NVMesh(r) management"
+
+	isSysD=false
+	if ! pidof systemd > /dev/null 2>&1; then
+		echo "Updating chkconfig"
+		if grep -i Ubuntu /etc/*release > /dev/null 2>&1; then
+			update-rc.d $mgmt_prog remove
+		else
+			chkconfig --del $mgmt_prog
+		fi
+	else
+		isSysD=true
+		echo "Disabling service"
+		systemctl disable $mgmt_prog > /dev/null 2>&1
+	fi
+
+	stop_service $mgmt_prog $MGMT_PIDFILE $mgmt_startup_file
+
+	echo "Removing log files"
+	rm -rf "$NVMLOGDIR/management.out" $UPGRADEERRORFILE $BACKUPSDIR/* $NVMLOGDIR/*_management-install* /var/opt/nvmesh/mgr/* $NVMLOGDIR/mgmtStats/*
+
+	echo "Removing PID dir files"
+	rm -rf $MGMT_PIDDIR/*
+fi
+
+if [ -L /etc/init.d/nvmeshmgr ]; then
+	unlink /etc/init.d/nvmeshmgr
+fi
+
+success $"$prog uninstalled"
+exit 0

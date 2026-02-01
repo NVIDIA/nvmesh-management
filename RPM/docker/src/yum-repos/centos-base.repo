@@ -1,0 +1,5 @@
+[base]
+name=CentOS-7 - Base
+mirrorlist=http://mirrorlist.centos.org/?release=7&arch=$basearch&repo=os&infra=$infra
+#baseurl=http://mirror.centos.org/centos/7/os/$basearch/
+gpgcheck=0

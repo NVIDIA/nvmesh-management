@@ -1,0 +1,46 @@
+<div ng-style="diagramSize == 'small' && {'display':'inline-block'}" >
+	<div class="modal fade" id="segmentsModal_{{ disk.uuid }}" role="dialog" data-backdrop="static">
+			<div class="modal-dialog large-modal" ng-class="{ 'large-modal' : !useFullSizeModal, 'full-modal': useFullSizeModal}"">
+				<div class="modal-content">
+					<div class="modal-header">
+						<button type="button" class="close" data-toggle="modal" data-target="#segmentsModal_{{ disk.uuid }}" ng-click="diskDisplayController.closeModal(); hideShowAllBtn = false;">&times;</button>
+						<h3 class="modal-title text-center">Drive Segments</h3>
+					</div>
+					<div class="modal-body">
+						<multi-select-segments disk-ID="{{ disk.diskID }}" server-ID="{{ disk.nodeID }}" reload-data="reloadSegments" static-filter="segmentFilter" ng-init="segmentFilter={}" selected="diskDisplayController.selectedSegments"/>
+					</div>
+					<div class="modal-footer">
+						<button ng-click="resetFilter(); hideShowAllBtn = true;" ng-hide="hideShowAllBtn" class="btn btn-info mgmt-btn-danger btn-sm"><i class="fa fa-eye"></i> Show all segments on drive</button></div>
+				</div>
+			</div>
+	</div>
+	<div class="{{ disk | diskToHealthSmallCircleClass }} btn-circle" ng-hide="diagramSize != 'small'" title="{{disk.diskID}}">
+	</div>
+
+	<div class="disk-display-container"  ng-hide="diagramSize == 'small'">
+		<div class="icon">
+		<i class="{{ disk | diskToDiskDisplayIcon }}" title="{{ disk | diskToHealthMessage }}" />
+		</div>
+		<div class="disk-icon">
+			<i class="fa fa-hdd-o" />
+		</div>
+		<div class="status-progress" ng-show="!disk.isOutOfService && !disk.isPendingFormat && disk.status === $root.CONSTS.diskStatus.INITIALIZING">
+			<strong><div>{{ disk | diskToHealthMessage }}</div></strong>
+			<span>{{ disk.nZeroedBlks ? Math.round(disk.nZeroedBlks * 100 / disk.blocks) : 0 }}%</span>
+		</div>
+		<span>{{ disk.usableBlocks === 0 ? 0 : ((100 - Math.round(disk.availableBlocks / disk.usableBlocks * 100)) || 0) }}%<br /><span>{{ disk.usableBlocks === 0 ? 0 : (disk.usableBlocks - disk.availableBlocks) * 4096 | bytesToBiggestUnits }}/{{ disk.usableBlocks * 4096 | bytesToBiggestUnits }} Allocated</span></span>
+		<div class="disk-statistics">
+			<h4 class="box-header with-border"><a ng-class="{ 'disabled-link' : disk.status === $root.CONSTS.diskStatus.NOT_INITIALIZED || disk.isExcluded }">{{ disk.diskID }}</a></h4>
+			<small>{{ disk.Model | trim }} </small>
+			<br />
+			<div class="btn-group">
+				<button type="button" class="btn btn-danger mgmt-btn-danger btn-sm" ng-disabled="!user.isAdmin || (disk.status === $root.CONSTS.diskStatus.NOT_INITIALIZED && !hasVolumeSegments(disk) || disk.isExcluded || disk.isOutOfService)" ng-click="evictDiskByDiskIDAndUUID(disk.diskID, disk.uuid)" data-dismiss="modal">Evict</button>
+				<button type="button" class="btn btn-danger mgmt-btn-danger btn-sm" ng-hide="disk.status === $root.CONSTS.diskStatus.NOT_INITIALIZED || (disk.isExcluded && disk.status !== $root.CONSTS.diskStatus.MISSING)" ng-disabled="!user.isAdmin || !isDriveDeletable(server, disk)" ng-click="removeDisk(disk.diskID, disk.uuid)">Del</button>
+				<button type="button" class="btn btn-danger mgmt-btn-danger btn-sm dropdown-toggle" ng-click="formatDiskByDiskID(disk.diskID, disk.uuid)" ng-disabled="!user.isAdmin || (disk.status === $root.CONSTS.diskStatus.MISSING || disk.isExcluded || hasVolumeSegments(disk) || !server.zone)">Format <i ng-show="disk.status === $root.CONSTS.diskStatus.FROZEN || disk.status === $root.CONSTS.diskStatus.FORMATTING || disk.isPendingFormat" class="fa fa-cog fa-spin"></i></button>
+			</div>
+		</div>
+		<div class="disk-display" id="diskDisplay_{{ disk.uuid }}">
+		</div>
+	</div>
+
+</div>

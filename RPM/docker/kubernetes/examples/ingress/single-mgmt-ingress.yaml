@@ -1,0 +1,68 @@
+# Source: nvmesh-management/templates/ingress.yaml
+kind: Ingress
+apiVersion: extensions/v1beta1
+metadata:
+  name: nvmesh-mgmt-ingress
+  annotations:
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/affinity: cookie
+      nginx.ingress.kubernetes.io/affinity-mode: persistent
+  labels:
+
+    app.kubernetes.io/version: "2.0.2"
+spec:
+  tls:
+    - hosts:
+      - nvmesh-management-0
+      secretName: ingress-tls-cert
+  rules:
+    - host: nvmesh-management-0
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-svc-0
+              servicePort: ws
+    - host: nvmesh-management-0-0
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-svc-0
+              servicePort: stats-0
+    - host: nvmesh-management-0-1
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-svc-0
+              servicePort: stats-1
+    - host: nvmesh-management-0-2
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-svc-0
+              servicePort: stats-2
+    - host: nvmesh-management-0-3
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-svc-0
+              servicePort: stats-3
+    - host: nvmesh-management-0-4
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-svc-0
+              servicePort: stats-4
+    - http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-gui
+              servicePort: gui
+status:
+  loadBalancer: {}

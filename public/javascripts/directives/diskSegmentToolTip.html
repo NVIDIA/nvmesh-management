@@ -1,0 +1,33 @@
+<div class="popover segment-popover" style="display: block">
+	<div class="segment-popover-body">
+		<h3>{{ :: diskSegmentToolTipCtrl.numOfSegments}} segments</h3>
+		<table>
+			<tr>
+				<td>Normal</td>
+				<td>&nbsp;</td>
+				<td>{{:: diskSegmentToolTipCtrl.numOfNormal }}</td>
+			</tr>
+			<tr>
+				<td>Dead</td>
+				<td>&nbsp;</td>
+				<td>{{:: diskSegmentToolTipCtrl.numOfDead }}</td>
+			</tr>
+			<tr>
+				<td>Under recovery</td>
+				<td>&nbsp;</td>
+				<td>{{:: diskSegmentToolTipCtrl.numOfUnderRecovery }}</td>
+			</tr>
+			<tr>
+				<td>Reserved</td>
+				<td>&nbsp;</td>
+				<td>{{:: diskSegmentToolTipCtrl.numOfReserved }}</td>
+			</tr>
+			<tr>
+				<td colspan="2">
+
+				</td>
+			</tr>
+		</table>
+		<div class="segment-popover-footer">click for more info</div>
+	</div>
+</div>

@@ -1,0 +1,98 @@
+@use "style_consts";
+
+toggle, .toggle {
+	//margin-top: 5px;
+	display: inline-block;
+	position: relative;
+	height: 30px;
+
+	&.form-input {
+		display: block;
+		margin-top: 5px;
+	}
+
+	/* The switch - the box around the slider */
+	.switch {
+		position: relative;
+		display: inline-block;
+		height: 30px;
+		width: 50px;
+
+		&.disabled {
+			opacity: 0.5;
+		}
+	}
+
+	/* Hide default HTML checkbox */
+	.switch input {display:none;}
+
+	/* The slider */
+	.slider {
+		position: absolute;
+		cursor: pointer;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: #ccc;
+		-webkit-transition: .4s;
+		transition: .4s;
+	}
+
+	.slider:before {
+		position: absolute;
+		content: "";
+		height: 26px;
+		width: 26px;
+		left: 2px;
+		bottom: 2px;
+		background-color: white;
+		-webkit-transition: .4s;
+		transition: .4s;
+	}
+
+	input:checked + .slider {
+		background-color: style_consts.$normal;
+	}
+
+	input:focus + .slider {
+		box-shadow: 0 0 1px style_consts.$normal;
+	}
+
+	input:checked:disabled + .slider {
+		filter: grayscale(100%);
+	}
+
+	input:checked + .slider:before {
+		-webkit-transform: translateX(20px);
+		-ms-transform: translateX(20px);
+		transform: translateX(20px);
+	}
+
+	/* Rounded sliders */
+	.slider.round {
+		border-radius: 34px;
+	}
+
+	.slider.round:before {
+		border-radius: 50%;
+	}
+
+	.positive, .negative {
+		position: relative;
+    	top: -14px;
+	}
+
+	.positive {
+		margin-left: 5px;
+	}
+
+	.negative {
+		margin-right: 5px;
+	}
+
+	.toggle-label {
+		top: -15px;
+		position: relative;
+	}
+}

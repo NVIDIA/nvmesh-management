@@ -1,0 +1,293 @@
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# -*-Shell-script-*-
+#
+# This file contains functions to be used by nvmesh{mgr,stats}
+#               shell scripts in the /etc/init.d directory.
+#
+
+RUNNING_USER="excelero"
+GROUP="excelero"
+MDIR=/opt/nvmesh/management
+
+lockpath=/var/lock/subsys
+lockfile=$lockpath/$prog
+log=/var/log/nvmesh
+runDir=/var/run/nvmesh
+pidpath="$runDir/$prog"
+pidfile="$pidpath/$pidfilename"
+outfile="$log/$outfilename"
+managementconffile=/etc/nvmesh/management.js.conf
+libraries=$MDIR/libraries
+compatiblenode=$libraries/node
+version_file=$MDIR/version
+
+process_up() {
+	ps -ef | grep -v grep | grep "$1".*"$2" > /dev/null 2>&1
+	return $?
+}
+
+echo_success() {
+	echo -n "$@"
+	[ "$BOOTUP" = "color" ] && $MOVE_TO_COL
+	echo -n "["
+	[ "$BOOTUP" = "color" ] && $SETCOLOR_SUCCESS
+	echo -n $"  OK  "
+	[ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
+	echo -n "]"
+	echo -e "\r"
+	return 0
+}
+
+echo_failure() {
+	echo -n "$@"
+	[ "$BOOTUP" = "color" ] && $MOVE_TO_COL
+	echo -n "["
+	[ "$BOOTUP" = "color" ] && $SETCOLOR_FAILURE
+	echo -n $"FAILED"
+	[ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
+	echo -n "]"
+	echo -e "\r"
+	return 1
+}
+
+# Log that something succeeded
+success() {
+	[ "$BOOTUP" != "verbose" -a -z "${LSB:-}" ] && echo_success "$@"
+	return 0
+}
+
+# Log that something failed
+failure() {
+	local rc=$?
+	[ "$BOOTUP" != "verbose" -a -z "${LSB:-}" ] && echo_failure "$@"
+	[ -x /bin/plymouth ] && /bin/plymouth --details
+	return $rc
+}
+
+run_upgrade_scripts_if_needed() {
+	upgradeerrorpath=/var/opt/nvmesh/management-upgrade.err
+	scriptsdirectory=$MDIR/upgradeScripts
+	versionregex='^([0-9]+.){2}[0-9]+-[0-9]+'
+
+	if grep -i Ubuntu /etc/*release > /dev/null 2>&1; then
+		currentinstalledversion=$(dpkg-query -f '${version}' -W nvmesh-management)
+	else
+		currentinstalledversion=$(rpm -q --queryformat '%{version}-%{release}' nvmesh-management)
+	fi
+
+	if [ -s $upgradeerrorpath ] && [[ $(cat $upgradeerrorpath) =~ $versionregex ]] ; then
+		echo "Dirty upgrade detected, trying to upgrade again."
+		match=${BASH_REMATCH}
+		upgrader=$MDIR/installation-scripts-$currentinstalledversion/install.py
+		$upgrader -u 2 -s $scriptsdirectory -n $currentinstalledversion
+
+		if [ $? -eq 0 ] ; then
+			echo "Done."
+		else
+			echo "Failed to upgrade.. Exiting."
+			exit 1
+		fi
+	else
+		echo "No upgrade needed."
+	fi
+}
+
+read_and_print_product_version() {
+	# read version file
+	if [ -f "$version_file" ]; then
+	        source "$version_file"
+        	echo "$productname Version: $version"
+	        echo
+	else
+        	echo "Warning: missing $version_file"
+	fi
+}
+
+init_nodeuse() {
+	nodetouse=""
+	if [ -e "$compatiblenode" ] ; then
+		nodetouse=$compatiblenode
+	else
+		nodetouse=node
+	fi
+}
+
+check_db_connectivity() {
+	counter="0"
+	dbconnected=false
+	while [ $counter -lt 36 ] && ! $dbconnected ; do
+		counter=$[$counter+1]
+		if try_run_initdb_on_mongo "$mongoManagementCommandLineArguments"; then
+			dbconnected=true
+		else
+			sleep 5
+		fi
+	done
+
+	if ! $dbconnected; then
+		echo "Error: Couldn't connect to mongodb, please check your configuration"
+		exit 2
+	fi
+}
+
+checkMongo() {
+	if [ "$(pgrep mongod)" ] ; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+getFieldFromManagementConfig() {
+    val=$($nodetouse --eval "var config = require(\"$managementconffile\"); console.log(config.$1)")
+    if [ "${val}" == "undefined" ]; then
+        val=""
+    fi
+    echo ${val}
+}
+
+getMongoShellCommandLineArguments() {
+	local confName=$1
+	local forMongoDump=$2
+	local copyCerts=true
+	commandLineArguments=$($nodetouse --eval "console.log(require('$MDIR/modules/mongoCMDLineArgsBuilder.js').buildMongoConnectionCommandlineArgsByConnectionName('$confName', '$forMongoDump', '$copyCerts'))")
+}
+
+fetch_management_cluster_from_config() {
+	if [ -e "$managementconffile" ]; then
+		getMongoShellCommandLineArguments "mongoConnection"
+		mongoManagementCommandLineArguments=$commandLineArguments
+	else
+		echo "Could not find $managementconffile file"
+		exit 1
+	fi
+}
+
+try_run_initdb_on_mongo() {
+	echo "Trying to connect to MongoDB"
+	output="`cd $MDIR; mongosh --ipv6 $1 ./initDB.js 2> /dev/null`"
+	rc=$?
+	if [[ "${rc}" -ne 0 ]]; then
+		# Try to connect without --ipv6 flag
+		output="`cd $MDIR; mongosh $1 ./initDB.js 2> /dev/null`"
+		rc=$?
+		if [[ "${rc}" -ne 0 ]]; then
+	    	echo -e "Failed to connect to mongo using mongosh.\n* Please check that mongo is up and that credentials are correct.\n"
+		fi
+	fi
+	return "${rc}"
+}
+
+checkIfListeningOnPort() {
+	pidRE='([0-9]+)/node'
+	result=$(netstat -lpn | grep $1)
+
+	if [[ $result =~ $pidRE ]] ; then
+		pid=${BASH_REMATCH[1]}
+		process_up $pid $MDIR/$nodestartupfile
+		rv=$?
+
+		[[ $rv -eq 1 ]] && echo "It seems that someone else is listening on port $1" || echo "$productname($pid) is listening on port $1"
+
+		return $rv
+
+	else
+		echo "$productname isn't listening on the port: $1"
+		return 1
+	fi
+}
+
+isListeningOnPorts() {
+	if which netstat > /dev/null 2>&1 ; then
+		for port in $@ ; do
+			checkIfListeningOnPort $port
+			[[ $? -eq 1 ]] && return 1
+		done
+	else
+		echo "The command 'netstat' wasn't found, can't check if listening on ports"
+	fi
+
+	return 0
+}
+
+rotate_logs () {
+  if [ -f "$outfile" ]; then
+      timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
+      archive="${outfile}_${timestamp}.tar.gz"
+
+      # Compress the existing log
+      tar -czf "$archive" -C "$log" "$outfilename"
+
+      # Delete old backups, keeping only the latest $max_log_backups
+      ls -1t "$log/${outfilename}_"*.tar.gz 2>/dev/null | tail -n +$((max_log_backups+1)) | xargs -r rm --
+  fi
+}
+
+start_node_entity() {
+	echo -n $"Starting $prog: "
+	if [[ -s $pidfile ]] && process_up $(cat $pidfile) $MDIR/$nodestartupfile ; then
+		echo "$prog is already running.."
+		exit 0
+	fi
+
+	run_upgrade_scripts_if_needed
+
+	if [ ! -e $outfile ]; then
+		touch $outfile
+		chown $RUNNING_USER:$GROUP $outfile
+	fi
+
+	node_max_old_space=$(getFieldFromManagementConfig "nodeAllocatedMemory")
+
+	if [ ! -z "$node_max_old_space" ]; then
+		node_memory_flag="--max-old-space-size=$node_max_old_space"
+	fi
+
+	startupcommand="nohup node $node_memory_flag $MDIR/$nodestartupfile &> $outfile & echo \$!"
+
+	PID=`sudo -u "$RUNNING_USER" bash -c "$startupcommand"`
+
+	[ "$?" -eq 0 ] && success $"$prog startup" || failure $"$prog startup"
+	RETVAL=$?
+    echo
+
+	if [ $RETVAL -eq 0 ]; then
+		touch $lockfile
+		echo "$PID" > "$pidfile"
+	fi
+	return $RETVAL
+}
+
+stop_node_entity() {
+	echo -n $"Shutting down $prog: "
+	[ "$EUID" != "0" ] && exit 4
+
+	if [ -r "$pidfile" ] ; then
+		PID=`cat $pidfile`
+		[ "$PID" -gt 0 ] && kill -s SIGTERM $PID
+		[ "$?" -eq 0 ] && success $"$prog shutdown" || failure $"$prog shutdown"
+		wait_for_process_to_stop "$PID" "NVMesh Management"
+	else
+		# no pid file, NodeJS not running
+		failure $"$prog shutdown"
+	fi
+	RETVAL=$?
+    echo
+
+	[ $RETVAL -eq 0 ] && rm -rf $lockfile
+	return $RETVAL
+}
+
+wait_for_process_to_stop() {
+	pid=$1
+	process_name=$2
+	while ps -p $pid >/dev/null;
+	do
+		echo "Waiting for $process_name pid: $pid to finish.."
+		sleep 1
+	done
+}

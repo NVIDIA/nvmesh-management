@@ -1,0 +1,6 @@
+utils/setup_path.py
+utils/init_scale_sim.py
+testers/NvmeshMetadataTester.py   # filter: NvmeshMetadataTester and not BaseTester
+testers/DriveClassTester.py # filter: DriveClassTester and not BaseTester
+testers/TargetClassTester.py # filter: TargetClassTester and not BaseTester
+testers/KeyTester.py # filter: KeyTester and not BaseTester

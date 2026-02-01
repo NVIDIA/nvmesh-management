@@ -1,0 +1,141 @@
+#!/bin/bash
+#
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# nvmeshmgr	This shell script takes care of starting and stopping
+#		the NVMesh(r) management services
+#
+# chkconfig: 345 86 14
+# description: NVMesh management services are a web based GUI and RESTful \
+# HTML services for managing elements in the NVMesh storage solution
+#
+### BEGIN INIT INFO
+# Provides: nvmeshmgr
+# Required-Start:
+# Required-Stop:
+# Default-Start: 3 4 5
+# Default-Stop: 0 1 2 6
+# Short-Description: Start and stop nvmeshmgr
+# Description: nvmeshmgr provides the NVMesh Management Service
+### END INIT INFO
+
+#For production - only logging warning and error, removing stack trace from client and enable enhance caching.
+#export NODE_ENV=production
+export NODE_ENV=development
+
+#. /etc/rc.d/init.d/functions
+
+prog=nvmeshmgr
+productname=NVMesh-management
+nodestartupfile=app.js
+pidfilename=management.pid
+outfilename=management.out
+backupsdir=/var/opt/nvmesh/backups
+managementiddir=/var/opt/nvmesh/mgr
+activeCertDir=/var/run/nvmesh/tls/nvmeshmgr
+max_log_backups=5
+
+. /opt/nvmesh/management/services/services_common
+
+mkdir -p $lockpath
+mkdir -p $pidpath
+mkdir -p $managementiddir
+mkdir -p $activeCertDir
+
+
+if [ ! -d $runLinkDir ] && [ ! -L $runLinkDir ]; then
+	ln -s $runDir $runLinkDir
+fi
+
+chown $RUNNING_USER:$GROUP $backupsdir
+chown $RUNNING_USER:$GROUP $managementiddir
+chown $RUNNING_USER:$GROUP $activeCertDir
+
+finish() {
+  echo "Exiting nvmeshmgr script"
+  exit 0
+}
+
+trap finish INT TERM
+
+init_nodeuse
+
+start() {
+	[ "$EUID" != "0" ] && exit 4
+	[ -d $MDIR ] || exit 5
+
+	kill_old_backup_processes
+	kill_old_statistics_processes
+	fetch_management_cluster_from_config
+	check_db_connectivity
+
+	# Start services.
+	rotate_logs
+	start_node_entity
+	return $?
+}
+
+stop() {
+	stop_node_entity
+	return $?
+}
+
+kill_old_backup_processes() {
+	mongoDumpPs=`ps -e -o uname,pid,cmd | grep -v grep | grep "$RUNNING_USER".*"mongodump".*"$db_name"`
+	if [ "$?" -eq 0 ] && [ ! -z "$mongoDumpPs" ]; then
+		mongoDumpPID=`echo $mongoDumpPs | awk '{print $2}'`
+		echo "Terminating old mongodump backup process..."
+		kill -s SIGTERM $mongoDumpPID
+	fi
+
+	compressGzPs=`ps -e -o uname,pid,cmd | grep -v grep | grep "$RUNNING_USER".*"tar".*"$db_name"`
+	if [ "$?" -eq 0 ] && [ ! -z "$compressGzPs" ]; then
+		compressGzPID=`echo $compressGzPs | awk '{print $2}'`
+		echo "Terminating old backup compressing process..."
+		kill -s SIGTERM $compressGzPID
+	fi
+}
+
+kill_old_statistics_processes() {
+	statsPs=`ps -ef | grep -E "statisticsRollUp|mgmtStatistics" | grep -v grep | grep "$RUNNING_USER" | awk '{print $2}'`
+	if [ "$?" -eq 0 ] && [ ! -z "$statsPs" ]; then
+		echo "Terminating old statistics processes..."
+		kill -s SIGTERM $statsPs
+	fi
+}
+
+status() {
+	serverPort=$(getFieldFromManagementConfig "port")
+	webSocketPort=$(getFieldFromManagementConfig "webSocketServerPort")
+
+	if isListeningOnPorts $serverPort $webSocketPort && [[ -s $pidfile ]] && process_up $(cat $pidfile) $MDIR/app.js ; then
+		echo "$productname is up!"
+		success $"$prog status"
+		exit 0
+	else
+		echo "$productname is down!"
+		failure $"$prog status"
+		exit 1
+	fi
+}
+
+# See how we were called.
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  status)
+	status
+	;;
+  restart|force-reload)
+	stop
+	start
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|restart|force-reload|status}"
+	exit 2
+esac

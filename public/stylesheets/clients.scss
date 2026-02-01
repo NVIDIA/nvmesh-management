@@ -1,0 +1,31 @@
+$attachmentColor: rgb(13, 83, 196);
+$detachmentColor: rgb(226, 221, 63);
+
+@mixin selectizeItemsBackround($color) {
+	background-color: $color;
+    background-image: -moz-linear-gradient(top,$color,$color);
+    background-image: -webkit-gradient(linear, 0 0, 0 100%, from($color), to($color));
+    background-image: -webkit-linear-gradient(top, $color, $color);
+    background-image: -o-linear-gradient(top, $color, $color);
+    background-image: linear-gradient(to bottom, $color, $color);
+    background-repeat: repeat-x;
+}
+
+.volumes-to-attach {
+	padding-bottom: 15px;
+	.selectize-control.multi .selectize-input [data-value] {
+		color:white;
+		@include selectizeItemsBackround($attachmentColor);
+	}
+}
+
+.volumes-to-detach {
+	.selectize-control.multi .selectize-input [data-value] {
+		@include selectizeItemsBackround($detachmentColor);
+	}
+}
+
+.client-control {
+	padding: 15px;
+	margin-bottom: 5px;
+}

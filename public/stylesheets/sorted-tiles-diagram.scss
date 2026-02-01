@@ -1,0 +1,60 @@
+@use "style_consts";
+
+$tileSize : 15px;
+
+.tiles-diagram-container {
+	display: flex;
+	gap: 5px;
+	padding: 5px;
+
+	.tile-item {
+		.popover {
+			display: none;
+		}
+
+		&:hover {
+			.popover {
+				display: block;
+			}
+		}
+	}
+}
+
+.tile-item {
+	width: $tileSize;
+	height: $tileSize;
+	border-style: none;
+	border-radius: 2px;
+
+	.tile-tooltip {
+		display: inline-block;
+		position: relative;
+		background: rgba(255, 255, 255, 0.9);
+		top: $tileSize + 3px;
+		width: max-content;
+		z-index: 10;
+		opacity: 1;
+	}
+
+	&:hover {
+		box-shadow: -1px 1px 2px 1px #4b4b4b;
+		cursor: pointer;
+	}
+
+	&.tile-item-green {
+		background-color: style_consts.$online;
+	}
+	
+	&.tile-item-red {
+		background-color: style_consts.$error;
+	}
+	
+	&.tile-item-primary {
+		background-color: style_consts.$action;
+	}
+	
+	&.tile-item-yellow {
+		background-color: style_consts.$warning;
+	}
+}
+

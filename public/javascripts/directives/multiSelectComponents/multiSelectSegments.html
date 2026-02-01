@@ -1,0 +1,49 @@
+<h1>Drive Segments</h1>
+<hr />
+
+<div class="angular-bootstrap multi-select-pager">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="pull-right" ng-hide="multiSelectSegmentsCtrl.isDirty">
+					<paging-summary
+						last-item-index="multiSelectSegmentsCtrl.lastItemIndex"
+						current-page="multiSelectSegmentsCtrl.currentPage"
+						count="multiSelectSegmentsCtrl.count"
+						total="multiSelectSegmentsCtrl.totalSegments">
+					</paging-summary>
+				<ul id="segmentsPagination-{{::multiSelectSegmentsCtrl.diskId}}" class="pagination">
+				</ul>
+			</div>
+			<table id="segmentstable-{{::multiSelectSegmentsCtrl.diskId}}" total-items="multiSelectSegmentsCtrl.totalSegments"
+			ng-init="multiSelectSegmentsCtrl.selected={}" class="table table-striped table-hover table-filtSort">
+				<thead>
+					<tr>
+						<th class="fixed-size-column" data-field="disks.nodeID" data-direction="asc">Target</th>
+						<th class="fixed-size-column" data-field="disks.diskID" data-direction="asc">Drive</th>
+						<th class="fixed-size-column" data-sortable data-filterable data-field="disks.diskSegments.volumeName" data-placeholder="Search by volume name" >Volume</th>
+						<th class="fixed-size-column md-column" data-sortable data-filterable data-field="disks.diskSegments.lbs" data-direction="asc">LBS</th>
+						<th class="fixed-size-column md-column" data-sortable data-filterable data-field="disks.diskSegments.lbe" >LBE</th>
+						<th class="fixed-size-column md-column">Size</th>
+						<th class="fixed-size-column md-column" data-sortable data-filterable data-field="disks.diskSegments.status">Status</th>
+						<th class="fixed-size-column xl-column" data-sortable data-filterable data-field="disks.diskSegments.uuid" >UUID</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr ng-repeat="server in multiSelectSegmentsCtrl.servers">
+						<td><a href ng-href="/servers/server/{{ server.disks.nodeID }}/" ng-click="multiSelectSegmentsCtrl.closeModal()">{{ ::server.disks._model.node_id }}</a></td>
+						<td class="fixed-size-column">{{ server.disks.diskID }}</td>
+						<td class="fixed-size-column">
+							<a href="/volumes"
+							ng-click="multiSelectSegmentsCtrl.sendVolumeToVolumeScreen(server.disks.diskSegments.volumeName); multiSelectSegmentsCtrl.closeModal()">{{ server.disks.diskSegments.volumeName }}</a></td>
+						<td class="fixed-size-column">{{ server.disks.diskSegments.lbs }}</td>
+						<td class="fixed-size-column">{{ server.disks.diskSegments.lbe }}</td>
+						<td class="fixed-size-column md-column">{{(server.disks.diskSegments.lbe - server.disks.diskSegments.lbs) * 4096 | bytesToBiggestUnits}}</td>
+						<td class="fixed-size-column">{{ server.disks.diskSegments.status }}</td>
+						<td class="fixed-size-column">{{ server.disks.diskSegments.uuid }}</td>
+						<!-- <td>{{server}}</td> -->
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>

@@ -1,0 +1,23 @@
+<div class="form-group">
+    <!-- template for the segment popover -->
+    <script type="text/ng-template" id="popoverTemplate.html">
+        <div class="popover-body">
+            / <input id="serverRegexInput" class="form-control" ng-change="serversRegexChanged()" placeholder="regex.." ng-model="volume.serversFilterRegex" /> /
+        </div>
+        <div class="popover-footer">
+            <span class="pull-left"><small><strong>{{ matchingServers.length }}</strong> Matched</small></span>
+            <div class="pull-right">
+                <button ng-disabled="!serversRegexValid" class="btn btn-xs btn-success" title="Apply" ng-click="applyServersRegex()"><i class="ion ion-checkmark" /></button>
+                <button class="btn btn-xs btn-danger" title="Discard" ng-click="closeServersRegexPopover()"><i class="ion ion-close" /></button>
+            </div>
+        </div>
+    </script>
+
+    <label class="control-label">Targets - <small>Start typing or use <a href="#" class="control-popover" data-toggle="popover" popover-template="templateUrl" popover-title="Enter regex">Regex</a></small></label>
+    <select id="serversSelect" multiple placeholder="Choose targets..."></select>
+</div>
+
+<div id="disksSelectContainer" class="form-group">
+    <label class="control-label">Limit by drives</label>
+    <select id="disksSelect" multiple placeholder="Limit by drives.."></select>
+</div>

@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+TARGETDIR="/opt/nvmesh"
+MDIR="$TARGETDIR/management"
+NVMLOGDIR="/var/log/nvmesh"
+PORTNUMBER=4000
+RUNNING_USER="excelero"
+GROUP="excelero"
+MANAGEMENTCONFFILE="/etc/nvmesh/management.js.conf"
+MANAGEMENTCONFDIR="/etc/nvmesh"
+BACKUPSDIR="/var/opt/nvmesh/backups"
+CERT_DIR="/etc/nvmesh/cert"
+MANAGEMENTIDDIR="/var/opt/nvmesh/mgr"
+MGMT_STATS_DIR="/var/log/nvmesh/mgmtStats"
+
+LOGFILE="$NVMLOGDIR/nvmesh_management-install`date '+%Y%m%d-%R'`.log"
+echo "Attempting Management installation at `date`" > $LOGFILE
+
+PATH=$PATH:/sbin:/usr/sbin # avoid issues with chkconfig and service and potentially other commands not being found
+
+runcommand () {
+	# $1 is the message
+	# $2 is the command to run
+	# $3 is whether to check for error (1=yes, 0=no)
+	echo "$1" | tee -a $LOGFILE
+	echo "$2" >>$LOGFILE
+	$2 >>$LOGFILE 2>&1
+	ERR=$?
+	if [ $3 -ne 0 ] ; then
+		if [ $ERR -ne 0 ] ; then
+			echo "ERROR, command failed:"
+			echo $2
+			echo "See logfile:"
+			echo "Exiting..."
+			exit 1
+		fi
+	fi
+}
+
+create_user_and_group () {
+	id -u $RUNNING_USER
+	retVal=$?
+
+	if ! grep -q "^${GROUP}:" /etc/group ; then
+		groupadd $GROUP
+	fi
+
+	#Check if user exists
+	if [ $retVal -ne 0 ]
+	then
+		echo "Creating user $RUNNING_USER"
+		useradd -g $GROUP $RUNNING_USER
+	else
+		usermod -G $GROUP $RUNNING_USER
+	fi
+}
+
+runcommand "Creating user and group" "create_user_and_group" 1
+runcommand "Chowning config file" "chown $RUNNING_USER:$GROUP $MANAGEMENTCONFFILE" 1
+runcommand "Chowning backups directory" "chown $RUNNING_USER:$GROUP $BACKUPSDIR" 1
+runcommand "Chowning identity directory" "chown -R $RUNNING_USER:$GROUP $MANAGEMENTIDDIR" 1
+
+echo "Done!"
+exit 0

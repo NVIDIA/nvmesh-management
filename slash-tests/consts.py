@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+class REST_OP:
+	ALL 						= 'all'
+	COUNT						= 'count'
+	SAVE 						= 'save'
+	UPDATE 						= 'update'
+	DELETE 						= 'delete'
+	EVICT_DRIVE 				= 'evictDiskByDiskIDsAndUUIDs'
+	FORMAT 						= 'formatDiskByIDsAndUUIDs'
+	CLUSTER_ID					= 'clusterID'
+	UPDATE_CLUSTER_ID 			= 'updateClusterID'
+	EVICT 						= 'evict'
+	DELETE_NIC 					= 'deleteNic'
+	SET_ZONE 					= 'setZone'
+	REGENERATE_TOMA_MESSAGES 	= 'regenerateTOMAMessages'
+
+class DISK_STATUS:
+	OK				= 'Ok'
+	MISSING			= 'Missing'
+	ERROR			= 'Error'
+	FORMAT_ERROR	= 'Format_Error'
+	NOT_INITIALIZED	= 'Not_Initialized'
+	INGESTING		= 'Ingesting'
+	FROZEN			= 'Frozen'
+	INITIALIZING	= 'Initializing'
+	FORMATTING		= 'Formatting'
+
+class SYSTEM_MESSAGES_ID:
+	CANT_FIND_IDENTITY	= 16271

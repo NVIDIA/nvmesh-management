@@ -1,0 +1,22 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+var count = 0;
+
+db.volume.aggregate(
+	{ $unwind: '$chunks' },
+	{ $unwind: '$chunks.pRaids' },
+	{ $unwind: '$chunks.pRaids.diskSegments' },
+	{ $group: { _id: '$uuid', uuids: { $addToSet: '$chunks.pRaids.diskSegments.volumeUUID' }, volumeName: { $first: '$name' } } },
+	{ $project: { volumeUUID: '$_id', uuids: 1, volumeName: 1, numOfUUIDs: { $size: '$uuids' } } },
+	{ $match: { numOfUUIDs: { $gt: 1 } } },
+	{ $project: { name: '$volumeName', uuid: '$volumeUUID', _id: 0 } }
+).forEach(function(volume) {
+	count++;
+	print("The volume: " + volume.name + " with the uuid: " + volume.uuid + " was extended before MR9")
+});
+
+if (count > 0)
+	print("A total of " + count + " volumes were found")

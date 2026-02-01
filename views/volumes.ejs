@@ -1,0 +1,517 @@
+<%#
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+%>
+<h1>Volumes</h1>
+<hr />
+
+<div class="angular-bootstrap multi-select-pager" ng-controller="volumesController as volumesCtrl" ng-cloak>
+	<div class="row">
+		<div class="col-md-12">
+			<div class="alert alert-danger fade in alert-losing-changes" ng-if="volumesCtrl.isDirty && !volumesCtrl.pendingMultiSelectAction">
+				<i class="ion ion-alert-circled"></i>
+				<strong>Action needed!</strong> Your {{ volumesCtrl.getNumberOfChanges() }} changes aren’t final until you save them.
+				<span class="pull-right">
+					<i class="fa fa-floppy-o"></i>
+					<a id="saveChangesAnchor" tabindex="0" class="alert-losing-changes-btn" href='#' ng-click="volumesCtrl.save()">Save Changes</a>
+					<i class="fa fa-trash-o"></i>
+					<a class="alert-losing-changes-btn" href='#' ng-click="volumesCtrl.cancel()">Discard Changes</a>
+				</span>
+			</div>
+			<div class="pull-right" ng-hide="volumesCtrl.isDirty">
+				<paging-summary
+					last-item-index="volumesCtrl.lastItemIndex"
+					current-page="volumesCtrl.currentPage"
+					count="volumesCtrl.count"
+					total="volumesCtrl.totalVolumes">
+				</paging-summary>
+				<ul id="volumesPagination" class="pagination">
+				</ul>
+				<select-columns entity-name="volumes"/>
+			</div>
+
+			<table id="volumes-table" multi-select actions="volumesCtrl.actions" is-checked="volumesCtrl.isAllSelected" is-dirty="volumesCtrl.isDirty" pending-action="volumesCtrl.pendingMultiSelectAction"
+			selected="volumesCtrl.selected" total-items="volumesCtrl.totalVolumes" ng-init="volumesCtrl.selected={}" class="table table-striped table-hover table-filtSort">
+				<thead>
+					<tr sortable-row="volumes">
+						<th column-name="Name" draggable="true" data-sortable data-filterable data-field="name" data-placeholder="Search by Name">Name</th>
+						<th column-name="Description" draggable="true" data-sortable data-filterable data-field="description" data-placeholder="Search by Description">Description</th>
+						<th column-name="Capacity" class="fixed-size-column sx-column" draggable="true" data-sortable data-field="capacity">Capacity</th>
+						<th column-name="RAID Level" draggable="true" data-sortable data-filterable data-field="RAIDLevel" data-placeholder="Search by RAID Level" data-type="choice" data-choices="{{ volumesCtrl.RAIDLevels }}">RAID Level</th>
+						<th column-name="Stripe Width" class="fixed-size-column sx-column" draggable="true" data-sortable data-field="stripeWidth">Stripe Width</th>
+						<th column-name="Data Blocks" class="fixed-size-column sx-column" draggable="true" data-sortable data-field="dataBlocks">Data Blocks</th>
+						<th column-name="Parity Blocks" class="fixed-size-column sx-column" draggable="true" data-sortable data-field="parityBlocks">Parity Blocks</th>
+						<th column-name="Last Modified By" draggable="true" data-sortable data-filterable data-field="modifiedBy" data-placeholder="Search by Last Modifier">Last Modified By</th>
+						<th column-name="Last Date Modified" draggable="true" class="small-font-size" data-sortable data-filterable data-type="dateRange" data-field="dateModified">Last Date Modified</th>
+						<th column-name="Encrypted" draggable="true" class="fixed-size-column sx-column" data-sortable data-field="isEncrypted" data-filterable data-type="boolean" filter-id="isEncryptedCheck">Encrypted</th>
+						<th column-name="Action" draggable="true" class="fixed-size-column sx-column" data-sortable data-filterable data-field="action" data-direction="desc">Action</th>
+						<th column-name="Status" draggable="true" class="fixed-size-column sx-column" data-sortable data-filterable data-field="status" data-direction="desc">Status</th>
+						<th column-name="Edit" class="fixed-size-column sxx-column"></th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr sortable-row="volumes" selectable id="row-{{$index}}" model="volume" key="volume._id"  ng-repeat="volume in volumesCtrl.volumes">
+						<td column-name="Name" >
+							<a href ng-click="volumesCtrl.volumeDiagram.show(volume._id)">{{ volume.name }}</a>
+							<i title="snapshot" ng-if="volume.isSnapshot" class="fa fa-hdd-o"></i>
+							<i ng-if="volume.encryption.command.response.error && !volume.encryption.command.response.acknowledged" class="fa fa-info-circle yellow" title="Encryption Error: {{ volume.encryption.command.response.error }}"></i>
+						</td>
+						<td column-name="Description" title="{{ volume.description }}">{{ volume.description | ellipsis }}</td>
+						<td column-name="Capacity" class="fixed-size-column">{{ (volume.capacity == volumesCtrl.consts.volumeCapacity.MAX && volume.blocks && volume.blockSize ? volume.blocks * volume.blockSize : volume.capacity) | gigabytesToBiggestUnits }}</td>
+						<td column-name="RAID Level" >{{ volume.RAIDLevel }}</td>
+						<td column-name="Stripe Width" class="fixed-size-column">{{ volume.stripeWidth }}</td>
+						<td column-name="Data Blocks" class="fixed-size-column">{{ volume | volumeToDataBlocks }}</td>
+						<td column-name="Parity Blocks" class="fixed-size-column">{{ volume | volumeToParityBlocks }}</td>
+						<td column-name="Last Modified By" class="fixed-size-column" >{{ volume.modifiedBy }}</td>
+						<td column-name="Last Date Modified" class="fixed-size-column">{{ volume.dateModified | date:"MM/dd/yyyy 'at' h:mma" }}</td>
+						<td column-name="Encrypted" class="fixed-size-column"><i ng-if="volume.isEncrypted" class="fa fa-lock"></i> </td>
+						<td column-name="Action"  class="fixed-size-column">
+							<label class="label bg-{{ volume.action | actionToHealth }}">
+								<span ng-if="volume.action === 'rebuilding' || volume.action === 'deleting'"><i class="fa fa fa-cog fa-spin"></i>&nbsp;</span>
+								{{ volume.action | actionToCaption }}{{ (volume.dirtyBitsPercentage && volume.action == "rebuilding" ) ? " " + volume.dirtyBitsPercentage + "%" : "" }}{{ (volume.deletionZeroProgressPercentage && volume.action == "deleting" ) ? " " + volume.deletionZeroProgressPercentage + "%" : "" }}
+							</label>
+						</td>
+						<td column-name="Status"  class="fixed-size-column">
+							<label class="label bg-{{ volume.status | statusToHealth }}">
+								<span ng-if="volume.status === 'rebuilding' || volume.status === 'deleting'"><i class="fa fa fa-cog fa-spin"></i>&nbsp;</span>
+								{{ volume.status | statusToCaption }}{{ (volume.dirtyBitsPercentage && volume.status == "rebuilding" ) ? " " + volume.dirtyBitsPercentage + "%" : "" }}{{ (volume.deletionZeroProgressPercentage && volume.status == "deleting" ) ? " " + volume.deletionZeroProgressPercentage + "%" : "" }}
+							</label>
+						</td>
+						<td column-name="Edit" class="fixed-size-column sxx-column">
+							<a class="fa fa-pencil edit-button" single-item-action ng-click="volumesCtrl.editVolume($index)" ng-disabled="!volumesCtrl.user.isAdmin || volume.type == volumesCtrl.consts.volumeTypes.METADATA_VOLUME"
+							ng-class data-toggle="modal" data-target="#editVolumeModal">
+							</a>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+			<div class="fab" ng-disabled="!volumesCtrl.user.isAdmin" data-toggle="modal" data-target="#editVolumeModal" ng-click="volumesCtrl.newVolume()">
+				<i class="fa fa-plus"></i>
+			</div>
+		</div>
+	</div>
+
+	<!-- Edit/Create Modal -->
+	<div class="modal fade" id="editVolumeModal" role="dialog" data-backdrop="static">
+		<div class="modal-dialog large-modal">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal"
+						ng-click="volumesCtrl.clearSelectizes(true)">&times;</button>
+					<h3 class="modal-title text-center">Volume</h3>
+				</div>
+				<div class="modal-body">
+					<ng-form name="volumesCtrl.editVolumeForm">
+						<div class="side-by-side">
+							<div class="left">
+								<div id="editVolumeName" ng-class="{'has-error': volumesCtrl.editVolumeForm.name.$invalid }" class="form-group" title="">
+									<label class="control-label">Name</label>
+									<div class="inner-addon right-addon">
+										<i class="ion ion-alert-circled"
+											ng-show="volumesCtrl.editVolumeForm.name.$error.required"></i>
+										<input name="name" id="name" class="form-control" type="text"
+											   ng-disabled="volumesCtrl.editMode"
+											   ng-value="{{ volumesCtrl.volume.name }}"
+											   bootstrap-modal-autofocus="#editVolumeModal"
+											   ng-model="volumesCtrl.volume.name"
+											   pattern="^(?!e_|d_).*$"
+											   maxlength="22"
+											   placeholder="Enter name"
+											   ng-required="true">
+									</div>
+								</div>
+							</div>
+
+							<!-- <div class="form-group" ng-if="capacityAllocationType !== 'dummy'">
+						</div> -->
+							<div class="right">
+								<div class="form-group" id="volumeCapacitySection">
+									<label class="control-label">Volume Capacity</label>
+									<i>
+										<small ng-if="volumesCtrl.capacityAllocationType !== 'dummy'"
+											  class="{{ volumesCtrl.getCapacityStatus() }} control-label-right control-label-right-volume-capacity"
+											  ng-class="{cancelPaddingRight: volumesCtrl.editVolumeForm.capacityInput.$valid}">
+											{{ volumesCtrl.getCapacityString() }}
+										</small>
+									</i>
+
+									<!-- <span ng-if="volumesCtrl.capacityAllocationType !== 'dummy'"
+										class="{{ volumesCtrl.getCapacityStatus() }} control-label-right">{{
+										volumesCtrl.getCapacityString()
+										}}</span> -->
+									<div ng-class="{'has-error': !volumesCtrl.editVolumeForm.capacityInput.$valid}"
+										class="form-group">
+										<div>
+											<table class="inner-addon right-addon capacity-input">
+												<tr>
+													<td>
+														<input type="radio" name="volumeCapacity" value="custom"
+															ng-model="volumesCtrl.capacityAllocationType"
+															ng-click="volumesCtrl.resetCapacity()"
+															ng-change="volumesCtrl.resetCapacity()" />
+													</td>
+													<td class="capacity-section">
+														<input class="form-control"
+															ng-disabled="volumesCtrl.capacityAllocationType !== 'custom'"
+															name="capacityInput" type="number"
+															ng-value="{{ volumesCtrl.virtualCapacity }}"
+															placeholder="Enter capacity"
+															ng-change="volumesCtrl.setCapacity(volumesCtrl.virtualCapacity)"
+															ng-model="volumesCtrl.virtualCapacity"
+															ng-required="volumesCtrl.capacityAllocationType === 'custom'"
+														    max="{{ volumesCtrl.convertToUnits(volumesCtrl.getMaxSpace()) }}"
+														    min="{{ volumesCtrl.minCapacity }}" step="any">
+													</td>
+													<td class="unit-section">
+														<select class="form-control" name="unit-select"
+															ng-model="volumesCtrl.obj.unitType"
+															ng-change="volumesCtrl.unitTypeChanged()">
+															<option>{{ UNIT_G }}</option>
+															<option>{{ UNIT_T }}</option>
+															<option>{{ UNIT_P }}</option>
+														</select>
+													</td>
+													<td class="alert-section">
+														<i class="ion ion-alert-circled"
+															ng-show="!volumesCtrl.editVolumeForm.capacityInput.$valid"></i>
+													</td>
+												</tr>
+											</table>
+										</div>
+									</div>
+									<div>
+										<label ng-disabled="volumesCtrl.capacityAllocationType !== 'max'">
+											<div>
+												<input type="radio" name="volumeCapacity" value="max"
+													ng-model="volumesCtrl.capacityAllocationType"
+													ng-model="volumesCtrl.capacityAllocationType"
+													ng-click="volumesCtrl.clearCapacity()" />
+												<label id="maxCapacity">Maximum, as much as possible</label>
+											</div>
+										</label>
+									</div>
+									<div ng-hide="!volumesCtrl.editMode">
+										<label ng-disabled="volumesCtrl.capacityAllocationType !== 'nochange'"><input
+												type="radio" name="volumeCapacity" value="nochange"
+												ng-model="volumesCtrl.capacityAllocationType"
+												ng-click="volumesCtrl.clearCapacity()" />
+											<label id="maxCapacity">Current, no size change</label>
+										</label>
+									</div>
+									<small ng-if="volumesCtrl.offlineServers" class="red">
+										<br>
+										<div id="unfuctionnalTargetCapacity">
+											<i class="ion ion-alert"></i>
+											<p id="text"> Total space may be reduced due to non-functional targets.</p>
+										</div>
+									</small>
+								</div>
+							</div>
+						</div>
+						<div class="side-by-side">
+							<div class="left">
+								<div class="form-group">
+									<label class="control-label">Description</label>
+									<textarea name="description" maxlength="1024" class="form-control" type="text"
+										ng-value="{{ volumesCtrl.volume.description }}"
+										ng-model="volumesCtrl.volume.description" placeholder="Enter description"
+										style="resize: none;"></textarea>
+								</div>
+							</div>
+							<div class="right">
+								<div class="form-group" id="volumeSettingsSection">
+									<label class="control-label">Volume Settings</label>
+									<div>
+										<span class="button-aligned">Read Only</span>
+										<toggle disabled="volumesCtrl.volume.isUsedAsSnapshot" value="volumesCtrl.volume.isReadOnly"></toggle>
+									</div>
+									<div>
+										<span class="button-aligned">Use as a Snapshot</span>
+										<toggle disabled="volumesCtrl.editMode" value="volumesCtrl.volume.isUsedAsSnapshot" on-change="volumesCtrl.handleSnapshot()"></toggle>
+									</div>
+									<div class="form-group" ng-hide="!volumesCtrl.volume.isUsedAsSnapshot">
+										<div class="form-group no-margin-bottom" ng-class="{'has-error': !volumesCtrl.editMode && volumesCtrl.sourceVolumeInvalid() }">
+											<label class="control-label">Snapshot Source Volume</label>
+											<select name="sourceVolume" id="SourceVolumeSelect" placeholder="Choose Source Volume..."></select>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+
+
+						<tabset>
+							<tab heading="Volume Provisioning Group"
+								ng-click="volumesCtrl.allocateByVPG()"
+								active="volumesCtrl.active.VPG"
+								disable="!volumesCtrl.canAllocateByVPG()">
+								<div class="tab-body">
+									<div class="form-group no-margin-bottom"
+										ng-class="{'has-error': !volumesCtrl.editMode && volumesCtrl.VPGInvalid() }">
+										<label class="control-label">Volume Provisioning Group</label>
+										<i><small class="red control-label-right"
+												ng-show="volumesCtrl.editVolumeForm.$error['hasEnoughMirrors']">No mirrors available</small></i>
+										<select name="vpg" id="VPGSelect" placeholder="Choose VPG..."></select>
+									</div>
+								</br>
+									<div class="form-group no-margin-bottom" ng-hide="!volumesCtrl.volume.isUsedAsSnapshot"
+										ng-class="{'has-error': !volumesCtrl.editMode && volumesCtrl.mdVPGInvalid() }">
+										<label class="control-label">Metadata Volume Provisioning Group</label>
+										<select name="mdVpg" id="MDVPGSelect" placeholder="Choose Metadata VPG..."></select>
+									</div>
+								</div>
+							</tab>
+
+							<tab heading="Custom"
+								active="volumesCtrl.active.custom"
+								disable="!volumesCtrl.canAllocateWithoutVPG()"
+								ng-click="volumesCtrl.allocateWithoutVPG()">
+							</tab>
+						</tabset>
+
+						<div>
+							<tabset id="subTab">
+								<tab heading="Layout"
+									active="volumesCtrl.activeSubTabsStatuses.LAYOUT"
+									ng-show="volumesCtrl.showSubTab.layout"
+									ng-click="volumesCtrl.changeSubTab('layout')">
+									<div class="tab-body">
+										<!-- RAID Picker and each of the RAID Options -->
+										<volume-raid-options class="side-by-side" volume="volumesCtrl.volume"
+											available-mirrors="volumesCtrl.availableMirrors"
+											disabled="volumesCtrl.editMode" control="volumesCtrl.raidOptionsControl" ng-hide="volumesCtrl.volume.VPG">
+										</volume-raid-options>
+
+										<div class="delimiters">
+											<!-- Limiters for snapshot Volume -->
+											<div ng-if="volumesCtrl.volume.isUsedAsSnapshot">
+												<tabset>
+													<tab heading="Data Volume Limiters" ng-hide="volumesCtrl.volume.VPG">
+														<div class="tab-body">
+															<volume-limiters volume="volumesCtrl.volume"
+																volume-ctrl="volumesCtrl"
+																is-empty="volumesCtrl.volumeLimitersEmpty">
+														</div>
+													</tab>
+													<tab heading="Metadata Volume Limiters" ng-hide="volumesCtrl.volume.mdvSpec.VPG">
+														<div class="tab-body">
+															<volume-limiters volume="volumesCtrl.volume.mdvSpec"
+																volume-ctrl="volumesCtrl"
+																is-empty="volumesCtrl.mdvLimitersEmpty">
+														</div>
+													</tab>
+												</tabset>
+											</div>
+
+											<!-- Limiters for all volumes except ELECT -->
+											<!-- we might want to use this logic for snapshots if there will be a need to create GUI for it -->
+											<div ng-if="!volumesCtrl.volume.isUsedAsSnapshot">
+												<volume-limiters volume="volumesCtrl.volume"
+													control="volumesCtrl.volumeLimitersControl"
+													volume-ctrl="volumesCtrl"
+													is-empty="volumesCtrl.volumeLimitersEmpty">
+											</div>
+										</div>
+									</div>
+								</tab>
+								<tab heading="Security"
+									active="volumesCtrl.activeSubTabsStatuses.SECURITY"
+									ng-show="volumesCtrl.showSubTab.security"
+									ng-click="volumesCtrl.changeSubTab('security')">
+									<div class="tab-body">
+										<div class="side-by-side">
+											<div class="left">
+												<div class="form-group">
+													<label class="control-label">Volume Security Groups</label>
+													<select id="VSGsSelect" multiple placeholder="Choose VSGs..."></select>
+												</div>
+												<div>
+													<span class="button-aligned">Encrypted Volume</span>
+													<toggle value="volumesCtrl.volume.isEncrypted" disabled="volumesCtrl.editMode" on-change="volumesCtrl.onSetEncryption(volumesCtrl.volume.isEncrypted)"></toggle>
+												</div>
+												<div ng-if="volumesCtrl.volume.isEncrypted">
+													<span class="button-aligned">Encryption Header Size</span>
+													<input class="form-control"
+														   type="number"
+														   placeholder="Header Size in MiB"
+														   ng-disabled="volumesCtrl.editMode"
+														   ng-model="volumesCtrl.volume.encryption.headerSize"
+														   min="1"
+														   max="100"
+														   step="1">
+												</div>
+											</div>
+											<div class="right"></div>
+										</div>
+									</div>
+								</tab>
+								<tab heading="Export"
+									active="volumesCtrl.activeSubTabsStatuses.EXPORT"
+									ng-show="volumesCtrl.showSubTab.export"
+									ng-click="volumesCtrl.changeSubTab('export')">
+									<div class="tab-body">
+										<div ng-class="{'no-margin-bottom': volumesCtrl.volume.enableNVMf}" class="form-group row no-margin-bottom" >
+											<label class="control-label button-aligned">Enable Access Via NVMf:</label>
+											<toggle value="volumesCtrl.volume.enableNVMf" ng-hide="volumesCtrl.volume.name && !isValidVolumeNameForExport(volumesCtrl.volume.name)"></toggle>
+											<div class="has-error button-aligned" ng-show="volumesCtrl.volume.name && !isValidVolumeNameForExport(volumesCtrl.volume.name)">
+												<i class="ion ion-alert-circled red" title="Cannot enable access via NVMf for a volume containing an underscore in its name"></i>
+											</div>
+										</div>
+										<h1 class="control-label" ng-hide="!volumesCtrl.volume.enableNVMf"><br>Clients
+											Providing NVMf Access
+											<span ng-init="volumesCtrl.isNvmfClientsHidden = false" class="small diskCollpase"
+												ng-click="volumesCtrl.isNvmfClientsHidden = !volumesCtrl.isNvmfClientsHidden"
+												style="cursor: pointer">{{volumesCtrl.isNvmfClientsHidden ? 'show' :
+												'hide'}} </span>
+										</h1>
+										<hr ng-hide="!volumesCtrl.volume.enableNVMf" />
+										<div ng-hide="!volumesCtrl.volume.enableNVMf || volumesCtrl.isNvmfClientsHidden">
+											<multi-select-clients selected="volumesCtrl.selectedClientsForNvmf" reload-data="volumesCtrl.reloadClients" />
+										</div>
+									</div>
+								</tab>
+								<tab heading="Advanced"
+									active="volumesCtrl.activeSubTabsStatuses.ADVANCED"
+									ng-show="volumesCtrl.showSubTab.advanced"
+									ng-click="volumesCtrl.changeSubTab('advanced')">
+									<div class="tab-body">
+										<div class="side-by-side">
+											<div class="left">
+												<div class="form-group"
+													ng-class="{'has-error': !volumesCtrl.editVolumeForm.relativeRebuildPriority.$valid}">
+													<label class="control-label">Relative Rebuild Priority</label>
+													<i><small class="control-label-right">Use '0' for target define</small></i>
+													<input name="relativeRebuildPriority" type="number" class="form-control" type="number"
+														ng-model="volumesCtrl.volume.relativeRebuildPriority" ng-required="volumesCtrl.volume.RAIDLevel !== volumesCtrl.consts.RAIDLevel.CONCATENATED && volumesCtrl.volume.RAIDLevel !== volumesCtrl.consts.RAIDLevel.STRIPED_RAID_0" min="0" max="10" />
+												</div>
+											</div>
+											<div class="right"></div>
+										</div>
+									</div>
+								</tab>
+							</tabset>
+						</div>
+
+						<volume-space-allocation-bar volume="volumesCtrl.volume" total-space="volumesCtrl.totalSpace"
+							allocated-space="volumesCtrl.allocatedSpace" edit-mode="volumesCtrl.editMode"
+							current-capacity="volumesCtrl.getVolumeCurrentCapacity()"
+							ng-if="!volumesCtrl.editVolumeForm.$invalid && !volumesCtrl.VPGInvalid() && volumesCtrl.capacityAllocationType !== 'max'">
+						</volume-space-allocation-bar>
+					</ng-form>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-primary mgmt-btn-primary"
+						ng-disabled="volumesCtrl.editVolumeForm.$invalid || (volumesCtrl.volume.isUsedAsSnapshot && !volumesCtrl.volume.sourceID)"
+						ng-click="volumesCtrl.addVolume()"
+						title="{{ volumesCtrl.editVolumeForm.$invalid ? volumesCtrl.editVolumeForm.$error:'' }}">{{
+						volumesCtrl.editMode ? "Update" : "Add" }}</button>
+					<button type="button" class="btn btn-default" data-dismiss="modal"
+						ng-click="volumesCtrl.closeEditModal()">Cancel</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- InitEncryption Modal -->
+	<div id="initEncryptionModal" class="modal fade" role="dialog" data-backdrop="static" data-keyboard="false">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h3 class="modal-title text-center">Initialize Encryption</h3>
+				</div>
+				<div class="modal-body">
+					<ng-form name="volumesCtrl.initEncryptionForm">
+						<div id="initEncryptionPassphrase" ng-class="{'has-error': volumesCtrl.initEncryptionForm.passphrase.$invalid }" class="form-group">
+							<label class="control-label">Passphrase</label>
+							<div class="inner-addon right-addon">
+								<i class="ion ion-alert-circled"
+									ng-show="volumesCtrl.initEncryptionForm.passphrase.$error.required"></i>
+								<input name="passphrase" id="passphrase"
+									class="form-control" type="text" ng-value="{{ volumesCtrl.initEncryptionDetails.passphrase }}"
+									bootstrap-modal-autofocus="#initEncryptionModal" ng-minLength="8"
+									ng-model="volumesCtrl.initEncryptionDetails.passphrase" placeholder="Enter passphrase"
+									ng-required="true">
+							</div>
+						</div>
+						<div class="form-group" ng-class="{'has-error': volumesCtrl.initEncryptionForm.slot.$invalid }">
+							<label class="control-label">Slot</label>
+							<input id="slot" name="slot" ng-min=0 min=0 max="32" class="form-control" type="number" ng-value="{{ volumesCtrl.initEncryptionDetails.slot }}" ng-model="volumesCtrl.initEncryptionDetails.slot" placeholder="Slot">
+						</div>
+						<div class="form-group">
+							<label class="control-label">Key size</label><br />
+							<div>
+								<label>
+									<input type="radio" value="256" ng-model="volumesCtrl.initEncryptionDetails.keySize" />
+									256
+								</label><br />
+								<label>
+									<input type="radio" value="512" ng-model="volumesCtrl.initEncryptionDetails.keySize" />
+									512
+								</label>
+							</div>
+						</div>
+					</ng-form>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-primary" data-dismiss="modal" ng-disabled="volumesCtrl.initEncryptionForm.$invalid" ng-click="volumesCtrl.addEncryptionCommand(volumesCtrl.initEncryptionDetails)">Init</button>
+					<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+		<!-- Add/Remove/Rotate Passphrase Modal -->
+		<div id="passphraseModal" class="modal fade" role="dialog" data-backdrop="static" data-keyboard="false">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h3 class="modal-title text-center">
+							{{ volumesCtrl.passphraseCommandToName[volumesCtrl.passphraseDetails.command] }} Passphrase
+						</h3>
+					</div>
+					<div class="modal-body">
+						<ng-form name="volumesCtrl.passphraseForm">
+							<div id="currentPassphrase" ng-class="{'has-error': volumesCtrl.passphraseForm.currentPassphrase.$invalid }" class="form-group">
+								<label class="control-label">Current Passphrase</label>
+								<div class="inner-addon right-addon">
+									<i class="ion ion-alert-circled"
+										ng-show="volumesCtrl.passphraseForm.passphrase.$error.required"></i>
+									<input name="currentPassphrase" id="currentPassphrase"
+										class="form-control" type="text" ng-value="{{ volumesCtrl.passphraseDetails.currentPassphrase }}"
+										bootstrap-modal-autofocus="#passphraseModal" ng-minLength="8"
+										ng-model="volumesCtrl.passphraseDetails.currentPassphrase" placeholder="Enter current passphrase"
+										ng-required="true">
+								</div>
+							</div>
+							<div ng-if="volumesCtrl.passphraseDetails.command !== volumesCtrl.consts.volumeEncryptionCommands.DELETE_PASSPHRASE"
+								 id="newPassphrase" ng-class="{'has-error': volumesCtrl.passphraseForm.newPassphrase.$invalid }" class="form-group">
+								<label class="control-label">New Passphrase</label>
+								<div class="inner-addon right-addon">
+									<i class="ion ion-alert-circled"
+										ng-show="volumesCtrl.passphraseForm.newPassphrase.$error.required"></i>
+									<input name="newPassphrase" id="newPassphrase"
+										class="form-control" type="text" ng-value="{{ volumesCtrl.passphraseDetails.newPassphrase }}"
+										bootstrap-modal-autofocus="#passphraseModal" ng-minLength="8"
+										ng-model="volumesCtrl.passphraseDetails.newPassphrase" placeholder="Enter current passphrase"
+										ng-required="true">
+								</div>
+							</div>
+							<div ng-if="volumesCtrl.passphraseDetails.command !== volumesCtrl.consts.volumeEncryptionCommands.DELETE_PASSPHRASE" class="form-group" ng-class="{'has-error': volumesCtrl.passphraseForm.slot.$invalid }">
+								<label class="control-label">Slot</label>
+								<input id="slot" name="slot" ng-min=0 min=0 max="32" class="form-control" type="number" ng-value="{{ volumesCtrl.passphraseDetails.slot }}" ng-model="volumesCtrl.passphraseDetails.slot" placeholder="Slot">
+							</div>
+						</ng-form>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-primary" data-dismiss="modal" ng-disabled="volumesCtrl.passphraseForm.$invalid" ng-click="volumesCtrl.addEncryptionCommand(volumesCtrl.passphraseDetails)">
+							{{ volumesCtrl.passphraseCommandToName[volumesCtrl.passphraseDetails.command] }}
+						</button>
+						<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+	<!-- Display volume diagram modal -->
+	<volume-diagram control="volumesCtrl.volumeDiagram"></volume-diagram>
+</div>

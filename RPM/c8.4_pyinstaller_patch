@@ -1,0 +1,11 @@
+--- /usr/local/lib/python2.7/dist-packages/PyInstaller/depend/utils.py	2019-08-01 18:22:33.338918000 +0300
++++ /usr/local/lib/python2.7/dist-packages/PyInstaller/depend/utils_new.py	2021-10-14 14:40:22.498957064 +0300
+@@ -387,6 +387,8 @@
+     for line in text:
+         # :fixme: this assumes libary names do not contain whitespace
+         m = pattern.match(line)
++        if m is None:
++            continue
+         path = m.groups()[-1]
+         if is_freebsd:
+             # Insert `.so` at the end of the lib's basename. soname

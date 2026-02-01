@@ -1,0 +1,43 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  file/metrics:
+    path: /output/metrics.json
+    format: json
+
+  file/traces:
+    path: /output/traces.json
+    format: json
+
+  file/logs:
+    path: /output/logs.json
+    format: json
+
+  debug:
+    verbosity: detailed
+
+processors:
+  batch:
+    timeout: 10s
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file/traces, debug]
+
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file/metrics, debug]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file/logs, debug]
+

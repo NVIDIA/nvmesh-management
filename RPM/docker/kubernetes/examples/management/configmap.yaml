@@ -1,0 +1,26 @@
+# Source: nvmesh-management/templates/configmap.yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: nvmesh-mgmt-config
+  labels:
+    
+    app.kubernetes.io/version: "2.0.2"
+data:
+  configVersion: 2.0.2
+  config: |-
+    {
+      "loggingLevel": "DEBUG",
+      "useSSL": false,
+      "mongoConnection": {
+        "hosts": "mongo-0.mongo.nvmesh.svc:27017",
+        
+      },
+      "statisticsMongoConnection": {
+        "hosts": "mongo-0.mongo.nvmesh.svc:27017",
+        
+      },
+      "statisticsCores": 5,
+      "statisticsIngressPort": 443
+    }
+---

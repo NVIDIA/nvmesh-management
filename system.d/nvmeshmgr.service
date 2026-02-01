@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=NVMesh(r) Manager
+Wants=mongod.service
+After=network.target mongod.service
+
+[Service]
+WorkingDirectory=/opt/nvmesh/management
+ExecStart=/opt/nvmesh/management/services/nvmeshmgr start
+ExecStopPost=/usr/bin/node /opt/nvmesh/management/services/sendEmailOnServiceStop.js
+PIDFile=/var/run/nvmesh/nvmeshmgr/management.pid
+Type=forking
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

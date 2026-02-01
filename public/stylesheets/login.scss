@@ -1,0 +1,235 @@
+@use "style_consts";
+
+* {
+	box-sizing: border-box;
+}
+
+body, html {
+	height: 100%;
+	background: #e8e8e8;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	font-family: 'Source Sans Pro','Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif' !important;
+	font-weight: 400;
+}
+
+input.form-control::placeholder {
+	color: #FFFFFF;
+}
+
+input.form-control:-ms-input-placeholder { /* Internet Explorer 10-11 */
+	color: #FFFFFF;
+ }
+
+ input.form-control::-ms-input-placeholder { /* Microsoft Edge */
+	color: #FFFFFF;
+ }
+
+.background {
+	height: 100%;
+	width: 100%;
+	background-color: black;
+	background-repeat: no-repeat;
+	background-attachment: fixed;
+	background-position: center center;
+	background-size: cover;
+}
+
+@media (orientation: landscape) and (max-width: 5210px) {
+	.background {
+		background-image: url('../images/background_login_xxlg.jpg');
+	}
+
+	.container {
+		width: 446px;
+		bottom: 215px;
+	}
+}
+
+@media (orientation: landscape) and (max-width: 2560px) {
+	.background {
+		background-image: url('../images/background_login_xlg.jpg');
+	}
+
+	.container {
+		width: 446px;
+		bottom: 215px;
+	}
+}
+
+@media (orientation: landscape) and (max-width: 1920px) {
+	.background {
+		background-image: url('../images/background_login_lg.jpg');
+	}
+
+	.container {
+		width: 446px;
+		bottom: 215px;
+	}
+}
+
+@media (orientation: landscape) and (max-width: 1440px) {
+	.background {
+		background-image: url('../images/background_login_md.jpg');
+	}
+
+	.container {
+		width: 446px;
+		bottom: 130px;
+	}
+}
+
+@media (max-aspect-ratio: 9/9) {
+	.background {
+		background-image: url('../images/background_login_md_v.jpg');
+	}
+
+	input.form-control {
+		padding: 0 12%;
+	}
+
+	.container {
+		bottom: 5%;
+	}
+}
+
+.container {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	padding: 30px 0;
+	border-radius: 5px;
+}
+
+.content {
+	color: #FFFFFF;
+	font-size: 16px;
+	padding-top: 20px;
+	font-style: italic;
+}
+
+.logo-container {
+	width: 230px;
+	height: 50px;
+	position: fixed;
+	padding: 0 15px;
+	top: 0;
+	left: 0;
+}
+
+form {
+	height: 340px;
+	width: 290px;
+	text-align: left;
+
+	button.btn-primary {
+		font-size: 18pt;
+		left: 0;
+		right: 0;
+		height: 60px;
+		width: 100%;
+		margin: 40px auto 0;
+		background-image: none;
+		background-color: style_consts.$loginbtn;
+		border: none;
+		border-radius: 2px;
+
+		&:active {
+			background-color: #439ec9;
+		}
+
+		&:hover {
+			background-color: style_consts.$loginbtnhover;
+		}
+
+	}
+}
+
+div.has-error {
+	text-align: left;
+	margin-top: 10px;
+}
+
+.form-control {
+	margin: auto;
+	padding: 0 44px;
+	height: 40px;
+	background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, .4);
+    border-radius: 0px;
+	box-shadow: none;
+	color: #FFFFFF;
+	position: absolute;
+	bottom: 0;
+	font-size: 22px;
+	font-family: 'Helvetica', 'Helvetica Neue', 'Arial', 'sans-serif';
+
+	&:-webkit-autofill, &:focus {
+    	box-shadow: none;
+		border-bottom: 2px solid #51b9ea;
+		-webkit-text-fill-color: #FFFFFF;
+	}
+}
+
+@-webkit-keyframes autofill {
+	to {
+		color: #a0a0a0;
+		background: transparent;
+	}
+}
+
+input:-webkit-autofill {
+	-webkit-animation-name: autofill;
+	-webkit-animation-fill-mode: both;
+	-webkit-text-fill-color: #FFFFFF;
+}
+
+.form-group {
+	position: relative;
+	height: 80px;
+	margin-bottom: 0;
+
+	i.password-icon {
+		background-image: url('../images/lock-password.svg');
+		height: 20px;
+		width: 18px;
+		background-repeat: no-repeat;
+	}
+
+	i {
+		position: absolute;
+		color: #FFFFFF;
+		z-index: 1;
+		bottom: 12px;
+		left: 15px;
+		font-size: 23px;
+		text-align: center;
+		width: 17px;
+	}
+}
+
+.nvmesh-bar {
+	display:none;
+}
+
+#error-label {
+	color: style_consts.$error;
+}
+
+#nvmeshLogo {
+	width: 140px;
+    margin: auto;
+    position: absolute;
+    bottom: 0;
+    top: 0;
+    left: 0;
+	right: 0;
+	padding-bottom: 3px;
+}
+
+#nvmeshLogo {
+	width: 140px;
+}

@@ -1,0 +1,69 @@
+# Source: nvmesh-management/templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nvmesh-management
+  labels:
+    app: nvmesh-management
+
+    app.kubernetes.io/version: "2.0.2"
+spec:
+  replicas: 3
+  serviceName: nvmesh-management-svc-0
+  selector:
+    matchLabels:
+      app: nvmesh-management
+  template:
+    metadata:
+      labels:
+        app: nvmesh-management
+    spec:
+      containers:
+        - name: nvmesh-management
+          image: "registry.acme.com/nvmesh-management:2.0.2"
+          imagePullPolicy: IfNotPresent
+          env:
+            # This will inject the configuration from the ConfigMap into the container
+          - name: CONFIG
+            valueFrom:
+              configMapKeyRef:
+                name: nvmesh-mgmt-config
+                key: config
+          ports:
+            - name: gui
+              containerPort: 4000
+              protocol: TCP
+            - name: ws
+              containerPort: 4001
+              protocol: TCP
+            - name: stats-0
+              containerPort: 4002
+              protocol: TCP
+            - name: stats-1
+              containerPort: 4003
+              protocol: TCP
+            - name: stats-2
+              containerPort: 4004
+              protocol: TCP
+            - name: stats-3
+              containerPort: 4005
+              protocol: TCP
+            - name: stats-4
+              containerPort: 4006
+              protocol: TCP
+
+          volumeMounts:
+            - name: backups
+              mountPath: /var/opt/nvmesh/backups
+
+  volumeClaimTemplates:
+    - metadata:
+        name: backups
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 5Gi
+        selector:
+          matchLabels:
+            role: nvmesh-backups

@@ -1,0 +1,16 @@
+<div class="status-gauge-container">
+	<div class="icon">
+		<i ng-class="iconClass" />
+	</div>
+	<a class="health-link" ng-class="{ 'health-link-hover': linkedGauge }" ng-href="{{ firstElementLink }}" title="{{ firstElementValue }}">
+		<span>{{ firstElementValue | numToKRoundNumber }}<br /><span>{{ firstElementName }}</span></span>
+	</a>
+	<a class="health-link" ng-class="{ 'health-link-hover': linkedGauge }" ng-href="{{ secondElementLink }}" title="{{ secondElementValue }}">
+		<span>{{ secondElementValue | numToKRoundNumber }}<br /><span>{{ secondElementName }}</span></span>
+	</a>
+	<a class="health-link" ng-class="{ 'health-link-hover': linkedGauge }" ng-href="{{ thirdElementLink }}" title="{{ thirdElementValue }}">
+		<span>{{ thirdElementValue | numToKRoundNumber }}<br /><span>{{ thirdElementName }}</span></span>
+	</a>
+	<div class="status-gauge"></div>
+	<a class="main-link" ng-class="{ 'main-link-hover': linkedGauge }" ng-href="{{ mainLink }}"><h3>{{ header }}</h3></a>
+</div>

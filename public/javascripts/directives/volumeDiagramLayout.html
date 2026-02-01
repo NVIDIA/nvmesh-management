@@ -1,0 +1,79 @@
+<span style="cursor: pointer" ng-click="toggleAllChunksView()" >{{volumeDiagramChunksShown ? 'hide all' : 'show all'}}</span>
+<div class="row" ng-repeat="chunk in data.chunks" ng-class="{'lastChunk':$last}">
+        <h4 style="display: inline-block">{{ chunk.name }} ({{chunk.capacity | gigabytesToBiggestUnits}})</h4>
+        <span style="cursor: pointer" ng-click="toggleChunksView(chunk)" >{{chunk.pRaidView == 'show' ? 'hide' : 'show'}}</span>
+        <hr />
+        <div class="pRaidsContainer">
+            <div ng-show="chunk.pRaidView == 'show'" ng-repeat="pRaid in chunk.pRaids" class="inlineBlock" style="padding-right: 2%;">
+                <div class="pRaid">
+                    <div id="pRaidStatus" class="pRaidStatus">
+                        <h5 style=" text-align:center;" class="{{ pRaid.status | statusToHealth }}">{{pRaid.status | statusToCaption}}</h5>
+                    </div>
+                    <div id="tilesContainer" class="tilesContainer">
+                        <div id="diskSegment" ng-mouseenter="diskSegment.showPopover = true"
+                             ng-mouseleave="diskSegment.showPopover = false" ng-repeat="diskSegment in pRaid.diskSegments" class="tile-item tile-item-{{diskSegment.status |segmentStatusToHealth}}" >
+                            <div ng-if="diskSegment.showPopover" class="popover tile-tooltip segment-popover">
+                                <div class="segment-popover-body" style="padding: 0%">
+                                    <h3 style="padding: 9px;">Partition</h3>
+                                    <div style="margin: 9px; display: inline-block;">
+                                        <table>
+                                            <tr>
+                                                <td><strong>UUID:</strong></td>
+                                                <td>&nbsp;</td>
+                                                <td>{{ diskSegment.uuid }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Volume:</strong></td>
+                                                <td>&nbsp;</td>
+                                                <td>{{ diskSegment.volumeName }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>LBS:</strong></td>
+                                                <td>&nbsp;</td>
+                                                <td>{{ diskSegment.lbs }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>LBE:</strong></td>
+                                                <td>&nbsp;</td>
+                                                <td>{{ diskSegment.lbe }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Status:</strong></td>
+                                                <td>&nbsp;</td>
+                                                <td>
+                                                    <label
+                                                        class="label bg-{{ diskSegment.status | segmentStatusToHealth }}">{{ diskSegment.status | segStatusToCaption }}
+                                                    </label>
+                                                    <i class="fa fa-info-circle blue" style="margin-left: 5px;" title="{{ diskSegment.status |segStatusToDefinition }}"></i>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Drive ID:</strong></td>
+                                                <td>&nbsp;</td>
+                                                <td>{{ diskSegment.diskID }}</td>
+                                            </tr>
+                                            <tr>
+                                            <tr>
+                                                <td><strong>Target ID:</strong></td>
+                                                <td>&nbsp;</td>
+                                                <td>{{ diskSegment.node_id }}</td>
+                                            </tr>
+                                                <td colspan="2"></td>
+                                            </tr>
+                                        </table>
+
+                                    </div>
+                                    <div class="segment-popover-footer">
+                                        Total: {{diskSegment.lbe - diskSegment.lbs !== 0 ? diskSegment.lbe - diskSegment.lbs + 1 : 0}}
+                                        <div style="display: inline-block;">
+                                            <label class="label label-info">{{(diskSegment.lbe - diskSegment.lbs !== 0 ? diskSegment.lbe - diskSegment.lbs + 1 : 0) * 4096 | bytesToBiggestUnits}}</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+</div>

@@ -1,0 +1,15 @@
+<div id="capacityChartContainer">
+    <p class="text-center"><h2 ng-if="!hideHeader">Allocation Chart</h2></p>
+    <div id="capacityChart" class="capacity-chart"></div>
+    <div id="capacityChartLabelsContainer">
+        <span>{{ 100 - ([redundancySpace, totalSpace] | toPercent) }}%<br />
+            <span>{{ redundancySpace | gigabytesToBiggestUnits }}/{{ totalSpace | gigabytesToBiggestUnits }}<br /> Redundancy</span></span>
+        <span>{{ 100 - ([volumeSpace, totalSpace] | toPercent) }}%<br />
+            <span>{{ volumeSpace | gigabytesToBiggestUnits }}/{{ totalSpace | gigabytesToBiggestUnits }}<br /> Volumes</span></span>
+        <span>{{ 100 - ([freeSpace, totalSpace] | toPercent) }}%<br />
+            <span>{{ freeSpace | gigabytesToBiggestUnits }}/{{ totalSpace | gigabytesToBiggestUnits }}<br /> Free Space</span></span>
+    </div>
+    <div class="icon-container">
+        <i class="ion ion-cloud"></i>
+    </div>
+</div>

@@ -1,0 +1,6 @@
+hostname,ips,zone,components
+nvme133.mtl.labs.mlnx,10.60.34.238,1,TOMA;MCS;Management;Mongo;Kafka;Zookeeper;CLI;Monitor;Admin;Observer;UPGRADE_AGENT
+nvme135.mtl.labs.mlnx,10.60.34.240,1,TOMA;MCS;Management;Mongo;Kafka;Zookeeper;CLI;Monitor;Admin;Observer;UPGRADE_AGENT
+nvme136.mtl.labs.mlnx,10.60.34.82,1,TOMA;MCS;Management;Mongo;Kafka;Zookeeper;CLI;Monitor;Admin;Observer;UPGRADE_AGENT
+nvme137.mtl.labs.mlnx,10.60.34.84,1,TOMA;MCS;Management;Mongo;Kafka;Zookeeper;CLI;Monitor;Admin;Observer;UPGRADE_AGENT
+nvme138.mtl.labs.mlnx,10.60.34.89,1,TOMA;MCS;Management;Mongo;Kafka;Zookeeper;CLI;Monitor;Admin;Observer;UPGRADE_AGENT

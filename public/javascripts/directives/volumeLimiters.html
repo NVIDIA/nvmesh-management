@@ -1,0 +1,14 @@
+<tabset>
+    <tab heading="Limit By Classes" active="activeLimit.limitByClasses" disable="!canLimitByClasses">
+        <div class="tab-body">
+            <volume-class-limiters volume="volume" volume-ctrl="volumeCtrl" disabled="disabled"
+                clear="clearClassLimiters">
+        </div>
+    </tab>
+    <tab heading="Limit By Specific Targets and Drives" active="activeLimit.limitByNodes" disable="!canLimitByNodes">
+        <div class="tab-body">
+            <volume-target-and-drive-limiters volume="volume" volume-ctrl="volumeCtrl" disabled="disabled"
+                clear="clearTargetAndDrivesLimiters">
+        </div>
+    </tab>
+</tabset>

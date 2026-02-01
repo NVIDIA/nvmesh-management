@@ -1,0 +1,8 @@
+<span ng-show="durationPickerCtrl.days" >Days: <input class="duration-input form-control" type="number"
+	ng-model="durationPickerCtrl.selectedDays" min="0" ng-blur="durationPickerCtrl.calcTime()"/></span>
+<span ng-show="durationPickerCtrl.hours" >Hours: <input class="duration-input form-control" type="number"
+	ng-model="durationPickerCtrl.selectedHours" min="0" ng-blur="durationPickerCtrl.calcTime()"/></span>
+<span ng-show="durationPickerCtrl.minutes" >Minutes: <input class="duration-input form-control" type="number"
+	ng-model="durationPickerCtrl.selectedMinutes" min="0" ng-blur="durationPickerCtrl.calcTime()"/></span>
+<span ng-show="durationPickerCtrl.seconds" >Seconds: <input class="duration-input form-control" type="number"
+	ng-model="durationPickerCtrl.selectedSeconds" min="0" ng-blur="durationPickerCtrl.calcTime()"/></span>

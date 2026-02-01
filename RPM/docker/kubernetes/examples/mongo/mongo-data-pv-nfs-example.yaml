@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-mongo-data-0
+  labels:
+    role: mongo-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 10Gi
+  csi:
+    driver: nfs.csi.k8s.io
+    volumeHandle: mongo-data-0
+    volumeAttributes:
+      server: 10.0.1.127
+      share: /nfs_server/mongo_data_0
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-mongo-data-1
+  labels:
+    role: mongo-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 10Gi
+  csi:
+    driver: nfs.csi.k8s.io
+    volumeHandle: mongo-data-1
+    volumeAttributes:
+      server: 10.0.1.127
+      share: /nfs_server/mongo_data_1
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-mongo-data-2
+  labels:
+    role: mongo-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 10Gi
+  csi:
+    driver: nfs.csi.k8s.io
+    volumeHandle: mongo-data-2
+    volumeAttributes:
+      server: 10.0.1.127
+      share: /nfs_server/mongo_data_2

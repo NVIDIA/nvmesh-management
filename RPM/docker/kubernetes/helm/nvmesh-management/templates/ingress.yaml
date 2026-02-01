@@ -1,0 +1,54 @@
+{{ if .Values.ingressType }}
+kind: Ingress
+apiVersion: extensions/v1beta1
+metadata:
+  name: nvmesh-mgmt-ingress
+  annotations:
+  {{- if eq .Values.ingressType "traefik" }}
+      traefik.ingress.kubernetes.io/router.tls: 'true'
+      traefik.ingress.kubernetes.io/service.sticky: 'true'
+  {{- else if eq .Values.ingressType "ingress-nginx" }}
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/affinity: cookie
+      nginx.ingress.kubernetes.io/affinity-mode: persistent
+  {{- end }}
+  labels:
+  {{- include "nvmesh-management.labels" . | nindent 4 }}
+spec:
+  tls:
+    - hosts:
+    {{- range $replicaIndex := until (.Values.replicas|int) }}
+      - nvmesh-management-{{ $replicaIndex }}
+    {{- end }}
+      secretName: ingress-tls-cert
+  rules:
+    {{- range $replicaIndex := until (.Values.replicas|int) }}
+    - host: nvmesh-management-{{ $replicaIndex }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-svc-{{ $replicaIndex }}
+              servicePort: ws
+    {{- end }}
+    {{- range $replicaIndex := until (.Values.replicas|int) }}
+      {{- range $statIndex := until ($.Values.config.statisticsCores|int) }}
+    - host: nvmesh-management-{{ $replicaIndex }}-{{ $statIndex }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-svc-{{ $replicaIndex }}
+              servicePort: stats-{{ $statIndex }}
+      {{- end }}
+    {{- end }}
+    - http:
+        paths:
+          - path: /
+            backend:
+              serviceName: nvmesh-management-gui
+              servicePort: gui
+status:
+  loadBalancer: {}
+{{ end }}
+

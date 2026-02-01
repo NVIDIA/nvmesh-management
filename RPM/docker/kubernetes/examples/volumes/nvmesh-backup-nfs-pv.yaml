@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-nvmesh-backups-0
+  labels:
+    role: nvmesh-backups
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 5Gi
+  csi:
+    driver: nfs.csi.k8s.io
+    volumeHandle: data-id
+    volumeAttributes:
+      server: 10.0.1.127
+      share: /nfs_server/nvmesh_backups_0
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-nvmesh-backups-1
+  labels:
+    role: nvmesh-backups
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 5Gi
+  csi:
+    driver: nfs.csi.k8s.io
+    volumeHandle: data-id
+    volumeAttributes:
+      server: 10.0.1.127
+      share: /nfs_server/nvmesh_backups_1
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-nvmesh-backups-2
+  labels:
+    role: nvmesh-backups
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 5Gi
+  csi:
+    driver: nfs.csi.k8s.io
+    volumeHandle: data-id
+    volumeAttributes:
+      server: 10.0.1.127
+      share: /nfs_server/nvmesh_backups_2
