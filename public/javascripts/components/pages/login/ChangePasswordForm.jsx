@@ -32,7 +32,7 @@ const ChangePasswordForm = () => {
 
 	return (
 		<form id="changePasswordForm" role="form" onSubmit={handleSubmit}>
-			<img id="nvmeshLogo" src="/images/NVMeshLogoLogin.png" alt="NVMesh Logo"/>
+			<img className="nvmesh-logo" src="/images/NVMeshLogoLogin.png" alt="NVMesh Logo"/>
 			<div className="content">Changing initial password is required</div>
 			<div className="form-group">
 				<i className="icon password-icon placeholder-icon"></i>

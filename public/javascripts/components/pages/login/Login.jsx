@@ -12,10 +12,6 @@ const Login = () => {
 
 	return (
 		<div className="background">
-			<div className="logo-container">
-				<img id="nvmeshLogo" src="/images/exceleroLogoLogin.svg" alt="NVMesh Logo"/>
-			</div>
-
 			<div className="container">
 				{currentPath === '/login' && <LoginForm />}
 				{currentPath === '/login/changePassword' && <ChangePasswordForm />}

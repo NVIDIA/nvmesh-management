@@ -74,14 +74,12 @@ const About = () => {
 
 		<div className="row center">
 			<div className="col-lg-4 col-lg-offset-4 text-center">
-				<img src="images/exceleroLogoLogin.png" />
 				<br/>
 				<br/>
 
 				<h2>NVIDIA NVMesh Management {aboutInfo.managementVersion}</h2>
 				<p>Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.</p>
 				<br/>
-				<br /><br />
 				<hr />
 				<br />
 				<h2>System Information</h2>
