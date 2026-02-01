@@ -22,7 +22,7 @@ var events = require('../events.js');
 var objectNotifier = require('../objectNotifier.js');
 var systemMessages = require('../systemMessages.js');
 var kafkaRouter = require('./kafkaRouter.js');
-var { MongoError, SystemMessage, Entities, InteropDBError } = require('./error.js');
+let { MongoError, SystemMessage, Entities, InteropDBError } = require('./error.js');
 
 const { metrics, isMetricsEnabled } = require('./openTelemetry.js');
 const { trace, context } = require('@opentelemetry/api');
@@ -56,6 +56,7 @@ scope.topicsInitialized = false;
 
 scope.afterModuleLoaded = () => {
 	logger = require('../logger');
+	({ MongoError, SystemMessage, Entities, InteropDBError } = require('./error.js'));
 	kafkaRouter.afterModuleLoaded();
 	setupMetricsCollection();
 };

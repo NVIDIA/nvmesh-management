@@ -86,7 +86,7 @@ describe('Miscellaneous', () => {
 		});
 	});
 
-	describe('Run Kafka Admin Command', () => {
+	describe('Run Kafka Command', () => {
 		const timeoutMs = 10;
 		const nonRetriableError = new Error();
 		const error = new Error();
@@ -141,6 +141,82 @@ describe('Miscellaneous', () => {
 			};
 			const result = await runKafkaCommand(fn);
 			assert(result);
+		});
+
+		it('Successful Execution with Arguments', async() => {
+			const fn = async(arg1, arg2) => arg1 + arg2;
+			const result = await runKafkaCommand(fn, [10, 20]);
+			assert.strictEqual(result, 30);
+		});
+
+		it('Successful Execution with onSuccessFn', async() => {
+			let onSuccessCalled = false;
+			const onSuccessFn = () => { onSuccessCalled = true; };
+			const result = await runKafkaCommand(asyncSuccess, [], { onSuccessFn });
+			assert(result);
+			assert(onSuccessCalled, 'onSuccessFn should have been called');
+		});
+
+		it('Error thrown in onSuccessFn does not fail the main command execution', async() => {
+			const onSuccessFn = () => { throw new Error('Callback failed'); };
+			const result = await runKafkaCommand(asyncSuccess, [], { onSuccessFn });
+			assert(result);
+		});
+
+		it('Successful Execution with custom onErrorFn', async() => {
+			let onErrorCalled = false;
+			const customError = new Error('Custom error');
+
+			const onErrorFn = () => {
+				onErrorCalled = true;
+				return false;
+			};
+
+			try {
+				await runKafkaCommand(() => { throw customError; }, [], { onErrorFn });
+				assert.fail('Should have thrown error');
+			} catch (ex) {
+				assert.strictEqual(ex, customError);
+				assert(onErrorCalled, 'onErrorFn should have been called');
+			}
+		});
+
+		it('Instance ID passed to onErrorFn', async() => {
+			const expectedId = 12345;
+			const getInstanceID = () => expectedId;
+			let capturedId = null;
+
+			const onErrorFn = (ex, id) => {
+				capturedId = id;
+				return false;
+			};
+
+			try {
+				await runKafkaCommand(() => { throw new Error(); }, [], {
+					getInstanceID,
+					onErrorFn
+				});
+			} catch (e) {
+				// ignore
+			}
+
+			assert.strictEqual(capturedId, expectedId, 'Instance ID passed to onErrorFn does not match');
+		});
+
+		it('Custom retriesLeft configuration', async() => {
+			let attempts = 0;
+			const fn = async() => {
+				attempts++;
+				throw retriableError;
+			};
+
+			try {
+				await runKafkaCommand(fn, [], { retriesLeft: 1, retryDelayMs: 1 });
+			} catch (e) {
+				// ignore
+			}
+
+			assert.strictEqual(attempts, 2, 'Should have attempted exactly twice (1 initial + 1 retry)');
 		});
 	});
 });
