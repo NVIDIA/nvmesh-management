@@ -155,7 +155,7 @@ async function gracefulShutdown() {
 
 	new SystemMessage(systemMessages.APP_GRACEFUL_SHUTDOWN).log();
 
-	if (!kafka.isConsumerPaused) {
+	if (kafkaConsumer && !kafka.isConsumerPaused) {
 		await kafka.pauseConsumer();
 	}
 
