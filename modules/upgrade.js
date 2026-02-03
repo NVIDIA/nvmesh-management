@@ -1200,7 +1200,7 @@ scope.checkUpgradeStatus = (upgradeID) => {
 };
 
 scope.startUpgradeByID = (upgradeID, cb) => {
-	utils.fetchEntityByID(consts.dbCollections.UPGRADE, upgradeID, false, {}, (err, upgrade) => {
+	scope.fetchUpgradeByID(upgradeID, (err, upgrade) => {
 		if (err)
 			return cb([err.addInfo(Entities.Upgrade.UUID, upgradeID)]);
 
