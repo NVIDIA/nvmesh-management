@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* global React, consts */
+/* global React, consts, moment */
 
 import Modal from '../../core/Modal.jsx';
 import UpgradeStepStatus from './UpgradeStepStatus.jsx';
@@ -94,13 +94,21 @@ const UpgradeStep = ({
 								/>
 							</td>
 						</tr>
+						<tr>
+							<th>Started At:</th>
+							<td>{upgradeStep.startedAt && moment(upgradeStep.startedAt).format('MM/DD/YYYY H:mm:ss')}</td>
+						</tr>
+						<tr>
+							<th>Finished At:</th>
+							<td>{upgradeStep.finishedAt && moment(upgradeStep.finishedAt).format('MM/DD/YYYY H:mm:ss')}</td>
+						</tr>
 					</tbody>
 				</table>
 
 				<div className="section">
 					<h1>Command</h1>
 					<p><label>Command:</label> <code>{upgradeStep.command?.cmd}</code></p>
-					<p><label>Arguments:</label> {upgradeStep.command?.args && <code>{upgradeStep.command?.args.join(', ')}</code>}</p>
+					<p><label>Arguments:</label> {upgradeStep.command?.args?.length > 0 && <code>{upgradeStep.command?.args.join(', ')}</code>}</p>
 
 					<p><label>Full Command:</label></p>
 					<Command command={upgradeStep.command}/>

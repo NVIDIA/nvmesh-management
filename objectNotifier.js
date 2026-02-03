@@ -255,7 +255,10 @@ scope.events = {
 	removedUpstreamTopicEvent: { name: 'removedUpstreamTopicEvent' },
 	upstreamTopicChangeEvent: { name: 'upstreamTopicChangeEvent' },
 
-	upgradeStatusChangedEvent: { name: 'upgradeStatusChangedEvent', projection: { _id: '_id', status: 'status' } },
+	upgradeStatusChangedEvent: {
+		name: 'upgradeStatusChangedEvent',
+		projection: { _id: '_id', status: 'status', startedAt: 'startedAt', finishedAt: 'finishedAt' }
+	},
 	upgradeRemovedEvent: { name: 'upgradeRemovedEvent' },
 	newUpgradeEvent: { name: 'newUpgradeEvent' },
 	upgradeStepStatusChangedEvent: {
@@ -265,7 +268,9 @@ scope.events = {
 			upgradeID: 'upgradeID',
 			status: 'status',
 			response: 'response',
-			lastExecTryError: 'lastExecTryError'
+			lastExecTryError: 'lastExecTryError',
+			startedAt: 'startedAt',
+			finishedAt: 'finishedAt'
 		}
 	},
 

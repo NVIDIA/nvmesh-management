@@ -30,7 +30,7 @@ const Upgrade = () => {
 
 	const { sourceBaseVersion } = useMemo(() => {
 		if (!upgrade?.machinesToUpgrade) return { sourceBaseVersion: null };
-		
+
 		const sourceVersions = NDUService.getUpgradeAgentsSourceVersions(upgrade?.machinesToUpgrade);
 		const versionsByBaseVersion = groupBy(sourceVersions, sourceVersion => getBaseVersion(sourceVersion.version));
 		return NDUService.extractSourceAndTargetBaseVersions(versionsByBaseVersion);
@@ -74,7 +74,7 @@ const Upgrade = () => {
 		setUpgrade({ ...upgrade, completedSteps });
 		return upgrade;
 	};
-	
+
 	const registerToEvents = (upgradeId) => {
 		const getUpgradeEventName = (event) => SocketService.getUpgradeID(upgradeId) + event.name;
 
@@ -88,7 +88,9 @@ const Upgrade = () => {
 			tableRef.current?.updateRow(payload._id, {
 				status: payload.status,
 				response: payload.response,
-				lastExecTryError: payload.lastExecTryError
+				lastExecTryError: payload.lastExecTryError,
+				startedAt: payload.startedAt,
+				finishedAt: payload.finishedAt
 			});
 
 			const currentStep = upgradeStepRef.current;
@@ -197,6 +199,25 @@ const Upgrade = () => {
 			</div>
 		},
 		{
+			name: 'Started At',
+			field: 'startedAt',
+			placeholder: 'Search by Started At',
+			type: 'dateRange',
+			className: 'fixed-size-column md-column',
+			rowClassName: 'fixed-size-column',
+			value: row => row.startedAt && moment(row.startedAt).format('MM/DD/YYYY H:mm:ss')
+
+		},
+		{
+			name: 'Finished At',
+			field: 'finishedAt',
+			placeholder: 'Search by Finished At',
+			type: 'dateRange',
+			className: 'fixed-size-column md-column',
+			rowClassName: 'fixed-size-column',
+			value: row => row.finishedAt && moment(row.finishedAt).format('MM/DD/YYYY H:mm:ss')
+		},
+		{
 			name: 'Verification Command',
 			field: 'command.verificationCommand.cmd',
 			placeholder: 'Search by Verification Command',
@@ -284,81 +305,100 @@ const Upgrade = () => {
 
 
 const UpgradeDetails = ({ upgrade }) => (
-	<div id="upgradeDetails"className="card">
+	<div id="upgradeDetails" className="card">
 		<div className="card-body">
-			<table className="table table-no-border">
-				<tbody>
-					<tr>
-						<th>Upgrade ID</th>
-						<td>{upgrade._id}</td>
-					</tr>
-					<tr>
-						<th>Destination Version</th>
-						<td>{upgrade.destinationVersion}</td>
-					</tr>
-					<tr>
-						<th>Upgrade Status</th>
-						<td><UpgradeStatus upgrade={upgrade}/></td>
-					</tr>
-					<tr>
-						<th>Min Redundancy Level</th>
-						<td>{upgrade.minRedundancyLevel}</td>
-					</tr>
-					<tr>
-						<th>Execution Mode</th>
-						<td>{upgrade.executionMode}</td>
-					</tr>
-					<tr>
-						<th>Skip Machines on Failure</th>
-						<td>{upgrade.skipMachinesOnFailure
-							? <i className="fa fa-check text-success"></i>
-							: <i className="fa fa-times text-danger"></i>}
-						</td>
-					</tr>
-					{upgrade.skipMachinesOnFailure && (
-						<tr>
-							<th>Max Error Threshold</th>
-							<td>{upgrade.maxErrorsThreshold}</td>
-						</tr>
-					)}
-					<tr>
-						<th>Machines to Upgrade</th>
-						<td>
-							<ExpandableList
-								items={upgrade.machinesToUpgrade}
-								renderItem={(node) => <span key={node.hostname} className="label label-info">{node.hostname}</span>}
-							/>
-						</td>
-					</tr>
-					<tr>
-						<th>Skipped Machines</th>
-						<td>
-							<ExpandableList
-								items={upgrade.skippedMachines}
-								renderItem={(node) => <span key={node} className="label bg-gray">{node}</span>}
-							/>
-						</td>
-					</tr>
-					<tr>
-						<th>Max Concurrent Clients</th>
-						<td>{upgrade.maxConcurrentClients}</td>
-					</tr>
-					<tr>
-						<th>Created By</th>
-						<td>
-							{upgrade.createdBy} <br/>
-							<small className="text-muted">{moment(upgrade.dateCreated).format('MM/DD/YYYY [at] H:mm:ss')}</small>
-						</td>
-					</tr>
-					<tr>
-						<th>Modified By</th>
-						<td>
-							{upgrade.modifiedBy} <br/>
-							<small className="text-muted">{moment(upgrade.dateModified).format('MM/DD/YYYY [at] H:mm:ss')}</small>
-						</td>
-					</tr>
-				</tbody>
-			</table>
+			<div className="row">
+				<div className="col-md-6">
+					<table className="table table-no-border">
+						<tbody>
+							<tr>
+								<th>Upgrade ID</th>
+								<td>{upgrade._id}</td>
+							</tr>
+							<tr>
+								<th>Destination Version</th>
+								<td>{upgrade.destinationVersion}</td>
+							</tr>
+							<tr>
+								<th>Upgrade Status</th>
+								<td><UpgradeStatus upgrade={upgrade}/></td>
+							</tr>
+							<tr>
+								<th>Min Redundancy Level</th>
+								<td>{upgrade.minRedundancyLevel}</td>
+							</tr>
+							<tr>
+								<th>Execution Mode</th>
+								<td>{upgrade.executionMode}</td>
+							</tr>
+							<tr>
+								<th>Skip Machines on Failure</th>
+								<td>{upgrade.skipMachinesOnFailure
+									? <i className="fa fa-check text-success"></i>
+									: <i className="fa fa-times text-danger"></i>}
+								</td>
+							</tr>
+							{upgrade.skipMachinesOnFailure && (
+								<tr>
+									<th>Max Error Threshold</th>
+									<td>{upgrade.maxErrorsThreshold}</td>
+								</tr>
+							)}
+							<tr>
+								<th>Machines to Upgrade</th>
+								<td>
+									<ExpandableList
+										items={upgrade.machinesToUpgrade}
+										renderItem={(node) => <span key={node.hostname} className="label label-info">{node.hostname}</span>}
+									/>
+								</td>
+							</tr>
+							<tr>
+								<th>Skipped Machines</th>
+								<td>
+									<ExpandableList
+										items={upgrade.skippedMachines}
+										renderItem={(node) => <span key={node} className="label bg-gray">{node}</span>}
+									/>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+				<div className="col-md-6">
+					<table className="table table-no-border">
+						<tbody>
+							<tr>
+								<th>Max Concurrent Clients</th>
+								<td>{upgrade.maxConcurrentClients}</td>
+							</tr>
+							<tr>
+								<th>Created By</th>
+								<td>
+									{upgrade.createdBy} <br/>
+									<small className="text-muted">{moment(upgrade.dateCreated).format('MM/DD/YYYY [at] H:mm:ss')}</small>
+								</td>
+							</tr>
+							<tr>
+								<th>Modified By</th>
+								<td>
+									{upgrade.modifiedBy} <br/>
+									<small className="text-muted">{moment(upgrade.dateModified).format('MM/DD/YYYY [at] H:mm:ss')}</small>
+								</td>
+							</tr>
+							<tr>
+								<th>Started At</th>
+								<td>{upgrade.startedAt && moment(upgrade.startedAt).format('MM/DD/YYYY H:mm:ss')}</td>
+							</tr>
+							<tr>
+								<th>Finished At</th>
+								<td>{upgrade.finishedAt && moment(upgrade.finishedAt).format('MM/DD/YYYY H:mm:ss')}</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+
 		</div>
 	</div>
 );

@@ -598,7 +598,7 @@ scope.startUpgrade = (upgrade, shouldHandleNextStep, cb) => {
 		$set: {
 			status: consts.upgradeStatuses.IN_PROGRESS
 		},
-		$currentDate: { dateModified: true }
+		$currentDate: { dateModified: true, startedAt: true }
 	}, {
 		returnDocument: consts.mongoReturnDocument.AFTER
 	}, (err, upgradeDoc) => {
@@ -635,7 +635,7 @@ scope.updateStepResult = (commandResultMsg, cb) => {
 		$unset: {
 			lastExecTryError: 1
 		},
-		$currentDate: { dateModified: true }
+		$currentDate: { dateModified: true, finishedAt: true }
 	}, { returnDocument: consts.mongoReturnDocument.AFTER }, (err, results) => {
 		if (err)
 			return cb(new MongoError(err).log());
@@ -766,7 +766,7 @@ scope.executeStep = (step, callback) => {
 						upgradeAgentToken: upgradeAgent.upgradeAgentToken
 					}
 				},
-				$currentDate: { dateModified: true }
+				$currentDate: { dateModified: true, startedAt: true }
 			}, {
 				returnDocument: consts.mongoReturnDocument.AFTER
 			}, (err, stepDoc) => {
@@ -1131,7 +1131,7 @@ scope.handleUpgradeCompletion = (upgradeID, cb) => {
 				_id: upgradeID
 			}, {
 				$set: { status: isUpgradeFailed ? consts.upgradeStatuses.FAILED : consts.upgradeStatuses.COMPLETED },
-				$currentDate: { dateModified: true }
+				$currentDate: { dateModified: true, finishedAt: true }
 			}, {
 				returnDocument: consts.mongoReturnDocument.AFTER
 			}, cb);
