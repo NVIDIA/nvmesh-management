@@ -1133,7 +1133,7 @@ consts.components = {
 	TARGET: 'nvmesh-target',
 	UPGRADE_AGENT: 'nvmesh-upgrade-agent',
 	INTEROP_DB: 'nvmesh-interopdb',
-	EXPORTER: 'nvmesh-exporter',
+	MONITOR: 'nvmesh-monitor',
 	BASE: 'nvmesh-base',
 	UTILS: 'nvmesh-utils'
 };

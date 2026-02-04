@@ -450,7 +450,7 @@ const prepareArtifacts = (requestedPlatforms, callback) => {
 };
 
 
-// extract the versions from artifacts - { 'nvmesh-client': '3.3.2', 'nvmesh-exporter': '1.0.1' }
+// extract the versions from artifacts - { 'nvmesh-client': '3.3.2', 'nvmesh-monitor': '1.0.1' }
 // artifacts names are parsed to extract the component name and base version
 const extractVersionsFromArtifacts = (artifacts, interestComponents) => {
 	const result = {};
@@ -485,7 +485,7 @@ const extractVersionsFromArtifacts = (artifacts, interestComponents) => {
 	return [null, result];
 };
 
-// get the base version for each component by the release name and component name - { '3.3.2-HF1': { 'nvmesh-client': '3.3.2', 'nvmesh-exporter': '1.0.1' } }
+// get the base version for each component by the release name and component name - { '3.3.2-HF1': { 'nvmesh-client': '3.3.2', 'nvmesh-monitor': '1.0.1' } }
 // base versions and component names are parsed from the artifact names which are linked to the releaseName
 const fetchVersionsForReleases = (releaseNames, interestComponents, callback) => {
 	logger.sysDEBUG(`Fetching base versions by component names for releases ${releaseNames.join(', ')}`);
