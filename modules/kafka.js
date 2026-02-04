@@ -667,7 +667,7 @@ scope.getManagementTopicsToCreate = (rpmVersion, callback) => {
 
 	scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, '1', topicNames => {
 		const configEntries = [
-			{ name: 'cleanup.policy', value: 'compact' },
+			{ name: 'cleanup.policy', value: 'compact,delete' },
 			{ name: 'segment.bytes', value: String(consts.kafka.LOG_COMPACTION.SEGMENT_BYTES) },
 			{ name: 'min.cleanable.dirty.ratio', value: String(consts.kafka.LOG_COMPACTION.MIN_CLEANABLE_DIRTY_RATIO) },
 			{ name: 'segment.ms', value: String(consts.kafka.LOG_COMPACTION.SEGMENT_MS) }
@@ -1422,7 +1422,6 @@ scope.GCManagementZoneTopics = (versionDocument, callback) => {
 	const managementZoneTopics = [
 		topics[consts.topicSuffix.MANAGEMENT_LOW],
 		topics[consts.topicSuffix.MANAGEMENT_PRIORITY],
-		topics[consts.topicSuffix.MANAGEMENT_KEEPALIVE],
 	];
 
 	scope.deleteCommittedRecords(groupID, managementZoneTopics, callback);
