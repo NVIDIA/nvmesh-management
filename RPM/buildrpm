@@ -29,8 +29,6 @@ usage:
 
 -n      --nhc               build nhc rpm
 
---build-docker-image        build Docker image
-
 --dist-tag		    distribution tag to include in the RPM name
 
 --ubuntu		    create deb package for ubuntu
@@ -189,9 +187,6 @@ case $key in
     nhcRPM=true
     mgmtRPM=false
     ;;
-    --build-docker-image)
-        buildDockerImage=true
-        ;;
     --dist-tag)
         distTag="$2"
         shift
@@ -420,50 +415,3 @@ for rpm in "${rpmsToCreate[@]}"; do
     pkgDeb
 done
 
-build_docker_image() {
-    echo "Building Docker Image from package $mgmtPackageFile with utils $utilsPackageFile"
-
-    cp $mgmtPackageFile docker/src/
-    cp $utilsPackageFile docker/src/
-
-    cd docker/src
-
-    utilsPkgFileWithoutPath=$(echo $utilsPackageFile | rev | cut -d '/' -f 1 | rev)
-    mgmtPkgFileWithoutPath=$(echo $mgmtPackageFile | rev | cut -d '/' -f 1 | rev)
-
-    ./build.sh --mgmt $mgmtPkgFileWithoutPath --utils $utilsPkgFileWithoutPath
-
-    return_code=$?
-
-    if [ "$return_code" -eq 0 ]; then
-        rm ./$mgmtPkgFileWithoutPath
-        cd ../../
-
-        export_docker_image
-        return $?
-    else
-        echo "Error building docker image"
-        return $return_code
-    fi
-}
-
-export_docker_image() {
-    full_tag="$rpm_version-$rpm_release_num"
-    tar_file_name="nvmesh-management-$full_tag.tar"
-    image_name="registry.acme.com/nvmesh-management:$full_tag"
-
-    echo "Saving docker image $image_name to file $tar_file_name"
-
-    docker save --output "$tar_file_name" "$image_name"
-    return_code=$?
-
-    if [ "$return_code" -ne 0 ]; then
-        echo "Error saving docker image $image_name to file $tar_file_name"
-    fi
-
-    return $return_code
-}
-
-if [ "$buildDockerImage" == true ]; then
-    build_docker_image
-fi
