@@ -33,7 +33,7 @@ const scheme = {
 		pRaidOptionsPropertiesConditions,
 		encryptionPropertiesConditions,
 		{
-			if: { properties: { allowOverflow: { const: false } } },
+			if: { required: ['allowOverflow'], properties: { allowOverflow: { const: false } } },
 			then: {
 				required: ['capacity'],
 				properties: { capacity: { not: { const: 0 } } }
