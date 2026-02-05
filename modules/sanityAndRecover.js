@@ -890,7 +890,7 @@ function getMongoTimeoutQuery() {
 
 /*
 This function determines whether an entity was:
-1. Created by the current management in a previous boot.
+1. Created by the current management in a previous boot or by another management in previous boot.
 2. Created by a now inactive management.
 */
 function categorizeStaleEntities(entities, cb, getHandledBy = entity => entity.handledBy) {
@@ -904,14 +904,17 @@ function categorizeStaleEntities(entities, cb, getHandledBy = entity => entity.h
 			handledBy.managementId === app.get('managementId') &&
 			handledBy.bootVersion < app.get('bootVersion');
 
-		const isCreatedByDeadMgmt = handledBy =>
+		const isCreatedByOtherDeadMgmt = handledBy =>
 			managementsState[handledBy.managementId] === undefined ||
 			managementsState[handledBy.managementId].status === consts.managementStatuses.DOWN &&
 			managementsState[handledBy.managementId].bootVersion === handledBy.bootVersion;
 
+		const isCreatedByOtherMgmtInPrevBoot = handledBy =>
+			managementsState[handledBy.managementId].bootVersion > handledBy.bootVersion;
 
 		let entitiesToDeleteCreatedByThisMgmt = [];
-		let entitiesToDeleteCreatedByOtherMgmt = [];
+		let entitiesToDeleteCreatedByOtherDeadMgmt = [];
+		let entitiesToDeleteCreatedByOtherMgmtInPrevBoot = [];
 
 		entities.forEach(entity => {
 			const handledBy = getHandledBy(entity);
@@ -921,13 +924,17 @@ function categorizeStaleEntities(entities, cb, getHandledBy = entity => entity.h
 					.addInfo(Entities.Content, entity).log();
 				return;
 			}
+
 			if (isCreatedByMeInPrevBoot(handledBy))
 				entitiesToDeleteCreatedByThisMgmt.push(entity);
-			else if (isCreatedByDeadMgmt(handledBy))
-				entitiesToDeleteCreatedByOtherMgmt.push(entity);
+			else if (isCreatedByOtherDeadMgmt(handledBy))
+				entitiesToDeleteCreatedByOtherDeadMgmt.push(entity);
+			else if (isCreatedByOtherMgmtInPrevBoot(handledBy))
+				entitiesToDeleteCreatedByOtherMgmtInPrevBoot.push(entity);
 		});
 
-		cb(entitiesToDeleteCreatedByThisMgmt, entitiesToDeleteCreatedByOtherMgmt);
+		const entitiesToDeleteCreatedByMgmtInPrevBoot = [...entitiesToDeleteCreatedByThisMgmt, ...entitiesToDeleteCreatedByOtherMgmtInPrevBoot];
+		cb(entitiesToDeleteCreatedByMgmtInPrevBoot, entitiesToDeleteCreatedByOtherDeadMgmt);
 	});
 }
 
@@ -941,13 +948,21 @@ scope.checkAndRemovePendingUpgrades = function(cb) {
 				return callback(null, [], []);
 
 			categorizeStaleEntities(pendingUpgrades,
-				(upgradesToDeleteCreatedByThisMgmt, upgradesToDeleteCreatedByOtherMgmt) => {
-					callback(null, upgradesToDeleteCreatedByThisMgmt, upgradesToDeleteCreatedByOtherMgmt);
+				(upgradesToDeleteCreatedByMgmtInPrevBoot, upgradesToDeleteCreatedByOtherDeadMgmt) => {
+					callback(null, upgradesToDeleteCreatedByMgmtInPrevBoot, upgradesToDeleteCreatedByOtherDeadMgmt);
 				});
 		},
-		function deletePendingUpgrades(upgradesToDeleteCreatedByThisMgmt, upgradesToDeleteCreatedByOtherMgmt, callback) {
+		function deletePendingUpgrades(
+			upgradesToDeleteCreatedByMgmtInPrevBoot,
+			upgradesToDeleteCreatedByOtherDeadMgmt,
+			callback
+		) {
 			const defaultQuery = upgrade => ({ _id: upgrade._id, isPending: true });
-			const query = getDeleteStaleEntitiesQuery(defaultQuery, upgradesToDeleteCreatedByThisMgmt, upgradesToDeleteCreatedByOtherMgmt);
+			const query = getDeleteStaleEntitiesQuery(
+				defaultQuery,
+				upgradesToDeleteCreatedByMgmtInPrevBoot,
+				upgradesToDeleteCreatedByOtherDeadMgmt
+			);
 
 			if (!query)
 				return callback();
@@ -985,19 +1000,19 @@ scope.checkAndResumeStuckUpgrades = function(cb) {
 
 			const getHandledBy = entity => entity.runningUpgrade.createdBy;
 			categorizeStaleEntities(confVersions,
-				(confVersionsCreatedByThisMgmt, confVersionsCreatedByOtherMgmt) => {
-					callback(null, confVersionsCreatedByThisMgmt, confVersionsCreatedByOtherMgmt);
+				(confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt) => {
+					callback(null, confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt);
 				},
 				getHandledBy);
 		},
-		function getStaleConfVersion(confVersionsCreatedByThisMgmt, confVersionsCreatedByOtherMgmt, callback) {
+		function getStaleConfVersion(confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt, callback) {
 			const defaultQuery = confVersion => ({ _id: confVersion._id, runningUpgrade: { $exists: true } });
 			const getHandledBy = entity => entity.runningUpgrade.createdBy;
 			const query = getDeleteStaleEntitiesQuery(
-				defaultQuery, confVersionsCreatedByThisMgmt, confVersionsCreatedByOtherMgmt,
+				defaultQuery, confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt,
 				'runningUpgrade.createdBy', getHandledBy
 			);
-
+			
 			if (!query)
 				return callback(true);
 
@@ -1063,17 +1078,25 @@ scope.checkAndRemovePendingVolumes = function(cb) {
 				return callback(null, [], []);
 
 			categorizeStaleEntities(pendingVolumes,
-				(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt) => {
-					callback(null, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
+				(volumesToDeleteCreatedByMgmtInPrevBoot, volumesToDeleteCreatedByOtherDeadMgmt) => {
+					callback(null, volumesToDeleteCreatedByMgmtInPrevBoot, volumesToDeleteCreatedByOtherDeadMgmt);
 				});
 		},
-		function deletePendingVolumes(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt, callback) {
+		function deletePendingVolumes(
+			volumesToDeleteCreatedByMgmtInPrevBoot,
+			volumesToDeleteCreatedByOtherDeadMgmt,
+			callback
+		) {
 			const defaultQuery = volume => ({
 				uuid: volume.uuid,
 				status: consts.volumeStatuses.PENDING
 			});
 
-			const query = getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
+			const query = getDeleteStaleEntitiesQuery(
+				defaultQuery,
+				volumesToDeleteCreatedByMgmtInPrevBoot,
+				volumesToDeleteCreatedByOtherDeadMgmt
+			);
 
 			if (!query)
 				return callback();
@@ -1090,11 +1113,11 @@ scope.checkAndRemovePendingVolumes = function(cb) {
 
 function getDeleteStaleEntitiesQuery(
 	defaultQuery,
-	entitiesToDeleteCreatedByThisMgmt,
-	entitiesToDeleteCreatedByOtherMgmt,
+	entitiesToDeleteCreatedByMgmtInPrevBoot,
+	entitiesToDeleteCreatedByOtherDeadMgmt,
 	handledByPath = 'handledBy',
 	getHandledBy = entity => entity.handledBy) {
-	if (!entitiesToDeleteCreatedByThisMgmt.length && !entitiesToDeleteCreatedByOtherMgmt.length)
+	if (!entitiesToDeleteCreatedByMgmtInPrevBoot.length && !entitiesToDeleteCreatedByOtherDeadMgmt.length)
 		return null;
 
 	const matchHandledBy = entity => {
@@ -1105,20 +1128,20 @@ function getDeleteStaleEntitiesQuery(
 		};
 	};
 
-	const queryForEntityCreatedByThisMgmt = entity => ({
+	const queryForEntityCreatedByMgmtInPrevBoot = entity => ({
 		...defaultQuery(entity),
 		...matchHandledBy(entity)
 	});
 
-	const queryForEntityCreatedByOtherMgmt = entity => ({
-		...queryForEntityCreatedByThisMgmt(entity),
+	const queryForEntityCreatedByOtherDeadMgmt = entity => ({
+		...queryForEntityCreatedByMgmtInPrevBoot(entity),
 		...getMongoTimeoutQuery()
 	});
 
 	return {
-		$or: entitiesToDeleteCreatedByThisMgmt
-			.map(queryForEntityCreatedByThisMgmt)
-			.concat(entitiesToDeleteCreatedByOtherMgmt.map(queryForEntityCreatedByOtherMgmt))
+		$or: entitiesToDeleteCreatedByMgmtInPrevBoot
+			.map(queryForEntityCreatedByMgmtInPrevBoot)
+			.concat(entitiesToDeleteCreatedByOtherDeadMgmt.map(queryForEntityCreatedByOtherDeadMgmt))
 	};
 }
 
@@ -1192,17 +1215,29 @@ scope.checkAndRemoveToBeExtendedVolumes = function(cb) {
 						return callback(null, [], []);
 
 					categorizeStaleEntities(extentionVolumes,
-						(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt) => {
-							callback(null, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
+						(volumesToDeleteCreatedByMgmtInPrevBoot, volumesToDeleteCreatedByOtherDeadMgmt) => {
+							callback(
+								null,
+								volumesToDeleteCreatedByMgmtInPrevBoot,
+								volumesToDeleteCreatedByOtherDeadMgmt
+							);
 						});
 				},
-				function deleteExtentionVolumes(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt, callback) {
+				function deleteExtentionVolumes(
+					volumesToDeleteCreatedByMgmtInPrevBoot,
+					volumesToDeleteCreatedByOtherDeadMgmt,
+					callback
+				) {
 					const defaultQuery = volume => ({
 						uuid: volume.uuid,
 						isExtension: true
 					});
 
-					const query = getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
+					const query = getDeleteStaleEntitiesQuery(
+						defaultQuery,
+						volumesToDeleteCreatedByMgmtInPrevBoot,
+						volumesToDeleteCreatedByOtherDeadMgmt
+					);
 
 					if (!query)
 						return callback();
@@ -1880,17 +1915,29 @@ function getIncompleteSnapshots(initialMatchQuery, pipeline, cb) {
 				return callback(null, [], []);
 
 			categorizeStaleEntities(incompleteSnapshots,
-				(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt) => {
-					callback(null, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
+				(volumesToDeleteCreatedByMgmtInPrevBoot, volumesToDeleteCreatedByOtherDeadMgmt) => {
+					callback(
+						null,
+						volumesToDeleteCreatedByMgmtInPrevBoot,
+						volumesToDeleteCreatedByOtherDeadMgmt
+					);
 				});
 		},
-		function getStaleIncompleteSnapshots(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt, callback) {
+		function getStaleIncompleteSnapshots(
+			volumesToDeleteCreatedByMgmtInPrevBoot,
+			volumesToDeleteCreatedByOtherDeadMgmt,
+			callback
+		) {
 			const defaultQuery = volume => ({
 				uuid: volume.uuid,
 				...initialMatchQuery
 			});
 
-			const query = getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
+			const query = getDeleteStaleEntitiesQuery(
+				defaultQuery,
+				volumesToDeleteCreatedByMgmtInPrevBoot,
+				volumesToDeleteCreatedByOtherDeadMgmt
+			);
 
 			if (!query)
 				return callback();
@@ -2253,8 +2300,12 @@ scope.checkPendingAttachments = callback => {
 
 							categorizeStaleEntities(
 								client.pendingAttachments,
-								(pendingAttachmentsToDeleteCreatedByThisMgmt, pendingAttachmentsToDeleteCreatedByOtherMgmt) => {
-									const pendingAttachments = pendingAttachmentsToDeleteCreatedByThisMgmt.concat(pendingAttachmentsToDeleteCreatedByOtherMgmt);
+								(
+									pendingAttachmentsToDeleteCreatedByMgmtInPrevBoot,
+									pendingAttachmentsToDeleteCreatedByOtherDeadMgmt
+								) => {
+									const pendingAttachments = pendingAttachmentsToDeleteCreatedByMgmtInPrevBoot
+										.concat(pendingAttachmentsToDeleteCreatedByOtherDeadMgmt);
 									const pendingAttachmentsUUIDs = pendingAttachments.map(pendingAttachment => pendingAttachment.uuid);
 									const isStaleAttachment = attachment => pendingAttachmentsUUIDs.includes(attachment.uuid);
 
