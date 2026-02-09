@@ -6072,8 +6072,7 @@ scope.getMgmtClusterState = mgmts => {
 };
 
 scope.iterativeConnect = (connectFunction, entity, maxConnectTries, timeBetweenConnectTries, callback) => {
-	let tries = 0;
-	let connected = false;
+	let tries = 1;
 	let error;
 
 	async.doWhilst((callback) => {
@@ -6083,19 +6082,18 @@ scope.iterativeConnect = (connectFunction, entity, maxConnectTries, timeBetweenC
 
 			if (err) {
 				error = err;
-				connected = false;
 
 				setTimeout(callback, timeBetweenConnectTries);
 			} else {
-				connected = true;
+				error = null;
 
 				callback();
 			}
 		});
 	}, (callback) => {
-		callback(null, !connected && tries <= maxConnectTries);
+		callback(null, error && tries <= maxConnectTries);
 	}, () => {
-		callback(tries === maxConnectTries ? error : null);
+		callback(error);
 	});
 };
 
