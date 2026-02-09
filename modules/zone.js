@@ -689,7 +689,8 @@ scope.getZonesByVolumes = function(volumes) {
 };
 
 scope.enforceLockedZoneSetEqualtyOrExit = (alreadyLockedZones, wishfulZonesToLock, errorLogSystemMessage) => {
-	if (![...wishfulZonesToLock].every((zone) => alreadyLockedZones.has(zone))) {
+	if ((alreadyLockedZones && alreadyLockedZones.size !== wishfulZonesToLock.size)
+		|| ![...wishfulZonesToLock].every((zone) => alreadyLockedZones.has(zone))) {
 		// we have unmatched locked zones (not all of the zones were locked) - bailing out
 		errorLogSystemMessage.log();
 		process.exit(1);

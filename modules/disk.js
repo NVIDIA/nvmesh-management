@@ -1155,6 +1155,7 @@ scope.evictDiskByDiskIDsAndUUIDs = function(disks, user, isAutoEvict, lockedZone
 			(callback) => {
 				if (disk.zone) {
 					zone = disk.zone;
+					zonesToLock.add(zone);
 					return callback();
 				}
 
