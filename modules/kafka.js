@@ -1596,11 +1596,11 @@ const onConsumerError = async(ex, consumerId) => {
 };
 
 const onSendMessagesSuccess = (topic, serializedMsgs) => {
-	scope.totalSent++;
+	scope.totalSent += serializedMsgs.length;
 	serializedMsgs.forEach(m => addMetricsEvent(`sendMessage-${topic}`, topic, m.messageType));
 };
-const onSendMessagesError = async(ex, topic, producerID) => {
-	scope.totalSentFailed++;
+const onSendMessagesError = async(ex, topic, producerID, serializedMsgs) => {
+	scope.totalSentFailed += serializedMsgs.length;
 
 	if (await shouldRetryToSendMessages(topic, ex)) {
 		await recycleProducerIfNeeded(producerID);
@@ -1617,7 +1617,7 @@ const getConsumerRunCommandOptions = () => ({
 const getSendMessagesRunCommandOptions = (topic, serializedMsgs) => ({
 	getInstanceID: getProducerInstanceID,
 	onSuccessFn: () => onSendMessagesSuccess(topic, serializedMsgs),
-	onErrorFn: (ex, producerID) => onSendMessagesError(ex, topic, producerID),
+	onErrorFn: (ex, producerID) => onSendMessagesError(ex, topic, producerID, serializedMsgs),
 	retriesLeft: consts.kafka.RETRY.SEND_LEFT
 });
 
