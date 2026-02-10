@@ -28,7 +28,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /components/all/:page/:count?filter={}&sort={} Get components
 * @apiName GetComponents
 * @apiGroup components
@@ -119,26 +119,23 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 	});
 });
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /components/save Save components
  * @apiName SaveComponents
  * @apiGroup components
  * @apiDescription Save `components`.
  *
- * @apiParam {object[]} components The `components` to save.
- * @apiParam {string} components.version The version of the `component`.
- * @apiParam {integer} components.componentID The ID of the `component`.
- * @apiParam {integer} components.componentTypeID The type ID of the `component`.
- * @apiParam {object[]} [components.platforms] Target platforms for this component version.
- * @apiParam {integer} components.platforms.ID ID of the platforms.
- *
- * @apiParam {object[]} [components.requirements] Required components.
- * @apiParam {integer} components.requirements.ID ID of the required component.
- *
- * @apiParam {object[]} [components.compatibilities] Compatible component versions.
- * @apiParam {integer} components.compatibilities.ID Compatibility ID.
- *
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} components The `components` to save.
+ * @apiBody {string} components.version The version of the `component`.
+ * @apiBody {integer} components.componentID The ID of the `component`.
+ * @apiBody {integer} components.componentTypeID The type ID of the `component`.
+ * @apiBody {object[]} [components.platforms] Target platforms for this component version.
+ * @apiBody {integer} components.platforms.ID ID of the platforms.
+ * @apiBody {object[]} [components.requirements] Required components.
+ * @apiBody {integer} components.requirements.ID ID of the required component.
+ * @apiBody {object[]} [components.compatibilities] Compatible component versions.
+ * @apiBody {integer} components.compatibilities.ID Compatibility ID.
+ * @apiExample {object[]} Example request
  * [{
  *   "version": "3.6",
  *   "platforms": [{"ID": 4}],
@@ -151,9 +148,7 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
  *   "componentID": 2,
  *   "componentTypeID": 1
  * }]
- *
  * @apiSuccess {object[]} components The saved `components`.
- *
  * @apiSuccessExample {object[]} Example data on success
  * [{"_id":"2","uuid":null,"success":true,"error":null,"payload":null}]
  */
@@ -173,20 +168,17 @@ router.post('/save', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /components/delete Delete components
  * @apiName DeleteComponents
  * @apiGroup components
  * @apiDescription Delete `components`.
  *
- * @apiParam {object[]} components The `components` to delete.
- * @apiParam {string} components.ID The `ID` of the `component`.
- *
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} components The `components` to delete.
+ * @apiBody {integer} components.ID The `ID` of the `component`.
+ * @apiExample {object[]} Example request
  * [{"ID":10}]
- *
  * @apiSuccess {object[]} components The deleted `components`.
- *
  * @apiSuccessExample {object[]} Example data on success
  * [{"_id":"someComponent","uuid":10,"success":true,"error":null,"payload":null}]
  */
@@ -206,26 +198,23 @@ router.post('/delete', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /components/update Update components
  * @apiName UpdateComponents
  * @apiGroup components
  * @apiDescription Update components.
  *
- * @apiParam {object[]} components The components to update.
- * @apiParam {string} components.version The version of the component.
- * @apiParam {integer} components.componentID The ID of the component.
- * @apiParam {integer} components.componentTypeID The type ID of the component.
- * @apiParam {object[]} [components.platforms] Target platforms for this component version.
- * @apiParam {integer} components.platforms.ID ID of the platforms.
- *
- * @apiParam {object[]} [components.requirements] Required components.
- * @apiParam {integer} components.requirements.ID ID of the required component.
- *
- * @apiParam {object[]} [components.compatibilities] Compatible component versions.
- * @apiParam {integer} components.compatibilities.ID Compatibility ID.
- *
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} components The components to update.
+ * @apiBody {string} components.version The version of the component.
+ * @apiBody {integer} components.componentID The ID of the component.
+ * @apiBody {integer} components.componentTypeID The type ID of the component.
+ * @apiBody {object[]} [components.platforms] Target platforms for this component version.
+ * @apiBody {integer} components.platforms.ID ID of the platforms.
+ * @apiBody {object[]} [components.requirements] Required components.
+ * @apiBody {integer} components.requirements.ID ID of the required component.
+ * @apiBody {object[]} [components.compatibilities] Compatible component versions.
+ * @apiBody {integer} components.compatibilities.ID Compatibility ID.
+ * @apiExample {object[]} Example request
  * [{
  *   "version": "3.6",
  *   "platforms": [{"ID": 4}],
@@ -238,9 +227,7 @@ router.post('/delete', (req, res) => {
  *   "componentID": 2,
  *   "componentTypeID": 1
  * }]
- *
  * @apiSuccess {object[]} components The updated components.
- *
  * @apiSuccessExample {object[]} Example data on success
  * [{"_id":"2","uuid":null,"success":true,"error":null,"payload":null}]
  */
@@ -261,7 +248,7 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /components/count Count components
 * @apiName CountComponents
 * @apiGroup components
@@ -285,7 +272,7 @@ router.get('/count', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {get} /components/getAllComponentTypes Get component types
  * @apiName GetAllComponentTypes
  * @apiGroup components
@@ -312,7 +299,7 @@ router.get('/getAllComponentTypes', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {get} /components/componentsAll/:page/:count Get components definitions
  * @apiName GetComponentsDefinitions
  * @apiGroup components

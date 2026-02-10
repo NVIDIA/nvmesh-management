@@ -29,7 +29,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /upgradeAgents/all/:page/:count?filter={}&sort={} Get Upgrade Agents
 * @apiName GetUpgradeAgents
 * @apiGroup upgradeAgents
@@ -41,9 +41,7 @@ router.get('/', function(req, res) {
 * @apiParam {object} [sort] `Sort` before fetching.
 * @apiParamExample {object[]} Example request
 * /upgradeAgents/all/0/2?filter={"hostname":"node1.example.com"}&sort={"dateModified":-1}
-*
 * @apiSuccess {object[]} upgradeAgents List of `upgradeAgents`.
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefc",
@@ -78,14 +76,14 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /upgradeAgents/keepalive Request Fresh Keepalive
 * @apiName RequestFreshKeepalive
 * @apiGroup upgradeAgents
 * @apiDescription Request a fresh keepalive for an upgrade agent.
 *
-* @apiParam {string} uuid The UUID of the upgrade agent.
-* @apiParamExample {json} Payload example
+* @apiBody {string} _id The `ID` of the upgrade agent.
+* @apiExample {json} Payload example
 * {
 *   "_id": "nvme31.acme.com"
 * }
@@ -113,16 +111,16 @@ router.post('/keepalive', isAdminRole, function(req, res) {
 
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /upgradeAgents/delete Delete Upgrade Agents
 * @apiName DeleteUpgradeAgents
 * @apiGroup upgradeAgents
 * @apiDescription Delete `upgradeAgents`.
 *
-* @apiParam {object[]} upgradeAgents `upgradeAgents` to delete.
-* @apiParam {string} delete._id The `ID` of the `upgradeAgent` to delete.
-* @apiParam {string} delete.uuid The `UUID` of the `upgradeAgent` to delete.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} upgradeAgents `upgradeAgents` to delete.
+* @apiBody {string} upgradeAgents._id The `ID` of the `upgradeAgent` to delete.
+* @apiBody {string} upgradeAgents.uuid The `UUID` of the `upgradeAgent` to delete.
+* @apiExample {string} Payload example
 * [{
 *		"_id": "nvme31.acme.com"
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
@@ -149,14 +147,12 @@ router.post('/delete', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /upgradeAgents/count Count Upgrade Agents
 * @apiName CountUpgradeAgents
 * @apiGroup upgradeAgents
 * @apiDescription Get total `upgradeAgents` count.
-*
 * @apiSuccess {integer} count `upgradeAgents` count.
-*
 * @apiSuccessExample Example data on success
 * 3606
 */

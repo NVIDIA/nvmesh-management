@@ -30,7 +30,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /clients/all/:page/:count?filter={}&sort={} Get clients
 * @apiName GetClients
 * @apiGroup clients
@@ -133,17 +133,17 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /clients/combinedStatus/:clientID/:volumeID Get data attachment with combined status
 * @apiName GetCombinedStatus
 * @apiGroup clients
 * @apiDescription Get combined status data attachment.
 *
-* @apiParamExample Example request {object[]}
+* @apiParam {string} clientID `client's ID` to fetch.
+* @apiParam {string} volumeID `volume's ID` to fetch.
+* @apiExample {string} Example request
 * /clients/combinedStatus/nvme13.acme.com/snapshot_test
-*
-* @apiSuccess object combined status attachment.
-*
+* @apiSuccess {object} combined status attachment.
 * @apiSuccessExample Example data on success
 {
     "_id" : "nvme13.acme.com",
@@ -178,16 +178,16 @@ router.get('/combinedStatus/:clientID/:volumeID', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /clients/delete Delete clients
 * @apiName DeleteClients
 * @apiGroup clients
 * @apiDescription Delete `clients`.
 *
-* @apiParam {object[]} clients `clients` to delete.
-* @apiParam {string} delete._id The `ID` of the `client` to delete.
-* @apiParam {string} delete.uuid The `UUID` of the `client` to delete.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} clients `clients` to delete.
+* @apiBody {string} clients._id The `ID` of the `client` to delete.
+* @apiBody {string} clients.uuid The `UUID` of the `client` to delete.
+* @apiExample {string} Payload example
 * [{
 *		"_id": "nvme31.acme.com"
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
@@ -214,7 +214,7 @@ router.post('/delete', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /clients/count Count clients
 * @apiName CountClients
 * @apiGroup clients
@@ -232,29 +232,29 @@ router.post('/delete', isAdminRole, function(req, res) {
 router.get('/count', getCountEntitiesHandler('client'));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /clients/attach Attach Volumes
 * @apiName AttachVolumes
 * @apiGroup clients
 * @apiDescription Attach `volumes` to a `client`
 *
-* @apiParam {object} attach attach `volumes` to a `client`
-* @apiParam {string} attach.client `client ID` to update
-* @apiParam {string} attach.clientUUID `client UUID` to update
-* @apiParam {object[]} attach.volumes Array of `volumes`
-* @apiParam {string} attach.volumes.name `volume ID` to `attach`
-* @apiParam {string} attach.volumes.uuid `volume UUID` to `attach`
-* @apiParam {object} [attach.volumes.reservation] `volume` reservation parameters
-* @apiParam {string} [attach.volumes.reservation.mode] The `reservation` mode of the `volume`
+* @apiBody {object} attach attach `volumes` to a `client`
+* @apiBody {string} attach.client `client ID` to update
+* @apiBody {string} attach.clientUUID `client UUID` to update
+* @apiBody {object[]} attach.volumes Array of `volumes`
+* @apiBody {string} attach.volumes.name `volume ID` to `attach`
+* @apiBody {string} attach.volumes.uuid `volume UUID` to `attach`
+* @apiBody {object} [attach.volumes.reservation] `volume` reservation parameters
+* @apiBody {string} [attach.volumes.reservation.mode] The `reservation` mode of the `volume`
 * <small><i>Available options are: `SHARED_READ_WRITE` (default), `SHARED_READ_ONLY` or `EXCLUSIVE_READ_WRITE`</i></small>
-* @apiParam {int} [attach.volumes.reservation.version] The `reservation` version of the `volume`
-* @apiParam {boolean} [attach.volumes.reservation.preempt] Use preempt to forcefully apply `reservation` mode.
-* @apiParam {boolean} [attach.volumes.reservation.isDetachOthers] if set to true, it will detach all other clients attached to this volume.
-* @apiParam {object} [attach.volumes.emulation] `volume` emulation parameters
-* @apiParam {string} [attach.volumes.emulation.mode] The `emulation` mode of the `volume`, available only for UM clients.
-* @apiParam {string} [attach.volumes.referenceID] The `referenceID` of the `volume`, used in a multi-attach mode.
+* @apiBody {int} [attach.volumes.reservation.version] The `reservation` version of the `volume`
+* @apiBody {boolean} [attach.volumes.reservation.preempt] Use preempt to forcefully apply `reservation` mode.
+* @apiBody {boolean} [attach.volumes.reservation.isDetachOthers] if set to true, it will detach all other clients attached to this volume.
+* @apiBody {object} [attach.volumes.emulation] `volume` emulation parameters
+* @apiBody {string} [attach.volumes.emulation.mode] The `emulation` mode of the `volume`, available only for UM clients.
+* @apiBody {string} [attach.volumes.referenceID] The `referenceID` of the `volume`, used in a multi-attach mode.
 * <small><i>Available options are: `NONE` (default), `STATIC` or `HOTPLUG`</i></small>
-* @apiParamExample {string} Payload example
+* @apiExample {string} Payload example
 * {
 * 	"client": "nvme21.acme.com",
 * 	"clientUUID": "f02abf10-6bfb-11ed-a62f-d1b4ca08eef3",
@@ -269,9 +269,7 @@ router.get('/count', getCountEntitiesHandler('client'));
 *		}
 * 	}]
 * }
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *      "success": true,
@@ -302,22 +300,21 @@ router.post('/attach', isAdminRole, (req, res) => {
 
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /clients/detach Detach Volumes
 * @apiName DetachVolumes
 * @apiGroup clients
 * @apiDescription Detach `volumes` from a `client`
 *
-* @apiParam {object} detach detach `volumes` from a `client`
-* @apiParam {string} detach.client `client ID` to update
-* @apiParam {string} detach.clientUUID `client UUID` to update
-* @apiParam {object[]} detach.volumes Array of `volumes`
-* @apiParam {string} detach.volumes.name `volume ID` to `detach`
-* @apiParam {string} detach.volumes.uuid `volume UUID` to `detach`
-* @apiParam {boolean} [detach.volumes.force] force `detach`
-* @apiParam {string} [detach.volumes.referenceID] The `referenceID` of the `volume`, used in a multi-attach mode.
-
-* @apiParamExample {string} Payload example
+* @apiBody {object} detach detach `volumes` from a `client`
+* @apiBody {string} detach.client `client ID` to update
+* @apiBody {string} detach.clientUUID `client UUID` to update
+* @apiBody {object[]} detach.volumes Array of `volumes`
+* @apiBody {string} detach.volumes.name `volume ID` to `detach`
+* @apiBody {string} detach.volumes.uuid `volume UUID` to `detach`
+* @apiBody {boolean} [detach.volumes.force] force `detach`
+* @apiBody {string} [detach.volumes.referenceID] The `referenceID` of the `volume`, used in a multi-attach mode.
+* @apiExample {string} Payload example
 * {
 * 	"client": "nvme21.acme.com",
 * 	"clientUUID": "f02abf10-6bfb-11ed-a62f-d1b4ca08eef3",
@@ -326,9 +323,7 @@ router.post('/attach', isAdminRole, (req, res) => {
 *		"uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
 * 	}]
 * }
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *      "success": true,
@@ -357,18 +352,16 @@ router.post('/detach', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /clients/:id Get client by ID
 * @apiName GetClient
 * @apiGroup clients
 * @apiDescription Get specific `client` by `ID`.
 *
-* @apiParam {string} client `client's ID` to fetch.
+* @apiParam {string} id `client's ID` to fetch.
 * @apiParamExample {string} Example request
 * clients/nvme1038
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "_id": "nvme1038",
@@ -426,21 +419,21 @@ router.get('/:id', (req, res) => {
 
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /clients/setEmulationMode Set Emulation Mode for a UM Client Volume Attachments
 * @apiName SetEmulationMode
 * @apiGroup clients
 * @apiDescription Set emulation mode on a UM `client` `volume` attachments
 *
-* @apiParam {object} setEmulationMode set emulation mode on a UM `client` `volume` attachments
-* @apiParam {string} setEmulationMode.client `client ID` to update
-* @apiParam {object[]} setEmulationMode.volumes Array of `volumes` attachments
-* @apiParam {string} setEmulationMode.volumes.name `volume ID` to set emulation mode
-* @apiParam {string} setEmulationMode.volumes.uuid `volume UUID` to set emulation mode
-* @apiParam {object} [setEmulationMode.volumes.emulation] `volume` emulation parameters
-* @apiParam {string} [attach.volumes.emulation.mode] The `emulation` mode of the `volume`
+* @apiBody {object} setEmulationMode set emulation mode on a UM `client` `volume` attachments
+* @apiBody {string} setEmulationMode.client `client ID` to update
+* @apiBody {object[]} setEmulationMode.volumes Array of `volumes` attachments
+* @apiBody {string} setEmulationMode.volumes.name `volume ID` to set emulation mode
+* @apiBody {string} setEmulationMode.volumes.uuid `volume UUID` to set emulation mode
+* @apiBody {object} [setEmulationMode.volumes.emulation] `volume` emulation parameters
+* @apiBody {string} [setEmulationMode.volumes.emulation.mode] The `emulation` mode of the `volume`
 * <small><i>Available options are: `NONE` (default), `STATIC` or `HOTPLUG`</i></small>
-* @apiParamExample {string} Payload example
+* @apiExample {string} Payload example
 * {
 * 	"client": "nvme21.acme.com",
 * 	"clientUUID": "f02abf10-6bfb-11ed-a62f-d1b4ca08eef3",
@@ -452,9 +445,7 @@ router.get('/:id', (req, res) => {
 *		}
 * 	}]
 * }
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *      "success": true,
@@ -464,7 +455,6 @@ router.get('/:id', (req, res) => {
 *	   "payload": null
 * }]
 */
-
 router.post('/setEmulationMode', isAdminRole, (req, res) => {
 	let { client, clientUUID, volumes } = req.body;
 

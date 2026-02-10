@@ -56,17 +56,18 @@ router.get('/changePassword', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /login login
 * @apiName login
 * @apiGroup login
 * @apiDescription Authentication method, on successful `login` responding with redirection to index page and a cookie.
-* @apiParam {string} username The `username` to login.
-* @apiParam {string} password The `password` to login.
-*
-* @apiParamExample {string} Payload example
-* username=admin@nvidia.com&password=admin
-*
+* @apiBody {string} username The `username` to login.
+* @apiBody {string} password The `password` to login.
+* @apiExample {object} Payload example
+* {
+*	"username": "admin@nvidia.com",
+*	"password": "admin"
+* }
 * @apiSuccess {object} results success statuses
 * @apiSuccessExample Example data on success
 * [
@@ -84,7 +85,7 @@ router.post('/', function(req, res, next) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /login/logout logout
 * @apiName logout
 * @apiGroup login

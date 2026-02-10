@@ -74,7 +74,7 @@ const drivesProjection = {
 };
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /disks/all/:page/:count?filter={}&sort={}&projection={} Get Disks
 * @apiName GetDisks
 * @apiGroup disks
@@ -175,15 +175,13 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 
 
 /**
-* @apiVersion 1.0.0
-* @api {get} /disks/count Count DisksdiskMatch["disks.diskID"]
+* @apiVersion 17.0.0
+* @api {get} /disks/count Count Disks
 * @apiGroup disks
+* @apiName CountDisks
 * @apiDescription Get total `disks` count.
-*
 * @apiParam {object} [filter] `Filter` before fetching. <small><i>--MongoDB filter obj</i></small>
-*
 * @apiSuccess {integer} count `disks` count.
-*
 * @apiSuccessExample Example data on success
 * 4
 */
@@ -369,22 +367,21 @@ router.post('/disksByNodes/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /disks/delete Delete disk by ID
 * @apiName DeleteDisk
 * @apiGroup disks
 * @apiDescription Delete specific `disk` by `ID`. <small><i>--`Disk` can only be deleted if it doesn't
 * contain any `diskSegments` and not in NOT_INITIALIZED status or in EXCLUDED state</i></small>
 *
-* @apiParam {object[]} configurationProfiles `disks` to delete.
-* @apiParam {string} _id The `_id` of the `disks` to delete.
-* @apiParam {string} uuid The `uuid` of the `disks` to delete.
-* @apiParamExample {object[]} Payload example
+* @apiBody {object[]} disks `disks` to delete.
+* @apiBody {string} disks._id The `_id` of the `disks` to delete.
+* @apiBody {string} disks.uuid The `uuid` of the `disks` to delete.
+* @apiExample {object[]} Payload example
 * [{
 * 	"_id": "S23YNAAH200330.1",
 * 	"uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb"
 * }]
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "S23YNAAH200330.1",
@@ -410,30 +407,22 @@ router.post('/delete', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /disks/evictDiskByDiskIDsAndUUIDs Evict disk
 * @apiName EvictDisk
 * @apiGroup disks
 * @apiDescription Evict a disk.
 *
-* @apiParam {object[]} disks `disks` to evict.
-* @apiParam {string} disk.diskID The `diskID` of the `disk` to evict.
-* @apiParam {string} disk.uuid The `diskUUID` of the `disk` to evict.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} disks `disks` to evict.
+* @apiBody {string} disk.diskID The `diskID` of the `disk` to evict.
+* @apiBody {string} disk.uuid The `diskUUID` of the `disk` to evict.
+* @apiExample {string} Payload example
 * [{
 *		"diskID": "S23YNAAH200330.1"
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
-*
 * @apiSuccessExample Example data on success
 * [{
-*	"_id": "S23YNAAH200330.1",
-*   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
-*	"success": true,
-*	"error": null,
-*	"payload": null
-* },
-* {
 *	"_id": "PHMD614200A3400FGN.1",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefc",
 *	"success": true,
@@ -459,21 +448,22 @@ router.post('/evictDiskByDiskIDsAndUUIDs', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /disks/formatDiskByIDsAndUUIDs Format disk
 * @apiName FormatDisk
 * @apiGroup disks
 * @apiDescription Start the format process for the specified disks according to the specified format type.
 *
-* @apiParam {string[]} diskIDs The `diskID[s]` of the `disk[s]` to format.
-* @apiParam {string} formatType The `formatType` that specifies the way to format all the given disks. <br />
+* @apiBody {object[]} disks `disks` to format.
+* @apiBody {string} disks._id The `_id` of the `disk` to format.
+* @apiBody {string} disks.uuid The `uuid` of the `disk` to format.
+* @apiBody {string} formatType The `formatType` that specifies the way to format all the given disks. <br />
 * <small><i>Options: `format_raid`, `format_ec`.</i></small>
-* @apiParamExample {object[]} Payload example
+* @apiExample {object} Payload example
 * {
 * 	disks: [{ _id: "PHMD614200A3400FGN.1", uuid: "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb" }],
 *	formatType: "format_ec"
 * }
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "S23YNAAH200330.1",
@@ -498,18 +488,16 @@ router.post('/formatDiskByIDsAndUUIDs', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /disks/:id Get disks by ID
 * @apiName GetDisk
 * @apiGroup disks
 * @apiDescription Get specific `disk` by `ID`.
 *
-* @apiParam {string} disk `disk's ID` to fetch.
+* @apiParam {string} id `disk's ID` to fetch.
 * @apiParamExample {string} Example request
 * disks/S3HCNX0K800367.1
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "diskID": "S3HCNX0K800367.1",

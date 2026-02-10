@@ -29,7 +29,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /releases/all/:page/:count?filter={}&sort={} Get releases
 * @apiName GetReleases
 * @apiGroup releases
@@ -90,25 +90,19 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /releases/delete Delete releases
  * @apiName DeleteReleases
  * @apiGroup releases
  * @apiDescription Delete `releases`.
  *
- * @apiParam {object[]} releases List of `releases` to delete.
- * @apiParam {integer} releases.ID The `ID` of the `release`.
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} releases List of `releases` to delete.
+ * @apiBody {integer} releases.ID The `ID` of the `release`.
+ * @apiExample {object[]} Example request
  * [{"ID": 1}]
- * @apiSuccess {object[]} results Success statuses
+ * @apiSuccess {object[]} result List of results for each release deletion.
  * @apiSuccessExample {object[]} Example data on success
- * [{
- *     "ID": 1,
- *     "uuid": null,
- *     "success": true,
- *     "error": null,
- *     "payload": null
- * }]
+ * [{"_id":1,"uuid":1,"success":true,"error":null,"payload":null}]
  */
 router.post('/delete', (req, res) => {
 	let releases = req.body;
@@ -126,18 +120,18 @@ router.post('/delete', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /releases/update Update releases
  * @apiName UpdateReleases
  * @apiGroup releases
  * @apiDescription Update `releases`.
  *
- * @apiParam {object[]} releases List of `releases` to update.
- * @apiParam {integer} releases.ID The `ID` of the `release`.
- * @apiParam {string} [releases.version] The version of the release.
- * @apiParam {object[]} [releases.artifacts] List of `artifacts` to update.
- * @apiParam {integer} releases.artifacts.ID The `ID` of the `artifact`.
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} releases List of `releases` to update.
+ * @apiBody {integer} releases.ID The `ID` of the `release`.
+ * @apiBody {string} [releases.version] The version of the release.
+ * @apiBody {object[]} [releases.artifacts] List of `artifacts` to update.
+ * @apiBody {integer} releases.artifacts.ID The `ID` of the `artifact`.
+ * @apiExample {object[]} Example request
  * [{
  *     "ID": 1,
  *     "version": "3.2.0-HF2",
@@ -169,7 +163,7 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /releases/count Count releases
 * @apiName CountReleases
 * @apiGroup releases
@@ -178,9 +172,7 @@ router.post('/update', (req, res) => {
 * @apiParam {object} [filter] `Filter` before counting. <small><i>--MongoDB filter obj</i></small>
 * @apiParamExample {object} Example request
 * releases/count?filter={"archTypeID":2}
-*
 * @apiSuccess {integer} count `releases` count.
-*
 * @apiSuccessExample Example data on success
 * 3606
 */
@@ -193,7 +185,7 @@ router.get('/count', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /releases/save Save a new release
  * @apiName SaveRelease
  * @apiGroup releases
@@ -219,22 +211,21 @@ router.get('/count', (req, res) => {
  *  - linking new artifacts to an existing platform
  *  - updating the version of previous release nvmesh components to be compatible with the new release nvmesh components
  *
- * @apiParam {object[]} releases Array of release objects.
- * @apiParam {string} releases.releaseName Version of the release to save. Can be a new or an existing release.
- * @apiParam {string} [releases.inheritRelationsFrom] Version of an existing release to inherit component relationships and upgrade scenarios from.
- * @apiParam {boolean} [releases.createPlatforms=false] If true, new platform definitions and dependencies will be created.
- * @apiParam {object[]} releases.platforms Array of platform objects. If `createPlatforms` is true, platforms are created; otherwise,
+ * @apiBody {object[]} releases Array of release objects.
+ * @apiBody {string} releases.releaseName Version of the release to save. Can be a new or an existing release.
+ * @apiBody {string} [releases.inheritRelationsFrom] Version of an existing release to inherit component relationships and upgrade scenarios from.
+ * @apiBody {boolean} [releases.createPlatforms=false] If true, new platform definitions and dependencies will be created.
+ * @apiBody {object[]} releases.platforms Array of platform objects. If `createPlatforms` is true, platforms are created; otherwise,
  * existing platforms are updated with artifacts.
- * @apiParam {string} releases.platforms.name The name of the platform. If null, given artifacts will not be associated with any platform.
- * @apiParam {string[]} releases.platforms.artifacts Array of artifact names to associate with this platform.
- * @apiParam {object} [releases.platforms.os] Operating system definition. This object is required if `createPlatforms` is true.
- * @apiParam {string} [releases.platforms.os.distributionType] OS distribution type (e.g., 'ubuntu', 'rocky'). Required if `os` is provided.
- * @apiParam {string} [releases.platforms.os.version] OS version. Required if `os` is provided.
- * @apiParam {string} [releases.platforms.kernel] Kernel version for the platform. Required if `createPlatforms` is true.
- * @apiParam {string} [releases.platforms.ofed] OFED version for the platform. Required if `createPlatforms` is true.
- * @apiParam {string} [releases.platforms.arch] Platform architecture. Required if `createPlatforms` is true.
- *
- * @apiParamExample {json} Request Body Example:
+ * @apiBody {string} releases.platforms.name The name of the platform. If null, given artifacts will not be associated with any platform.
+ * @apiBody {string[]} releases.platforms.artifacts Array of artifact names to associate with this platform.
+ * @apiBody {object} [releases.platforms.os] Operating system definition. This object is required if `createPlatforms` is true.
+ * @apiBody {string} [releases.platforms.os.distributionType] OS distribution type (e.g., 'ubuntu', 'rocky'). Required if `os` is provided.
+ * @apiBody {string} [releases.platforms.os.version] OS version. Required if `os` is provided.
+ * @apiBody {string} [releases.platforms.kernel] Kernel version for the platform. Required if `createPlatforms` is true.
+ * @apiBody {string} [releases.platforms.ofed] OFED version for the platform. Required if `createPlatforms` is true.
+ * @apiBody {string} [releases.platforms.arch] Platform architecture. Required if `createPlatforms` is true.
+ * @apiExample {json} Request Body Example:
  * [{
  *     "releaseName": "3.4.0",
  *     "inheritRelationsFrom": "3.3.2",
@@ -256,7 +247,6 @@ router.get('/count', (req, res) => {
  *         }
  *     ]
  * }]
- *
  * @apiSuccessExample {json} Success-Response:
  * [{
  *     "_id": null,

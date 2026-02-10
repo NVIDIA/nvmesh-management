@@ -28,7 +28,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /kernels/all/:page/:count?filter={}&sort={} Get kernels
 * @apiName GetKernels
 * @apiGroup kernels
@@ -62,13 +62,13 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /kernels/save Create new kernels
 * @apiName CreateKernels
 * @apiGroup kernels
 * @apiDescription Create new `kernels` from a list of versions.
-* @apiParam {String[]} - Array of kernel version strings to create.
-* @apiParamExample {json} Example request
+* @apiBody {String[]} - Array of kernel version strings to create.
+* @apiExample {json} Example request
 * ["5.15.0-1000-generic", "4.18.0-372.32.1.el8_lustre.x86_64"]
 * @apiSuccess {Object[]} result List of results for each kernel creation.
 * @apiSuccessExample {json} Example data on success
@@ -88,15 +88,15 @@ router.post('/save', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /kernels/update Update existing kernels
 * @apiName UpdateKernels
 * @apiGroup kernels
 * @apiDescription Update existing `kernels` from a list of kernel objects.
-* @apiParam {Object[]} - Array of kernel objects to update, each with ID and new version.
-* @apiParam {string} kernels.ID The `ID` of the `kernel`.
-* @apiParam {string} kernels.version The `version` of the `kernel`.
-* @apiParamExample {json} Example request
+* @apiBody {Object[]} - Array of kernel objects to update, each with ID and new version.
+* @apiBody {string} kernels.ID The `ID` of the `kernel`.
+* @apiBody {string} kernels.version The `version` of the `kernel`.
+* @apiExample {json} Example request
 * [{"ID": 1, "version": "5.15.0-1001-generic"}]
 * @apiSuccess {Object[]} result List of results for each kernel update.
 * @apiSuccessExample {json} Example data on success
@@ -117,15 +117,15 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /kernels/delete Delete existing kernels
 * @apiName DeleteKernels
 * @apiGroup kernels
 * @apiDescription Delete existing `kernels` from a list of kernel objects.
-* @apiParam {Object[]} - Array of kernel objects to delete.
-* @apiParam {string} kernels.ID The `ID` of the `kernel`.
-* @apiParam {string} kernels.version The `version` of the `kernel`.
-* @apiParamExample {json} Example request
+* @apiBody {Object[]} - Array of kernel objects to delete.
+* @apiBody {string} kernels.ID The `ID` of the `kernel`.
+* @apiBody {string} kernels.version The `version` of the `kernel`.
+* @apiExample {json} Example request
 * [{"ID": 1, "version": "5.15.0-1001-generic"}]
 * @apiSuccess {Object[]} result List of results for each kernel deletion.
 * @apiSuccessExample {json} Example data on success
@@ -146,7 +146,7 @@ router.post('/delete', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /kernels/count Count kernels
 * @apiName CountKernels
 * @apiGroup kernels

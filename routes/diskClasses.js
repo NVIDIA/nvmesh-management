@@ -40,7 +40,7 @@ router.get('/', (req, res) => {
 router.use(isAdminRole);
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /diskClasses/all Get diskClasses
 * @apiName GetDiskClasses
 * @apiGroup diskClasses
@@ -99,7 +99,7 @@ router.get('/all/:page/:count', validateProjection, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /diskClasses/count Count Disk Classes
 * @apiName CountDiskClasses
 * @apiGroup diskClasses
@@ -126,21 +126,21 @@ router.get('/tags', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /diskClasses/save Create diskClasses
 * @apiName CreateDiskClasses
 * @apiGroup diskClasses
 * @apiDescription Create `diskClasses`.
 *
-* @apiParam {object[]} diskClasses `diskClasses` to create.
-* @apiParam {object[]} diskClasses.disks Array of `model` and `disks`.
-* @apiParam {string} diskClasses.disks.model `Model` of the `disks` in the following array.
-* @apiParam {string} diskClasses.disks.diskID Identifier of `disk`.
-* @apiParam {string} diskClasses.disks.node_id `Server name` of the `disk`.
-* @apiParam {string} diskClasses._id `Name` of the `diskClass`.
-* @apiParam {string} [diskClasses.description] `Description` of the `diskClass`.
-* @apiParam {object[]} [diskClasses.domains] `Domains` of the `diskClass`.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} diskClasses `diskClasses` to create.
+* @apiBody {object[]} diskClasses.disks Array of `model` and `disks`.
+* @apiBody {string} diskClasses.disks.model `Model` of the `disks` in the following array.
+* @apiBody {string} diskClasses.disks.diskID Identifier of `disk`.
+* @apiBody {string} diskClasses.disks.node_id `Server name` of the `disk`.
+* @apiBody {string} diskClasses._id `Name` of the `diskClass`.
+* @apiBody {string} [diskClasses.description] `Description` of the `diskClass`.
+* @apiBody {object[]} [diskClasses.domains] `Domains` of the `diskClass`.
+* @apiExample {string} Payload example
 * [{
 * 	"disks": [{
 * 			"diskID": "CVCQ523400G9400AGN.1",
@@ -155,9 +155,7 @@ router.get('/tags', (req, res) => {
 * 	"description": "Super duper fast disks",
 *	"domains": [{ "scope": "Rack", "identifier": "A" }]
 * }]
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "highEndurance",
@@ -192,21 +190,21 @@ router.post('/save', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /diskClasses/delete Delete diskClasses
 * @apiName DeleteDiskClasses
 * @apiGroup diskClasses
 * @apiDescription Delete `diskClasses`.
 *
-* @apiParam {string} _id The `id[s]` of the `diskClasses[s]` to delete.
-* @apiParamExample {object[]} Payload example
+* @apiBody {object[]} diskClasses `diskClasses` to delete.
+* @apiBody {string} diskClasses._id The `ID` of the `diskClass` to delete.
+* @apiBody {string} diskClasses.uuid The `UUID` of the `diskClass` to delete.
+* @apiExample {object[]} Payload example
 * [{
 * 	"_id": "highEndurance",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb"
 * }]
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "highEndurance",
@@ -230,22 +228,22 @@ router.post('/delete', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /diskClasses/update Update diskClasses
 * @apiName UpdateDiskClasses
 * @apiGroup diskClasses
 * @apiDescription Update `diskClasses`. <small><i>--name field cannot be updated</i></small>
 *
-* @apiParam {object[]} diskClasses `diskClasses` to update.
-* @apiParam {string} diskClasses._id `diskClasses ID` to update.
-* @apiParam {object[]} diskClasses.disks Array of `model` and `disks`.
-* @apiParam {string} diskClasses.disks.model `Model` of the `disks` in the following array.
-* @apiParam {object[]} diskClasses.disks.disks List of `disks` from the same `model`.
-* @apiParam {string} diskClasses.disks.disks.diskID Identifier of `disk`.
-* @apiParam {string} diskClasses.disks.disks.node_id `Server name` of the `disk`.
-* @apiParam {string} [diskClasses.description] `Description` of the `diskClass`.
-* @apiParam {object[]} [diskClasses.domains] `Domains` of the `diskClass`.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} diskClasses `diskClasses` to update.
+* @apiBody {string} diskClasses._id `diskClasses ID` to update.
+* @apiBody {object[]} diskClasses.disks Array of `model` and `disks`.
+* @apiBody {string} diskClasses.disks.model `Model` of the `disks` in the following array.
+* @apiBody {object[]} diskClasses.disks.disks List of `disks` from the same `model`.
+* @apiBody {string} diskClasses.disks.disks.diskID Identifier of `disk`.
+* @apiBody {string} diskClasses.disks.disks.node_id `Server name` of the `disk`.
+* @apiBody {string} [diskClasses.description] `Description` of the `diskClass`.
+* @apiBody {object[]} [diskClasses.domains] `Domains` of the `diskClass`.
+* @apiExample {string} Payload example
 * [{
 * 	"_id": "highEndurance",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
@@ -261,12 +259,10 @@ router.post('/delete', function(req, res) {
 * 		}],
 * 	"domains": [{ "scope": "Rack", "identifier": "B" }]
 * }]
-*
 * @apiSuccess {object[]} results Results for the diskClasses we tried to update.
 * @apiSuccess {string} results.DiskClassID the `ID` of the `diskClass` we attempted to update.
 * @apiSuccess {boolean} results.success Indication whether `diskClass` update succeeded or not.<br />
 * <small><i>`true` if succeeded, `false` if failed.</i></small>
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "highEndurance",
@@ -307,18 +303,16 @@ router.get('/getDomains', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /diskClasses/:id Get diskClass by ID
 * @apiName GetDiskClass
 * @apiGroup diskClasses
 * @apiDescription Get specific `diskClass` by `ID`.
 *
-* @apiParam {string} diskClass `diskClass's ID` to fetch.
+* @apiParam {string} id `diskClass's ID` to fetch.
 * @apiParamExample {string} Example request
 * diskClasses/dc1
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "_id": "dc1",

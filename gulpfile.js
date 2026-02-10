@@ -8,11 +8,14 @@ const sass = require('gulp-sass')(require('sass'));
 const eslint = require('gulp-eslint');
 const plumber = require('gulp-plumber');
 const notify = require('gulp-notify');
-const apidoc = require('gulp-apidoc');
+const apidoc = require('apidoc');
 const babel = require('gulp-babel');
 const sourcemaps = require('gulp-sourcemaps');
 const fs = require('fs');
 const path = require('path');
+
+const { apidoc: { version: packageJsonApiVersion } } = require('./package.json');
+const utils = require('./utils');
 
 const stylesheetsDest = './public/stylesheets/';
 const stylesheetsSrc = stylesheetsDest + 'site*.scss';
@@ -138,13 +141,34 @@ gulp.task('copyNonJsx', () => {
 
 gulp.task('buildComponents', gulp.series('cleanComponents', gulp.parallel('compileJsx', 'copyNonJsx')));
 
-// requires `npm install apidoc -g`
 gulp.task('apidoc', function(done) {
-          apidoc({
-            src: './routes',
-			dest: './public/docs',
-            single: true
-          }, done);
+	const config = {
+		src: ['./routes/'],
+		dest: './public/docs/',
+		single: true,
+		warnError: true, // will process.exit(1) after first warning encountered
+	};
+
+	const doc = apidoc.createDoc(config);
+	if (typeof doc === 'boolean')
+		return done(`failed to generate apidoc documentation, ${doc}`);
+
+	let apiVersionsGenerated = [];
+	try {
+		apiVersionsGenerated = JSON.parse(doc.data).map(block => block.version);
+	} catch (err) {
+		return done(`failed to parse apidoc documentation, ${err}`);
+	}
+
+	const apiVersionsGeneratedDistinct = Array.from(new Set(apiVersionsGenerated));
+	const highestApiVersionGenerated = apiVersionsGeneratedDistinct.sort((a, b) => utils.compareVersionRelease(b, a))[0];
+	if (!highestApiVersionGenerated)
+        return done('No API versions were generated. Check your apidoc configuration and source files.');
+
+	if (utils.compareVersionRelease(highestApiVersionGenerated, packageJsonApiVersion) !== 0)
+		return done(`highest api version generated (${highestApiVersionGenerated}) is not the same as the package.json api version (${packageJsonApiVersion})`);
+
+	done();
 });
 
 gulp.task('apidoc:watch', function(done) {

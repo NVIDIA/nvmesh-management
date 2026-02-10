@@ -40,7 +40,7 @@ router.get('/', (req, res) => {
 router.use(isAdminRole);
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /keys/all Get keys
 * @apiName GetKeys
 * @apiGroup keys
@@ -77,21 +77,21 @@ router.get('/all/:page/:count', validateProjection, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /keys/delete Delete keys
 * @apiName DeleteKeys
 * @apiGroup keys
 * @apiDescription Delete `keys`.
 *
-* @apiParam {string} _id The `id[s]` of the `keys[s]` to delete.
-* @apiParamExample {object[]} Payload example
+* @apiBody {object[]} keys `keys` to delete.
+* @apiBody {string} keys._id The `_id` of the `key` to delete.
+* @apiBody {string} keys.uuid The `uuid` of the `key` to delete.
+* @apiExample {object[]} Payload example
 * [{
 * 	"_id": "KeyA",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb"
 * }]
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "KeyA",
@@ -116,27 +116,26 @@ router.post('/delete', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /keys/update Update keys
 * @apiName UpdateKeys
 * @apiGroup keys
 * @apiDescription Update `keys`. <small><i>--name field cannot be updated</i></small>
 *
-* @apiParam {object[]} keys `keys` to update.
-* @apiParam {string} keys._id `keys ID` to update.
-* @apiParam {string} [keys.description] `Description` of the `key`.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} keys `keys` to update.
+* @apiBody {string} keys._id The `_id` of the `key` to update.
+* @apiBody {string} keys.uuid The `uuid` of the `key` to update.
+* @apiBody {string} [keys.description] The `description` of the `key`.
+* @apiExample {string} Payload example
 * [{
 * 	"_id": "KeyA",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
 * 	"description": "Super secure key"
 * }]
-*
 * @apiSuccess {object[]} results Results for the keys we tried to update.
 * @apiSuccess {string} results.keyID the `ID` of the `key` we attempted to update.
 * @apiSuccess {boolean} results.success Indication whether `key` update succeeded or not.<br />
 * <small><i>`true` if succeeded, `false` if failed.</i></small>
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "KeyA",
@@ -162,7 +161,7 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /keys/count Count Keys
 * @apiName CountKeys
 * @apiGroup keys
@@ -176,23 +175,21 @@ router.post('/update', (req, res) => {
 router.get('/count', getCountEntitiesHandler('key'));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /keys/save Create keys
 * @apiName CreateKeys
 * @apiGroup keys
 * @apiDescription Create `keys`.
 *
-* @apiParam {object[]} keys `keys` to create.
-* @apiParam {string} keys._id `Name` of the `key`.
-* @apiParam {string} [keys.description] `Description` of the `key`.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} keys `keys` to create.
+* @apiBody {string} keys._id The `_id` of the `key`.
+* @apiBody {string} [keys.description] The `description` of the `key`.
+* @apiExample {string} Payload example
 * [{
 * 	"_id": "KeyA",
 * 	"description": "Key A"
 * }]
-*
 * @apiSuccess {object[]} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "KeyA",
@@ -218,13 +215,13 @@ router.post('/save', (req, res) => {
 
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /keys/:id Get key by ID
 * @apiName GetKey
 * @apiGroup keys
 * @apiDescription Get specific `key` by `ID`.
 *
-* @apiParam {string} key `key's ID` to fetch.
+* @apiParam {string} id `key's ID` to fetch.
 * @apiParamExample {string} Example request
 * keys/key-pair1
 *

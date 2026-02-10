@@ -84,7 +84,7 @@ function adjustingBackupResults(backups, query) {
 router.use(isAdminRole);
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /backups/all/:page/:count?filter={}&sort={} Get Backups
 * @apiName GetBackups
 * @apiGroup backups
@@ -131,7 +131,7 @@ router.get('/all/:page/:count', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /backups/count Count Backups
 * @apiName CountBackups
 * @apiGroup backups
@@ -158,18 +158,16 @@ router.get('/count', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /backups/:id Get backup by ID
 * @apiName GetBackup
 * @apiGroup backups
 * @apiDescription Get specific `backup` by `ID`.
 *
-* @apiParam {string} backup `backup's ID` to fetch.
+* @apiParam {string} id `backup's ID` to fetch.
 * @apiParamExample {string} Example request
 * backups/daily_management_2023-10-26T00:00:05.578Z.tar.gz
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *		"backup_id": "management_2023-10-26T00:00:05.578Z.tar.gz",

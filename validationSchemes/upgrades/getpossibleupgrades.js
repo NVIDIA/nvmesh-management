@@ -10,7 +10,6 @@ const schema = {
 		query: {
 			type: 'object',
 			properties: {
-				isClientOnly: { type: 'boolean' },
 				sourceVersion: { type: 'string' }
 			}
 		}

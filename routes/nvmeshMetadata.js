@@ -16,7 +16,7 @@ const isAdminRole = require('../middlewares/isAdminRole.js');
 const router = express.Router();
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /nvmeshMetadata/clusterID Get Cluster ID
 * @apiName GetClusterID
 * @apiGroup ClusterID
@@ -33,14 +33,14 @@ const router = express.Router();
 router.get('/clusterID', (req, res) => nvmeshMetadata.getClusterID(clusterID => res.json(clusterID)));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /nvmeshMetadata/updateClusterID Update Cluster ID
 * @apiName updateClusterID
 * @apiGroup ClusterID
 * @apiDescription update `clusterID`.
-* @apiParam {object} Object including the clusterID.
-* @apiParam {string} [Object.clusterID] clusterID to update.
-* @apiParamExample {string} Payload example
+* @apiBody {object} Object including the clusterID.
+* @apiBody {string} clusterID clusterID to update.
+* @apiExample {string} Payload example
 * { 'clusterID': 'myClusterID' }
 * @apiSuccess {object} results success status
 * @apiSuccessExample Example data on success

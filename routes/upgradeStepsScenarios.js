@@ -27,7 +27,7 @@ router.get('/', function(req, res) {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {get} /upgradeStepsScenarios/all/:page/:count?filter={}&sort={} Get upgrade steps scenarios
  * @apiName GetUpgradeStepsScenarios
  * @apiGroup upgradeStepsScenarios
@@ -39,9 +39,7 @@ router.get('/', function(req, res) {
  * @apiParam {object} [sort] `Sort` before fetching.
  * @apiParamExample {object[]} Example request
  * /upgradeStepsScenarios/all/0/10?filter={"command":{"$regex":"systemctl","$options":"i"}}&sort={"name":1}
- *
  * @apiSuccess {object[]} upgradeStepsScenarios List of `upgrade steps scenarios`.
- *
  * @apiSuccessExample Example data on success
  * [{
  *   "ID": 3,
@@ -73,14 +71,12 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {get} /upgradeStepsScenarios/count Count upgrade steps scenarios
  * @apiName CountUpgradeStepsScenarios
  * @apiGroup upgradeStepsScenarios
  * @apiDescription Get total `upgrade steps scenarios` count.
- *
  * @apiSuccess {integer} count `upgrade steps scenarios` count.
- *
  * @apiSuccessExample Example data on success
  * 15
  */
@@ -93,20 +89,20 @@ router.get('/count', function(req, res) {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /upgradeStepsScenarios/save Save upgrade steps scenarios
  * @apiName SaveUpgradeStepsScenarios
  * @apiGroup upgradeStepsScenarios
  * @apiDescription Save `upgrade steps scenarios`.
  *
- * @apiParam {object[]} upgradeStepsScenarios List of `upgrade steps scenarios` to save.
- * @apiParam {string} upgradeStepsScenarios.name The name of the upgrade step scenario to save.
- * @apiParam {string} upgradeStepsScenarios.command The command of the upgrade step scenario to save.
- * @apiParam {integer} [upgradeStepsScenarios.timeout] The timeout of the upgrade step scenario to save.
- * @apiParam {string} [upgradeStepsScenarios.verificationCommand] The verification command of the upgrade step scenario to save.
- * @apiParam {integer} [upgradeStepsScenarios.isVolumeAffected] The is volume affected of the upgrade step scenario to save.
- * @apiParam {string} [upgradeStepsScenarios.arguments] The arguments of the command of the upgrade step scenario to save.
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} upgradeStepsScenarios List of `upgrade steps scenarios` to save.
+ * @apiBody {string} upgradeStepsScenarios.name The name of the upgrade step scenario to save.
+ * @apiBody {string} upgradeStepsScenarios.command The command of the upgrade step scenario to save.
+ * @apiBody {integer} [upgradeStepsScenarios.timeout] The timeout of the upgrade step scenario to save.
+ * @apiBody {string} [upgradeStepsScenarios.verificationCommand] The verification command of the upgrade step scenario to save.
+ * @apiBody {integer} [upgradeStepsScenarios.isVolumeAffected] The is volume affected of the upgrade step scenario to save.
+ * @apiBody {string} [upgradeStepsScenarios.arguments] The arguments of the command of the upgrade step scenario to save.
+ * @apiExample {object[]} Example request
  * [{
  *   "name": "stopClient",
  *   "command": "systemctl",
@@ -115,9 +111,7 @@ router.get('/count', function(req, res) {
  *   "isVolumeAffected": 1,
  *   "arguments": "[\"stop\",\"nvmeshclient\"]"
  * }]
- *
  * @apiSuccess {object[]} results Success statuses
- *
  * @apiSuccessExample Example data on success
  * [{
  *   "_id": 1,
@@ -148,21 +142,21 @@ router.post('/save', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /upgradeStepsScenarios/update Update upgrade steps scenarios
  * @apiName UpdateUpgradeStepsScenarios
  * @apiGroup upgradeStepsScenarios
  * @apiDescription Update `upgrade steps scenarios`.
  *
- * @apiParam {object[]} upgradeStepsScenarios List of `upgrade steps scenarios` to update.
- * @apiParam {integer} upgradeStepsScenarios.ID The ID of the upgrade step scenario to update.
- * @apiParam {string} upgradeStepsScenarios.name The name of the upgrade step scenario to update.
- * @apiParam {string} upgradeStepsScenarios.command The command of the upgrade step scenario to update.
- * @apiParam {integer} [upgradeStepsScenarios.timeout] The timeout of the upgrade step scenario to update.
- * @apiParam {string} [upgradeStepsScenarios.verificationCommand] The verification command of the upgrade step scenario to update.
- * @apiParam {integer} [upgradeStepsScenarios.isVolumeAffected] The is volume affected of the upgrade step scenario to update.
- * @apiParam {string} [upgradeStepsScenarios.arguments] The arguments of the command of the upgrade step scenario to update.
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} upgradeStepsScenarios List of `upgrade steps scenarios` to update.
+ * @apiBody {integer} upgradeStepsScenarios.ID The ID of the upgrade step scenario to update.
+ * @apiBody {string} upgradeStepsScenarios.name The name of the upgrade step scenario to update.
+ * @apiBody {string} upgradeStepsScenarios.command The command of the upgrade step scenario to update.
+ * @apiBody {integer} [upgradeStepsScenarios.timeout] The timeout of the upgrade step scenario to update.
+ * @apiBody {string} [upgradeStepsScenarios.verificationCommand] The verification command of the upgrade step scenario to update.
+ * @apiBody {integer} [upgradeStepsScenarios.isVolumeAffected] The is volume affected of the upgrade step scenario to update.
+ * @apiBody {string} [upgradeStepsScenarios.arguments] The arguments of the command of the upgrade step scenario to update.
+ * @apiExample {object[]} Example request
  * [{
  *     "ID": 1,
  *     "name": "stopClient",
@@ -174,7 +168,6 @@ router.post('/save', (req, res) => {
  * }]
  *
  * @apiSuccess {object[]} results Success statuses
- *
  * @apiSuccessExample Example data on success
  * [{
  *	"_id": 1,
@@ -206,21 +199,19 @@ router.post('/update', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /upgradeStepsScenarios/delete Delete upgrade steps scenarios
  * @apiName DeleteUpgradeStepsScenarios
  * @apiGroup upgradeStepsScenarios
  * @apiDescription Delete `upgrade steps scenarios`.
  *
- * @apiParam {object[]} upgradeStepsScenarios List of `upgrade steps scenarios` to delete.
- * @apiParam {integer} upgradeStepsScenarios.ID The ID of the upgrade step scenario to delete.
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} upgradeStepsScenarios List of `upgrade steps scenarios` to delete.
+ * @apiBody {integer} upgradeStepsScenarios.ID The ID of the upgrade step scenario to delete.
+ * @apiExample {object[]} Example request
  * [{
  *   "ID": 1
  * }]
- *
  * @apiSuccess {object[]} results Success statuses
- *
  * @apiSuccessExample Example data on success
  * [{
  *	"_id": 1,

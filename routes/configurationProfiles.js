@@ -37,7 +37,7 @@ router.get('/', function(req, res) {
 
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {get} /configurationProfiles/nodeConfig/:page/:count Get nodeConfiguration entry
  * @apiName GetNodeConfiguration
  * @apiGroup configurationProfiles
@@ -99,7 +99,7 @@ router.get('/fromNodeConfiguration/:clientOrTarget/:nodeID', function(req, res) 
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /configurationProfiles/all Get Configuration Profile
 * @apiName GetConfigurationProfiles
 * @apiGroup configurationProfiles
@@ -187,7 +187,7 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /configurationProfiles/count Count Configuration Profile
 * @apiName CountConfigurationProfiles
 * @apiGroup configurationProfiles
@@ -201,31 +201,28 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 router.get('/count', getCountEntitiesHandler('configurationProfile'));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /configurationProfiles/save Save Configuration Profile
 * @apiName SaveConfigurationProfile
 * @apiGroup configurationProfiles
 * @apiDescription Save Configuration Profile.
 *
-* @apiParam {object[]} configuration profiles `configuration profiles` to create.
-* @apiParam {string} configurationProfiles.name The Name of the `configuration profiles`.<br />
-* @apiParam {string} [configurationProfiles.description] The Description of the `configuration profiles`.<br />
-* @apiParam {string[]} [configurationProfiles.labels] The Labels of the `configuration profiles`.<br />
-* @apiParam {object[]} [configurationProfiles.config] The Configuration to be assigned to the `configuration profiles`.<br />
+* @apiBody {object[]} configuration profiles `configuration profiles` to create.
+* @apiBody {string} configurationProfiles.name The Name of the `configuration profiles`.<br />
+* @apiBody {string} [configurationProfiles.description] The Description of the `configuration profiles`.<br />
+* @apiBody {string[]} [configurationProfiles.labels] The Labels of the `configuration profiles`.<br />
+* @apiBody {object[]} [configurationProfiles.config] The Configuration to be assigned to the `configuration profiles`.<br />
 * <small><i>Options: `KAFKA_SERVERS`, `MANAGEMENT_SERVERS`, `CONFIGURED_NICS`, `IPV4_ONLY`,
 *  `MAX_SM_QUERY_BURST`, `TCP_ENABLED`, `DUMP_FTRACE_ON_OOPS`,
 *  `MCS_LOGGING_LEVEL`, `MCS_LOGGING_VERBOSE_TYPES`, `AGENT_LOGGING_LEVEL`</i></small>
-* @apiParamExample {string} Payload example
+* @apiExample {string} Payload example
 * [{
 *		"name": "NVMesh GPU Clients",
 *		"description": "Plain text",
 *		"labels": [""],
 *		"config": { "IPV4_ONLY": true }
 * }]
-*
-
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "NVMesh GPU Clients",
@@ -260,23 +257,21 @@ router.post('/save', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /configurationProfiles/delete Delete configurationProfiles
 * @apiName DeleteConfigurationProfiles
 * @apiGroup configurationProfiles
 * @apiDescription Delete `configurationProfiles`.
 *
-* @apiParam {object[]} configurationProfiles `configurationProfiles` to delete.
-* @apiParam {string} _id The `_id` of the `configurationProfiles` to delete.
-* @apiParam {string} uuid The `uuid` of the `configurationProfiles` to delete.
-* @apiParamExample {object[]} Payload example
+* @apiBody {object[]} configurationProfiles `configurationProfiles` to delete.
+* @apiBody {string} _id The `_id` of the `configurationProfiles` to delete.
+* @apiBody {string} uuid The `uuid` of the `configurationProfiles` to delete.
+* @apiExample {object[]} Payload example
 * [{
 * 	"_id": "My Profile"
 * 	"uuid": "aa5026d0-7acc-11ed-a2de-b131fa9cd898"
 * }]
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "My Profile",
@@ -303,31 +298,28 @@ router.post('/delete', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /configurationProfiles/update Update Configuration Profile
 * @apiName UpdateConfigurationProfile
 * @apiGroup configurationProfiles
 * @apiDescription Update Configuration Profile.
 *
-* @apiParam {object[]} configuration profiles `configuration profiles` to update.
-* @apiParam {string} configurationProfiles.name The Name of the `configuration profiles`.<br />
-* @apiParam {string} [configurationProfiles.description] The Description of the `configuration profiles`.<br />
-* @apiParam {string[]} [configurationProfiles.labels] The Labels of the `configuration profiles`.<br />
-* @apiParam {object[]} [configurationProfiles.config] The Configuration to be assigned to the `configuration profiles`.<br />
+* @apiBody {object[]} configuration profiles `configuration profiles` to update.
+* @apiBody {string} configurationProfiles.name The Name of the `configuration profiles`.<br />
+* @apiBody {string} [configurationProfiles.description] The Description of the `configuration profiles`.<br />
+* @apiBody {string[]} [configurationProfiles.labels] The Labels of the `configuration profiles`.<br />
+* @apiBody {object[]} [configurationProfiles.config] The Configuration to be assigned to the `configuration profiles`.<br />
 * <small><i>Options: `MANAGEMENT_SERVERS`, `CONFIGURED_NICS`, `IPV4_ONLY`,
 *  `MAX_SM_QUERY_BURST`, `TCP_ENABLED`, `DUMP_FTRACE_ON_OOPS`,
 *  `MCS_LOGGING_LEVEL`, `MCS_LOGGING_VERBOSE_TYPES`, `AGENT_LOGGING_LEVEL`</i></small>
-* @apiParamExample {string} Payload example
+* @apiExample {string} Payload example
 * [{
 *		"name": "NVMesh GPU Clients",
 *		"description": "Plain text",
 *		"labels": [""],
 *		"config": { "IPV4_ONLY": true }
 * }]
-*
-
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "NVMesh GPU Clients",
@@ -363,16 +355,16 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /configurationProfiles/apply Applies a Configuration Profile to a set of nodes
 * @apiName ApplyConfigurationProfile
 * @apiGroup configurationProfiles
 * @apiDescription Apply Configuration Profile.
 *
-* @apiParam {string} name The name of the `configuration profile` to apply.
-* @apiParam {string} uuid The UUID of the `configuration profile` to apply.<br />
-* @apiParam {string[]} nodeIDs A list of nodes to apply the profile to.<br />
-* @apiParamExample {string} Payload example
+* @apiBody {string} name The name of the `configuration profile` to apply.
+* @apiBody {string} uuid The UUID of the `configuration profile` to apply.<br />
+* @apiBody {string[]} nodeIDs A list of nodes to apply the profile to.<br />
+* @apiExample {string} Payload example
 * {
 *		"name": "NVMesh GPU Clients",
 *		"uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb"
@@ -381,10 +373,7 @@ router.post('/update', (req, res) => {
 *			"gpu-worker2"
 *		]
 * }
-*
-
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "NVMesh GPU Clients",
@@ -413,13 +402,13 @@ router.post('/apply', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /configurationProfiles/:id Get configurationProfile by ID
 * @apiName GetConfigurationProfile
 * @apiGroup configurationProfiles
 * @apiDescription Get specific `configurationProfile` by `ID`.
 *
-* @apiParam {string} configurationProfile `configurationProfile's ID` to fetch.
+* @apiParam {string} id `configurationProfile's ID` to fetch.
 * @apiParamExample {string} Example request
 * configurationProfiles/NVMesh Debug
 *

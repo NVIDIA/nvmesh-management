@@ -28,7 +28,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /artifacts/all/:page/:count?filter={}&sort={} Get artifacts
 * @apiName GetArtifacts
 * @apiGroup artifacts
@@ -99,44 +99,28 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /artifacts/save Save artifacts
  * @apiName SaveArtifacts
  * @apiGroup artifacts
  * @apiDescription Save `artifacts`.
  *
- * @apiParam {object[]} artifacts List of `artifacts` to save.
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} artifacts List of `artifacts` to save.
+ * @apiBody {string} artifacts.name The `name` of the `artifact`.
+ * @apiBody {object[]} artifacts.platforms List of `platforms` to save.
+ * @apiBody {integer} artifacts.platforms.ID The `ID` of the `platform`.
+ * @apiBody {string} [artifacts.platforms.name] The `name` of the `platform`.
+ * @apiBody {string} [artifacts.platforms.description] The `description` of the `platform`.
+ * @apiBody {integer} [artifacts.platforms.archTypeID] The `archTypeID` of the `platform`.
+ * @apiBody {integer} [artifacts.platforms.operatingSystemID] The `operatingSystemID` of the `platform`.
+ * @apiBody {integer} [artifacts.platforms.kernelID] The `kernelID` of the `platform`.
+ * @apiBody {integer} [artifacts.platforms.ofedID] The `ofedID` of the `platform`.
+ * @apiExample {object[]} Example request
  * [{
   "name": "nvmesh-target-3.1.0-1357.el8_6.x86_64.rpm",
   "platforms": [
     {
-      "ID": 1,
-      "name": "SetupName",
-      "description": "Setup description",
-      "archTypeID": 1,
-      "operatingSystemID": 1,
-      "kernelID": 8,
-      "ofedID": 4,
-      "ArtifactPlatform": {
-        "ID": 1,
-        "artifactID": 1,
-        "platformID": 1
-      }
-    },
-    {
-      "ID": 2,
-      "name": "name2",
-      "description": "new description2",
-      "archTypeID": 1,
-      "operatingSystemID": 1,
-      "kernelID": 9,
-      "ofedID": 5,
-      "ArtifactPlatform": {
-        "ID": 9,
-        "artifactID": 1,
-        "platformID": 2
-      }
+      "ID": 1
     }
   ]
 }]
@@ -157,17 +141,17 @@ router.post('/save', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /artifacts/delete Delete artifacts
  * @apiName DeleteArtifacts
  * @apiGroup artifacts
  * @apiDescription Delete `artifacts`.
  *
- * @apiParam {object[]} artifacts List of `artifacts` to delete.
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} artifacts List of `artifacts` to delete.
+ * @apiBody {integer} artifacts.ID The `ID` of the `artifact`.
+ * @apiExample {object[]} Example request
  * [{
  *     "ID": 1,
- *     "name": "nvmesh-target-3.1.0-1357.el8_6.x86_64.rpm"
  * }]
  */
 router.post('/delete', (req, res) => {
@@ -186,17 +170,20 @@ router.post('/delete', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /artifacts/update Update artifacts
  * @apiName UpdateArtifacts
  * @apiGroup artifacts
  * @apiDescription Update `artifacts`.
  *
- * @apiParam {object[]} artifacts List of `artifacts` to update.
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} artifacts List of `artifacts` to update.
+ * @apiBody {integer} artifacts.ID The `ID` of the `artifact`.
+ * @apiBody {string} artifacts.name The `name` of the `artifact`.
+ * @apiExample {object[]} Example request
  * [{
  *     "ID": 1,
  *     "name": "nvmesh-target-3.1.0-1357.el8_6.x86_64.rpm"
+ * }]
  */
 router.post('/update', (req, res) => {
 	let artifacts = req.body;
@@ -214,7 +201,7 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /artifacts/count Count artifacts
 * @apiName CountArtifacts
 * @apiGroup artifacts

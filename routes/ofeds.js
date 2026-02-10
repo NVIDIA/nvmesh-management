@@ -28,7 +28,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /ofeds/all/:page/:count?filter={}&sort={} Get ofeds
 * @apiName GetOfeds
 * @apiGroup ofeds
@@ -62,13 +62,13 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /ofeds/save Create new ofeds
 * @apiName CreateOfeds
 * @apiGroup ofeds
 * @apiDescription Create new `ofeds` from a list of versions.
-* @apiParam {String[]} - Array of ofed version strings to create.
-* @apiParamExample {json} Example request
+* @apiBody {String[]} ofeds Array of ofed version strings to create.
+* @apiExample {json} Example request
 * ["MLNX_OFED_LINUX-23.10-4.0.9.1:"]
 * @apiSuccess {Object[]} result List of results for each ofed creation.
 * @apiSuccessExample {json} Example data on success
@@ -88,15 +88,15 @@ router.post('/save', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /ofeds/update Update existing ofeds
 * @apiName UpdateOfeds
 * @apiGroup ofeds
 * @apiDescription Update existing `ofeds` from a list of ofed objects.
-* @apiParam {Object[]} - Array of ofed objects to update, each with ID and new version.
-* @apiParam {string} ofeds.ID The `ID` of the `ofed`.
-* @apiParam {string} ofeds.version The `version` of the `ofed`.
-* @apiParamExample {json} Example request
+* @apiBody {Object[]} ofeds Array of ofed objects to update, each with ID and new version.
+* @apiBody {string} ofeds.ID The `ID` of the `ofed`.
+* @apiBody {string} ofeds.version The `version` of the `ofed`.
+* @apiExample {json} Example request
 * [{"ID": 1, "version": "MLNX_OFED_LINUX-23.10-4.0.9.1:"}]
 * @apiSuccess {Object[]} result List of results for each ofed update.
 * @apiSuccessExample {json} Example data on success
@@ -117,15 +117,15 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /ofeds/delete Delete existing ofeds
 * @apiName DeleteOfeds
 * @apiGroup ofeds
 * @apiDescription Delete existing `ofeds` from a list of ofed objects.
-* @apiParam {Object[]} - Array of ofed objects to delete.
-* @apiParam {string} ofeds.ID The `ID` of the `ofed`.
-* @apiParam {string} ofeds.version The `version` of the `ofed`.
-* @apiParamExample {json} Example request
+* @apiBody {Object[]} ofeds Array of ofed objects to delete.
+* @apiBody {string} ofeds.ID The `ID` of the `ofed`.
+* @apiBody {string} ofeds.version The `version` of the `ofed`.
+* @apiExample {json} Example request
 * [{"ID": 1, "version": "MLNX_OFED_LINUX-23.10-4.0.9.1:"}]
 * @apiSuccess {Object[]} result List of results for each ofed deletion.
 * @apiSuccessExample {json} Example data on success
@@ -146,7 +146,7 @@ router.post('/delete', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /ofeds/count Count ofeds
 * @apiName CountOfeds
 * @apiGroup ofeds

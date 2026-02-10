@@ -46,14 +46,12 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /servers/count Count servers
 * @apiName CountServers
 * @apiGroup servers
 * @apiDescription Get total `servers` count.
-*
 * @apiSuccess {integer} count `servers` count.
-*
 * @apiSuccessExample Example data on success
 * 14
 */
@@ -88,26 +86,24 @@ router.get('/server/:id', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /servers/delete Delete servers
 * @apiName DeleteServers
 * @apiGroup servers
 * @apiDescription Delete `servers`. <small><i>--Server won't be deleted if a volume is dependent on it.</i></small>
 *
-* @apiParam {object[]} servers `servers` to delete.
-* @apiParam {string} delete._id The `ID` of the `server` to delete.
-* @apiParam {string} delete.uuid The `UUID` of the `server` to delete.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} servers `servers` to delete.
+* @apiBody {string} servers._id The `ID` of the `server` to delete.
+* @apiBody {string} servers.uuid The `UUID` of the `server` to delete.
+* @apiExample {string} Payload example
 * [{
 *		"_id": "nvme50.acme.com",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
-*
 * @apiSuccess {object[]} servers The servers requested for deletion.
 * @apiSuccess {string} servers.id The `node_id` of the `server` requested for deletion.
 * @apiSuccess {boolean} servers.success Indication whether `server` deletion succeeded or not.<br />
 * <small><i>`true` if succeeded, `false` if failed.</i></small>
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "nvme50.acme.com",
@@ -130,27 +126,25 @@ router.post('/delete', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /servers/evict Evict servers
 * @apiName EvictServers
 * @apiGroup servers
 * @apiDescription Evict `servers` will delete a server while evicting all of it's drives.
 * <small><i>--Server won't be evicted if one of it's drives cannot be evicted.</i></small>
 *
-* @apiParam {object[]} servers `servers` to evict.
-* @apiParam {string} evict._id The `ID` of the `server` to evict.
-* @apiParam {string} evict.uuid The `UUID` of the `server` to evict.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} servers `servers` to evict.
+* @apiBody {string} servers._id The `ID` of the `server` to evict.
+* @apiBody {string} servers.uuid The `UUID` of the `server` to evict.
+* @apiExample {string} Payload example
 * [{
 *		"_id": "nvme50.acme.com"
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
-*
 * @apiSuccess {object[]} servers The servers requested for eviction.
 * @apiSuccess {string} servers.id The `node_id` of the `server` requested for eviction.
 * @apiSuccess {boolean} servers.success Indication whether `server` eviction succeeded or not.<br />
 * <small><i>`true` if succeeded, `false` if failed.</i></small>
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "nvme50.acme.com",
@@ -203,23 +197,22 @@ router.post('/availableMirrors/:capacity', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /servers/deleteNic Delete NIC by ID
 * @apiName DeleteNic
 * @apiGroup servers
 * @apiDescription Delete specific `NIC` by `ID`. <small><i>--`NIC` can only be deleted if its `status` is `Missing` on the specified `target`.</i></small>
 *
-* @apiParam {object[]} servers `servers` to delete `NIC` from.
-* @apiParam {string} delete.targetID The `ID` of the `server` to delete `NIC` from.
-* @apiParam {string} delete.targetUUID The `UUID` of the `server` to delete `NIC` from.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} servers `servers` to delete `NIC` from.
+* @apiBody {string} servers.targetID The `ID` of the `server` to delete `NIC` from.
+* @apiBody {string} servers.targetUUID The `UUID` of the `server` to delete `NIC` from.
+* @apiExample {string} Payload example
 * [{
 * 	"nicID": "0xfe80000000000000001e670300932499",
 *	"targetID": "nvme47.acme.com"
 *	"targetUUID": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * {
 *	"_id": "0xfe80000000000000001e670300932499",
@@ -244,7 +237,7 @@ router.post('/deleteNic', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /servers/all/:page/:count?filter={}&sort={} Get servers
 * @apiName GetServers
 * @apiGroup servers
@@ -256,9 +249,7 @@ router.post('/deleteNic', isAdminRole, function(req, res) {
 * @apiParam {object} [sort] `Sort` before fetching. <small><i>--MongoDB sort obj.</i></small>
 * @apiParamExample {object[]} Example request
 * /servers/all/0/2?filter={"node_id":"nvme50.acme.com"}&sort={"node_status":-1}
-*
 * @apiSuccess {object[]} servers List of `servers`.
-*
 * @apiSuccessExample Example data on success
 * [{
 * 	"_id": "55d9dd3d1978c3ac4195d7ea",
@@ -326,17 +317,17 @@ router.post('/byRegex', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /servers/setZone Assign servers to Zone ID
 * @apiName SetZone
 * @apiGroup servers
 * @apiDescription Assign Zone to a list of `servers`;
 *
-* @apiParam {string} zoneID `ID` of the zone to assign to.
-* @apiParam {object[]} targets `targets`'s of the `Target`s to be assigned.
-* @apiParam {string} target._id The `ID` of the `target`.
-* @apiParam {string} target.uuid The `UUID` of the `target`.
-* @apiParamExample  {object} Payload example
+* @apiBody {string} zoneID `ID` of the zone to assign to.
+* @apiBody {object[]} targets `targets`'s of the `Target`s to be assigned.
+* @apiBody {string} targets._id The `ID` of the `target`.
+* @apiBody {string} targets.uuid The `UUID` of the `target`.
+* @apiExample {object} Payload example
 * {
 * 	"zoneID": "10",
 *	"targets": [{
@@ -345,7 +336,6 @@ router.post('/byRegex', function(req, res) {
 * 	}]
 * }
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "nvme1038.nvidia.com",
@@ -369,19 +359,18 @@ router.post('/setZone', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /servers/regenerateTOMAMessages Regenerate TOMA messages by Zone ID
 * @apiName RegenerateTOMAMessages
 * @apiGroup servers
 * @apiDescription Regenerate TOMA messages by Zone ID
 *
-* @apiParam {string} zoneID `ID` of the zone to regenerate TOMA messages from.
-* @apiParamExample  {object} Payload example
+* @apiBody {string} zoneID `ID` of the zone to regenerate TOMA messages from.
+* @apiExample {object} Payload example
 * {
 * 	"zoneID": "10",
 * }
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * {
 *	"_id": "10",
@@ -405,18 +394,16 @@ router.post('/regenerateTOMAMessages', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /servers/:id Get server by ID
 * @apiName GetServer
 * @apiGroup servers
 * @apiDescription Get specific `server` by `ID`.
 *
-* @apiParam {string} server `server's ID` to fetch.
+* @apiParam {string} id `server's ID` to fetch.
 * @apiParamExample {string} Example request
 * servers/nvme1039
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "_id": "nvme1039",

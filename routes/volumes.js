@@ -47,7 +47,7 @@ router.get('/nvmfDefault', function(req, res) {
 
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /volumes/all/:page/:count?filter={}&sort={} Get volumes
 * @apiName GetVolumes
 * @apiGroup volumes
@@ -59,9 +59,7 @@ router.get('/nvmfDefault', function(req, res) {
 * @apiParam {object} [sort] `Sort` before fetching. <small><i>--MongoDB sort obj</i></small>
 * @apiParamExample {object[]} Example request
 * /volumes/all/0/15?filter={"_id":"V1"}&sort={}
-*
 * @apiSuccess {object[]} volumes List of `volumes`.
-*
 * @apiSuccessExample Example data on success
 * [{
 * 	"_id": "V1",
@@ -156,16 +154,16 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /volumes/combinedStatus/:volumeID Get data volume with combined status
 * @apiName GetCombinedStatus
 * @apiGroup volumes
 * @apiDescription Get combined status data volume.
 *
+* @apiParam {string} volumeID `volume's ID` to fetch.
+* @apiParamExample {string} Example request
 * /volumes/combinedStatus/snapshot_test
-*
-* @apiSuccess object combined status volume.
-*
+* @apiSuccess {object} combined status volume.
 * @apiSuccessExample Example data on success
 * {
 * 	"_id": "snapshot_test",
@@ -230,14 +228,12 @@ router.get('/combinedStatus/:volumeID', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /volumes/count Count Volumes
 * @apiName CountVolumes
 * @apiGroup volumes
 * @apiDescription Get total `volume` count.
-*
 * @apiSuccess {integer} count `volume` count.
-*
 * @apiSuccessExample Example data on success
 * 4
 */
@@ -443,37 +439,26 @@ router.post('/cloneVPGProperties', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumes/rebuildVolumes Rebuild Volumes
 * @apiName RebuildVolumes
 * @apiGroup volumes
 * @apiDescription Rebuild `volumes`.
 *
-* @apiParam {object[]} volumes `volumes` to rebuild.
-* @apiParam {string} volumes._id The Volume ID.
-* @apiParam {string} volumes.uuid The Volume UUID.
-* @apiParam {boolean} [volumes.allowAllocationOnOfflineDrives] Use offline drives for allocation, defaults to false.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} volumes `volumes` to rebuild.
+* @apiBody {string} volumes._id The Volume ID.
+* @apiBody {string} volumes.uuid The Volume UUID.
+* @apiBody {boolean} [volumes.allowAllocationOnOfflineDrives] Use offline drives for allocation, defaults to false.
+* @apiExample {object[]} Payload example
 * [{
 * 		"_id": "V1",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
-* }, {
-* 		"_id": "V2",
-*		"uuid": "121cfb90-7a13-11ed-a3a5-2dd1199d2398",
 * }]
-*
 * @apiSuccess {object} results success statuses
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "V1",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
-*	"success": true,
-*	"error": null,
-*	"payload": null
-* },
-* {
-*	"_id": "V2",
-*   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefc",
 *	"success": true,
 *	"error": null,
 *	"payload": null
@@ -495,7 +480,7 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumes/save Save volumes
 * @apiName SaveVolumes
 * @apiGroup volumes
@@ -503,62 +488,56 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 * At a minimum, `name` and `capacity` are required.
 * You must also specify allocation rules, either by providing a `VPG` or by specifying `RAIDLevel` and other parameters.
 *
-* @apiParam {object[]} volumes `volumes` to create.
-* @apiParam {string} volumes.name <strong>Required</strong>. Name of the `volume`. The name must be unique, as it will become the `ID` of the `volume`.
-* @apiParam {object} volumes.capacity <strong>Required</strong>. Space to allocate for the `volume` in GB, or `'MAX'` for using all of the available space.
-*
-* @apiParam {string} [volumes.VPG] The VPG to use for allocation. If provided, `RAIDLevel` and other allocation-related properties must NOT be sent.
-* @apiParam {string} [volumes.RAIDLevel] The RAID level of the `volume`. <strong>Required if `VPG` is not provided</strong>.<br />
+* @apiBody {object[]} volumes `volumes` to create.
+* @apiBody {string} volumes.name <strong>Required</strong>. Name of the `volume`. The name must be unique, as it will become the `ID` of the `volume`.
+* @apiBody {object} volumes.capacity <strong>Required</strong>. Space to allocate for the `volume` in GB, or `'MAX'` for using all of the available space.
+* @apiBody {string} [volumes.VPG] The VPG to use for allocation. If provided, `RAIDLevel` and other allocation-related properties must NOT be sent.
+* @apiBody {string} [volumes.RAIDLevel] The RAID level of the `volume`. <strong>Required if `VPG` is not provided</strong>.<br />
 * <small><i>Options: `Concatenated`, `Striped RAID-0`, `Mirrored RAID-1`, `Striped & Mirrored RAID-10`, `Erasure Coding`, `Striped Erasure Coding`</i></small>.
-*
-* @apiParam {string} [volumes.description] `Description` of the `volume`.
-* @apiParam {integer} [volumes.relativeRebuildPriority=10] Sets the volume relative rebuild priority.
-* @apiParam {string[]} [volumes.VSGs] Associated volume security groups.
-*
-* @apiParam {string} [volumes.sourceID] The Source Volume ID. Used for creating a snapshot. Requires `sourceUUID`.
-* @apiParam {string} [volumes.sourceUUID] The Source Volume UUID. Used for creating a snapshot. Requires `sourceID`.
-* @apiParam {object} [volumes.mdvSpec] The allocation specifications for the metadata volume, used for snapshots.
-* @apiParam {string[]} [volumes.mdvSpec.diskClasses] Limit the metadata `volume` allocation to specific `diskClasses`.
-* @apiParam {string[]} [volumes.mdvSpec.serverClasses] Limit the metadata `volume` allocation to specific `serverClasses`.
-* @apiParam {string[]} [volumes.mdvSpec.limitByDisks] Limit the metadata `volume` allocation to specific `disks`.
-* @apiParam {string[]} [volumes.mdvSpec.limitByNodes] Limit the metadata `volume` allocation to specific `nodes`.
-* @apiParam {string} [volumes.mdvSpec.VPG] Limit the metadata `volume` allocation to a specific `VPG`.
-*
-* @apiParam {boolean} [volumes.allowAllocationOnOfflineDrives=false] Use offline drives for allocation.
-* @apiParam {boolean} [volumes.isReadOnly=false] Should be true when creating a source volume for a snapshot.
-* @apiParam {boolean} [volumes.enableNVMf=false] Enable NVMf exposure for the `volume`. If true, `selectedClientsForNvmf` is required.
-* @apiParam {string[]} [volumes.selectedClientsForNvmf] Expose the `volume` as NVMf target for specific `clients`.
+* @apiBody {string} [volumes.description] `Description` of the `volume`.
+* @apiBody {integer} [volumes.relativeRebuildPriority=10] Sets the volume relative rebuild priority.
+* @apiBody {string[]} [volumes.VSGs] Associated volume security groups.
+* @apiBody {string} [volumes.sourceID] The Source Volume ID. Used for creating a snapshot. Requires `sourceUUID`.
+* @apiBody {string} [volumes.sourceUUID] The Source Volume UUID. Used for creating a snapshot. Requires `sourceID`.
+* @apiBody {object} [volumes.mdvSpec] The allocation specifications for the metadata volume, used for snapshots.
+* @apiBody {string[]} [volumes.mdvSpec.diskClasses] Limit the metadata `volume` allocation to specific `diskClasses`.
+* @apiBody {string[]} [volumes.mdvSpec.serverClasses] Limit the metadata `volume` allocation to specific `serverClasses`.
+* @apiBody {string[]} [volumes.mdvSpec.limitByDisks] Limit the metadata `volume` allocation to specific `disks`.
+* @apiBody {string[]} [volumes.mdvSpec.limitByNodes] Limit the metadata `volume` allocation to specific `nodes`.
+* @apiBody {string} [volumes.mdvSpec.VPG] Limit the metadata `volume` allocation to a specific `VPG`.
+* @apiBody {boolean} [volumes.allowAllocationOnOfflineDrives=false] Use offline drives for allocation.
+* @apiBody {boolean} [volumes.isReadOnly=false] Should be true when creating a source volume for a snapshot.
+* @apiBody {boolean} [volumes.enableNVMf=false] Enable NVMf exposure for the `volume`. If true, `selectedClientsForNvmf` is required.
+* @apiBody {string[]} [volumes.selectedClientsForNvmf] Expose the `volume` as NVMf target for specific `clients`.
 * <strong>Required if `enableNVMf` is true.</strong>
-* @apiParam {boolean} [volumes.isEncrypted=false] Create an encrypted volume.
-* @apiParam {object} [volumes.encryption] Encryption options. <strong>Available when `isEncrypted` is true.</strong>
-* @apiParam {integer} [volumes.encryption.headerSize=16] Volume encryption header size in MiB.
-* @apiParam {object} [volumes.metadata={}] An Object containing `volume`'s metadata. (Max size: 256KB)
-* @apiParam {boolean} [volumes.use_debug_di=false] Use debug disk information for the `volume`. <br/><strong> Internal use only !</strong>
-*
-* @apiParam (Allocation) {string[]} [diskClasses] Limit `volume` allocation to specific `diskClasses`.
+* @apiBody {boolean} [volumes.isEncrypted=false] Create an encrypted volume.
+* @apiBody {object} [volumes.encryption] Encryption options. <strong>Available when `isEncrypted` is true.</strong>
+* @apiBody {integer} [volumes.encryption.headerSize=16] Volume encryption header size in MiB.
+* @apiBody {object} [volumes.metadata={}] An Object containing `volume`'s metadata. (Max size: 256KB)
+* @apiBody {boolean} [volumes.use_debug_di=false] Use debug disk information for the `volume`. <br/><strong> Internal use only !</strong>
+* @apiBody (Allocation) {string[]} [diskClasses] Limit `volume` allocation to specific `diskClasses`.
 * <br/><strong>Not allowed if `VPG` is set.</strong>
-* @apiParam (Allocation) {string[]} [limitByDisks] Limit `volume` allocation to specific `disks`. <br/><strong>Not allowed if `VPG` is set.</strong>
-* @apiParam (Allocation) {string[]} [limitByNodes] Limit `volume` allocation to specific `nodes`. <br/><strong>Not allowed if `VPG` is set.</strong>
-* @apiParam (Allocation) {string[]} [serverClasses] Limit volumes allocation to specific `serverClasses`.
+* @apiBody (Allocation) {string[]} [limitByDisks] Limit `volume` allocation to specific `disks`. <br/><strong>Not allowed if `VPG` is set.</strong>
+* @apiBody (Allocation) {string[]} [limitByNodes] Limit `volume` allocation to specific `nodes`. <br/><strong>Not allowed if `VPG` is set.</strong>
+* @apiBody (Allocation) {string[]} [serverClasses] Limit volumes allocation to specific `serverClasses`.
 * <br/><strong>Not allowed if `VPG` is set.</strong>
-* @apiParam (Allocation) {string} [domain] `Domain` to use for allocation. <br/><strong>Not allowed if `VPG` is set.</strong>
-*
-* @apiParam (RAID) {integer} [stripeSize=32] Stripe size in 4k blocks (e.g., 32 for 128k).
+* @apiBody (Allocation) {string} [domain] `Domain` to use for allocation. <br/><strong>Not allowed if `VPG` is set.</strong>
+* @apiBody (RAID) {integer} [stripeSize=32] Stripe size in 4k blocks (e.g., 32 for 128k).
 * <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiParam (RAID) {integer} [stripeWidth=2] Number of disks for stripe. <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiParam (RAID) {integer} [numberOfMirrors=1] Number of mirrors. <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiParam (RAID) {integer} [dataBlocks=8] Number of data disks for Erasure Coding. <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiParam (RAID) {integer} [parityBlocks=2] Number of parity disks for Erasure Coding.
+* @apiBody (RAID) {integer} [stripeWidth=2] Number of disks for stripe. <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
+* @apiBody (RAID) {integer} [numberOfMirrors=1] Number of mirrors. <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
+* @apiBody (RAID) {integer} [dataBlocks=8] Number of data disks for Erasure Coding. <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
+* @apiBody (RAID) {integer} [parityBlocks=2] Number of parity disks for Erasure Coding.
 * <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiParam (RAID) {string} [protectionLevel='Full Separation'] Protection level.
+* @apiBody (RAID) {string} [protectionLevel='Full Separation'] Protection level.
 * <small><i>Options: `Full Separation`, `Minimal Separation`,
 * `Ignore Separation`</i></small>
 * <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiParam (RAID) {boolean} [ignoreNodeSeparation=false] Disable node separation for mirrored volumes.
+* @apiBody (RAID) {boolean} [ignoreNodeSeparation=false] Disable node separation for mirrored volumes.
 * <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiParam (RAID) {boolean} [enableCrcCheck=false] Enable CRC check for the `volume`. Defaults to true for `Erasure Coding` and `Striped Erasure Coding`.
+* @apiBody (RAID) {boolean} [enableCrcCheck=false] Enable CRC check for the `volume`. Defaults to true for `Erasure Coding` and `Striped Erasure Coding`.
 <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiParamExample {string} Payload example
+* @apiExample {string} Payload example
 * [{
 * 		"RAIDLevel": "Striped RAID-0",
 *		"capacity": 100,
@@ -573,10 +552,7 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 *		"domain": "Rack",
 *		"VSGs": ["VSG1", "VSG2"]
 * }]
-*
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "V4",
@@ -601,29 +577,29 @@ router.post('/save', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumes/update Update volumes
 * @apiName UpdateVolumes
 * @apiGroup volumes
 * @apiDescription Update volumes. Only the properties listed below can be updated.
-* @apiParam {object[]} volumes `volumes` to update.
-* @apiParam {string} update._id <strong>Required</strong>. The `ID` of the `volume` to update.
-* @apiParam {string} update.uuid <strong>Required</strong>. The `UUID` of the `volume` to update.
-* @apiParam {string} [update.description] The `volume`'s description.
-* @apiParam {string[]} [update.diskClasses] Limit `volume` allocation to specific `diskClasses`.
-* @apiParam {string[]} [update.limitByDisks] Limit `volume` allocation to specific `disks`.
-* @apiParam {string[]} [update.limitByNodes] Limit `volume` allocation to specific `nodes`.
-* @apiParam {string[]} [update.serverClasses] Limit volumes allocation to specific `serverClasses`.
-* @apiParam {string[]} [update.VSGs] Associated `volume` security groups.
-* @apiParam {integer} [update.relativeRebuildPriority] Sets the volume relative rebuild priority.
-* @apiParam {boolean} [update.enableNVMf] Enable or disable NVMf exposure for the `volume`. If true, `selectedClientsForNvmf` is required.
-* @apiParam {string[]} [update.selectedClientsForNvmf] Expose the `volume` as NVMf target for specific `clients`.
+* @apiBody {object[]} volumes `volumes` to update.
+* @apiBody {string} volumes._id <strong>Required</strong>. The `ID` of the `volume` to update.
+* @apiBody {string} volumes.uuid <strong>Required</strong>. The `UUID` of the `volume` to update.
+* @apiBody {string} [volumes.description] The `volume`'s description.
+* @apiBody {string[]} [volumes.diskClasses] Limit `volume` allocation to specific `diskClasses`.
+* @apiBody {string[]} [volumes.limitByDisks] Limit `volume` allocation to specific `disks`.
+* @apiBody {string[]} [volumes.limitByNodes] Limit `volume` allocation to specific `nodes`.
+* @apiBody {string[]} [volumes.serverClasses] Limit volumes allocation to specific `serverClasses`.
+* @apiBody {string[]} [volumes.VSGs] Associated `volume` security groups.
+* @apiBody {integer} [volumes.relativeRebuildPriority] Sets the volume relative rebuild priority.
+* @apiBody {boolean} [volumes.enableNVMf] Enable or disable NVMf exposure for the `volume`. If true, `selectedClientsForNvmf` is required.
+* @apiBody {string[]} [volumes.selectedClientsForNvmf] Expose the `volume` as NVMf target for specific `clients`.
 * <strong>Required if `enableNVMf` is true.</strong>
-* @apiParam {boolean} [update.enableCrcCheck] Enable or disable CRC check for the `volume`.
-* @apiParam {boolean} [update.isReadOnly] Set the `volume` as read-only.
-* @apiParam {boolean} [update.allowAllocationOnOfflineDrives] Use offline drives for allocation.
-* @apiParam {object} [update.metadata] An Object containing `volume`'s metadata. (Max size: 256KB)
-* @apiParamExample {string} Payload example
+* @apiBody {boolean} [volumes.enableCrcCheck] Enable or disable CRC check for the `volume`.
+* @apiBody {boolean} [volumes.isReadOnly] Set the `volume` as read-only.
+* @apiBody {boolean} [volumes.allowAllocationOnOfflineDrives] Use offline drives for allocation.
+* @apiBody {object} [volumes.metadata] An Object containing `volume`'s metadata. (Max size: 256KB)
+* @apiExample {string} Payload example
 * [{
 *		"_id": "V5",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
@@ -631,7 +607,6 @@ router.post('/save', isAdminRole, function(req, res) {
 * }]
 *
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "V5",
@@ -658,18 +633,18 @@ router.post('/update', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumes/rotatePassphrase Rotate a passphrase
 * @apiName RotatePassphrase
 * @apiGroup volumes
 * @apiDescription Rotate a passphrase.
-* @apiParam {object[]} encryptionCommandObj `encryptionCommandObj` Rotate passphrase parameters.
-* @apiParam {string} encryptionCommandObj._id The `name` of the `volume`.
-* @apiParam {string} encryptionCommandObj.uuid The `UUID` of the `volume`.
-* @apiParam {string} encryptionCommandObj.currentPassphrase The current, valid `passphrase`.
-* @apiParam {string} encryptionCommandObj.newPassphrase The new `passphrase` to rotate.
-* @apiParam {integer} [encryptionCommandObj.slot] The `slot` that will be used.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} encryptionCommandObj `encryptionCommandObj` Rotate passphrase parameters.
+* @apiBody {string} encryptionCommandObj._id The `name` of the `volume`.
+* @apiBody {string} encryptionCommandObj.uuid The `UUID` of the `volume`.
+* @apiBody {string} encryptionCommandObj.currentPassphrase The current, valid `passphrase`.
+* @apiBody {string} encryptionCommandObj.newPassphrase The new `passphrase` to rotate.
+* @apiBody {integer} [encryptionCommandObj.slot] The `slot` that will be used.
+* @apiExample {string} Payload example
 * [{
 *		"_id": "V5",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
@@ -679,7 +654,6 @@ router.post('/update', isAdminRole, function(req, res) {
 * }]
 
 * @apiSuccess {object} result
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "V5",
@@ -705,16 +679,16 @@ router.post('/rotatePassphrase', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumes/deletePassphrase Delete a passphrase
 * @apiName DeletePassphrase
 * @apiGroup volumes
 * @apiDescription Delete a passphrase.
-* @apiParam {object[]} encryptionCommandObj `encryptionCommandObj` Delete passphrase parameters.
-* @apiParam {string} encryptionCommandObj._id The `name` of the `volume`.
-* @apiParam {string} encryptionCommandObj.uuid The `UUID` of the `volume`.
-* @apiParam {string} encryptionCommandObj.currentPassphrase The current, valid `passphrase`.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} encryptionCommandObj `encryptionCommandObj` Delete passphrase parameters.
+* @apiBody {string} encryptionCommandObj._id The `name` of the `volume`.
+* @apiBody {string} encryptionCommandObj.uuid The `UUID` of the `volume`.
+* @apiBody {string} encryptionCommandObj.currentPassphrase The current, valid `passphrase`.
+* @apiExample {string} Payload example
 * [{
 *		"_id": "V5",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
@@ -722,7 +696,6 @@ router.post('/rotatePassphrase', isAdminRole, (req, res) => {
 * }]
 
 * @apiSuccess {object} result
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "V5",
@@ -748,18 +721,18 @@ router.post('/deletePassphrase', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumes/addPassphrase Add a passphrase
 * @apiName AddPassphrase
 * @apiGroup volumes
 * @apiDescription Add a passphrase.
-* @apiParam {object[]} encryptionCommandObj `encryptionCommandObj` Add passphrase parameters.
-* @apiParam {string} encryptionCommandObj._id The `name` of the `volume`.
-* @apiParam {string} encryptionCommandObj.uuid The `UUID` of the `volume`.
-* @apiParam {string} encryptionCommandObj.currentPassphrase The current, valid `passphrase`.
-* @apiParam {string} encryptionCommandObj.newPassphrase The new `passphrase` to add.
-* @apiParam {integer} [encryptionCommandObj.slot] The `slot` that will be used.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} encryptionCommandObj `encryptionCommandObj` Add passphrase parameters.
+* @apiBody {string} encryptionCommandObj._id The `name` of the `volume`.
+* @apiBody {string} encryptionCommandObj.uuid The `UUID` of the `volume`.
+* @apiBody {string} encryptionCommandObj.currentPassphrase The current, valid `passphrase`.
+* @apiBody {string} encryptionCommandObj.newPassphrase The new `passphrase` to add.
+* @apiBody {integer} [encryptionCommandObj.slot] The `slot` that will be used.
+* @apiExample {string} Payload example
 * [{
 *		"_id": "V5",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
@@ -769,7 +742,6 @@ router.post('/deletePassphrase', isAdminRole, (req, res) => {
 * }]
 
 * @apiSuccess {object} result
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "V5",
@@ -795,19 +767,19 @@ router.post('/addPassphrase', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumes/initEncryption Initialize volume encryption
 * @apiName InitEncryption
 * @apiGroup volumes
 * @apiDescription Initialize volume encryption.
-* @apiParam {object[]} initEncryptionObj `initEncryptionObj` Encryption initialization parameters.
-* @apiParam {string} initEncryptionObj._id The `name` of the `volume`.
-* @apiParam {string} initEncryptionObj.uuid The `UUID` of the `volume`.
-* @apiParam {string} initEncryptionObj.passphrase The `passphrase` for initialization, the passphrase will never be saved to the DB.
-* @apiParam {integer} [initEncryptionObj.slot] The `slot` that will be used.
-* @apiParam {string} [initEncryptionObj.keySize] `AES-XTS` key size.<br />
+* @apiBody {object[]} initEncryptionObj `initEncryptionObj` Encryption initialization parameters.
+* @apiBody {string} initEncryptionObj._id The `name` of the `volume`.
+* @apiBody {string} initEncryptionObj.uuid The `UUID` of the `volume`.
+* @apiBody {string} initEncryptionObj.passphrase The `passphrase` for initialization, the passphrase will never be saved to the DB.
+* @apiBody {integer} [initEncryptionObj.slot] The `slot` that will be used.
+* @apiBody {string} [initEncryptionObj.keySize] `AES-XTS` key size.<br />
 * <small><i>Options: `256`, `512`</i></small>.
-* @apiParamExample {string} Payload example
+* @apiExample {string} Payload example
 * [{
 *		"_id": "V5",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
@@ -817,7 +789,6 @@ router.post('/addPassphrase', isAdminRole, (req, res) => {
 * }]
 
 * @apiSuccess {object} result
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "V5",
@@ -858,7 +829,7 @@ router.post('/acknowledgeResponse', isAdminRole, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumes/extend Extend volumes
 * @apiName ExtendVolumes
 * @apiGroup volumes
@@ -866,21 +837,19 @@ router.post('/acknowledgeResponse', isAdminRole, (req, res) => {
 * IMPORTANT: volume `extend` objects should contain all the previously configured fields as in the initial
 * creation of the volume and not just the modified fields. Unconfigured fields will be deleted.
 * It is recommended to first call `Get volumes`, modify the payload as needed, and send back using `Extend volumes`.
-* @apiParam {object[]} volumes `volumes` to extend.
-* @apiParam {string} extend._id The `ID` of the `volume` to extend.
-* @apiParam {string} extend.uuid The `UUID` of the `volume` to extend.
-* @apiParam {string} [extend.description] The `volume`'s description.
-* @apiParam {integer} [extend.capacity] Extend the `volume` capacity in GB.
-* @apiParam {boolean} [volumes.allowAllocationOnOfflineDrives] Use offline drives for allocation, defaults to false.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} volumes `volumes` to extend.
+* @apiBody {string} volumes._id The `ID` of the `volume` to extend.
+* @apiBody {string} volumes.uuid The `UUID` of the `volume` to extend.
+* @apiBody {string} [volumes.description] The `volume`'s description.
+* @apiBody {integer} [volumes.capacity] Extend the `volume` capacity in GB.
+* @apiBody {boolean} [volumes.allowAllocationOnOfflineDrives] Use offline drives for allocation, defaults to false.
+* @apiExample {string} Payload example
 * [{
 *		"_id": "V5",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * 		"capacity": 200
 * }]
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "V5",
@@ -908,22 +877,20 @@ router.post('/extend', isAdminRole, function(req, res) {
 
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumes/delete Delete volumes
 * @apiName DeleteVolumes
 * @apiGroup volumes
 * @apiDescription Delete volumes.
-* @apiParam {object[]} volumes `volumes` to delete.
-* @apiParam {string} delete._id The `ID` of the `volume` to delete.
-* @apiParam {string} delete.uuid The `UUID` of the `volume` to delete.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} volumes `volumes` to delete.
+* @apiBody {string} volumes._id The `ID` of the `volume` to delete.
+* @apiBody {string} volumes.uuid The `UUID` of the `volume` to delete.
+* @apiExample {string} Payload example
 * [{
 *		"_id": "V5"
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 * 		"_id": "V5",
@@ -947,18 +914,16 @@ router.post('/delete', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /volumes/:id Get volume by ID
 * @apiName GetVolume
 * @apiGroup volumes
 * @apiDescription Get specific `volume` by `ID`.
 *
-* @apiParam {string} volume `volume's ID` to fetch.
+* @apiParam {string} id `volume's ID` to fetch.
 * @apiParamExample {string} Example request
 * volumes/v1
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "_id": "v1",

@@ -31,7 +31,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /managementCluster/all/:page/:count?filter={}&sort={} Get Managements
 * @apiName GetManagements
 * @apiGroup managementCluster
@@ -97,32 +97,28 @@ router.get('/all/:page/:count', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /managementCluster/count Count managements
 * @apiName CountManagements
 * @apiGroup managementCluster
 * @apiDescription Get total `management` count.
-*
 * @apiSuccess {integer} count `managementCluster` count.
-*
 * @apiSuccessExample Example data on success
 * 3
 */
 router.get('/count', getCountEntitiesHandler('managementCluster'));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /managementCluster/delete Delete management
 * @apiName DeleteManagement
 * @apiGroup managementCluster
 * @apiDescription Delete `managementCluster`.
 *
-* @apiParam {string[]} _id The `id[s]` of the `managementCluster[s]` to delete.
-* @apiParamExample {string[]} Payload example
+* @apiBody {string[]} _id The `id` of the `managementCluster` to delete.
+* @apiExample {string[]} Payload example
 * ["nvme1038:4001"]
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "nvme1038:4001",
@@ -147,18 +143,16 @@ router.post('/delete', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /managementCluster/:id Get management by ID
 * @apiName GetManagement
 * @apiGroup managementCluster
 * @apiDescription Get specific `management` by `ID`.
 *
-* @apiParam {string} management `management's ID` to fetch.
+* @apiParam {string} id `management's ID` to fetch.
 * @apiParamExample {string} Example request
 * managementCluster/192.168.75.159:4001
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "_id": "192.168.75.159:4001",

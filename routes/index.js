@@ -148,7 +148,7 @@ router.get('/getVolumeCounters', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /getClusterStatus?skipLogs=true Get cluster status query
 * @apiName getClusterStatusQuery
 * @apiGroup index
@@ -240,7 +240,7 @@ router.post('/resetVolumeStatuses', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /getSpaceAllocation Get space allocation data
 * @apiName getSpaceAllocation
 * @apiGroup index
@@ -268,7 +268,7 @@ router.get('/getSpaceAllocation', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /status?skipLogs=true Get status query
 * @apiName getStatusQuery
 * @apiGroup index
@@ -342,7 +342,7 @@ router.get('/isAlive', function(req, res) {
 
 /**
 * @apiDeprecated
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /version Get detailed version
 * @apiName getVersion
 * @apiGroup index
@@ -362,7 +362,7 @@ router.get('/version', isDeprecated, function(req, res) {
 
 /**
 * @apiDeprecated
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /managementVersion Get management version
 * @apiName getManagementVersion
 * @apiGroup index
@@ -379,7 +379,7 @@ router.get('/managementVersion', isDeprecated, function(req, res) {
 
 /**
 * @apiDeprecated
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /APIVersion Get API Version
 * @apiName getAPIVersion
 * @apiGroup index
@@ -395,7 +395,7 @@ router.get('/APIVersion', isDeprecated, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /aboutInfo Get About Information
 * @apiName getAboutInformation
 * @apiGroup index
@@ -433,7 +433,7 @@ router.get('/docs/rest', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /config/get/:key Get config by key
 * @apiName getConfigByKey
 * @apiGroup index
@@ -456,7 +456,7 @@ router.get('/InteropDB', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /getAllSystemMessages Get all system messages
 * @apiName getAllSystemMessages
 * @apiGroup index
@@ -484,7 +484,7 @@ router.get('/getAllSystemMessages', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /systemInfo Get system information
 * @apiName getSystemInfo
 * @apiGroup index
@@ -517,7 +517,7 @@ router.get('/systemInfo', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /consts Get serialized consts
 * @apiName getSerializedConsts
 * @apiGroup index

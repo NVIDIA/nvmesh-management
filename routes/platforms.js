@@ -28,7 +28,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /platforms/all/:page/:count?filter={}&sort={} Get platforms
 * @apiName GetPlatforms
 * @apiGroup platforms
@@ -75,25 +75,22 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /platforms/save Save platforms
  * @apiName SavePlatforms
  * @apiGroup platforms
  * @apiDescription Save `platforms`.
  *
- * @apiParam {object[]} platforms The `platforms` to save.
- * @apiParam {string} platforms.name The name of the `platform`.
- * @apiParam {string} platforms.description The description of the `platform`.
- * @apiParam {integer} platforms.archTypeID The `archTypeID` of the `platform`.
- * @apiParam {integer} platforms.operatingSystemID The `operatingSystemID` of the `platform`.
- * @apiParam {integer} platforms.kernelID The `kernelID` of the `platform`.
- * @apiParam {integer} platforms.ofedID The `ofedID` of the `platform`.
- *
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} platforms The `platforms` to save.
+ * @apiBody {string} platforms.name The name of the `platform`.
+ * @apiBody {string} platforms.description The description of the `platform`.
+ * @apiBody {integer} platforms.archTypeID The `archTypeID` of the `platform`.
+ * @apiBody {integer} platforms.operatingSystemID The `operatingSystemID` of the `platform`.
+ * @apiBody {integer} platforms.kernelID The `kernelID` of the `platform`.
+ * @apiBody {integer} platforms.ofedID The `ofedID` of the `platform`.
+ * @apiExample {object[]} Example request
  * [{"name":"asdasd","description":"sd","archTypeID":2,"operatingSystemID":2,"kernelID":2,"ofedID":3}]
- *
- * @apiSuccess {object[]} platforms The saved `platforms`.
- *
+ * @apiSuccess {object[]} result List of results for each platform creation.
  * @apiSuccessExample {object[]} Example data on success
  * [{"_id":"OCICluster","uuid":null,"success":true,"error":null,"payload":null}]
  */
@@ -113,21 +110,18 @@ router.post('/save', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /platforms/delete Delete platforms
  * @apiName DeletePlatforms
  * @apiGroup platforms
  * @apiDescription Delete `platforms`.
  *
- * @apiParam {object[]} platforms The `platforms` to delete.
- * @apiParam {string} platforms.ID The `ID` of the `platform`.
- * @apiParam {string} platforms.name The name of the `platform`.
- *
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} platforms The `platforms` to delete.
+ * @apiBody {string} platforms.ID The `ID` of the `platform`.
+ * @apiBody {string} platforms.name The name of the `platform`.
+ * @apiExample {object[]} Example request
  * [{"ID":10,"name":"asdasd"}]
- *
- * @apiSuccess {object[]} platforms The deleted `platforms`.
- *
+ * @apiSuccess {object[]} result List of results for each platform deletion.
  * @apiSuccessExample {object[]} Example data on success
  * [{"_id":"OCICluster","uuid":10,"success":true,"error":null,"payload":null}]
  */
@@ -147,26 +141,23 @@ router.post('/delete', (req, res) => {
 });
 
 /**
- * @apiVersion 1.0.0
+ * @apiVersion 17.0.0
  * @api {post} /platforms/update Update platforms
  * @apiName UpdatePlatforms
  * @apiGroup platforms
  * @apiDescription Update `platforms`.
  *
- * @apiParam {object[]} platforms The `platforms` to update.
- * @apiParam {string} platforms.ID The `ID` of the `platform`.
- * @apiParam {string} platforms.name The name of the `platform`.
- * @apiParam {string} platforms.description The description of the `platform`.
- * @apiParam {integer} platforms.archTypeID The `archTypeID` of the `platform`.
- * @apiParam {integer} platforms.operatingSystemID The `operatingSystemID` of the `platform`.
- * @apiParam {integer} platforms.kernelID The `kernelID` of the `platform`.
- * @apiParam {integer} platforms.ofedID The `ofedID` of the `platform`.
- *
- * @apiParamExample {object[]} Example request
+ * @apiBody {object[]} platforms The `platforms` to update.
+ * @apiBody {string} platforms.ID The `ID` of the `platform`.
+ * @apiBody {string} platforms.name The name of the `platform`.
+ * @apiBody {string} platforms.description The description of the `platform`.
+ * @apiBody {integer} platforms.archTypeID The `archTypeID` of the `platform`.
+ * @apiBody {integer} platforms.operatingSystemID The `operatingSystemID` of the `platform`.
+ * @apiBody {integer} platforms.kernelID The `kernelID` of the `platform`.
+ * @apiBody {integer} platforms.ofedID The `ofedID` of the `platform`.
+ * @apiExample {object[]} Example request
  * [{"ID": 9, "name":"OCICluster","description":"zzz","archTypeID":2,"operatingSystemID":2,"kernelID":2,"ofedID":3}]
- *
- * @apiSuccess {object[]} platforms The updated `platforms`.
- *
+ * @apiSuccess {object[]} result List of results for each platform update.
  * @apiSuccessExample {object[]} Example data on success
  * [{"_id":"OCICluster","uuid":9,"success":true,"error":null,"payload":null}]
  */
@@ -186,18 +177,15 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /platforms/count Count platforms
 * @apiName CountPlatforms
 * @apiGroup platforms
 * @apiDescription Get total `platforms` count.
-*
 * @apiParam {object} [filter] `Filter` before counting. <small><i>--MongoDB filter obj</i></small>
 * @apiParamExample {object} Example request
 * platforms/count?filter={"archTypeID":2}
-*
 * @apiSuccess {integer} count `platforms` count.
-*
 * @apiSuccessExample Example data on success
 * 3606
 */

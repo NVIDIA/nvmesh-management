@@ -27,7 +27,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /logs/all/:page/:count?filter={}&sort={} Get logs
 * @apiName GetLogs
 * @apiGroup logs
@@ -87,21 +87,19 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /logs/count Count logs
 * @apiName CountLogs
 * @apiGroup logs
 * @apiDescription Get total `logs` count.
-*
 * @apiSuccess {integer} count `logs` count.
-*
 * @apiSuccessExample Example data on success
 * 3606
 */
 router.get('/count', getCountEntitiesHandler('log'));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /logs/alerts/:page/:count?filter={}&sort={} Get alerts
 * @apiName GetAlerts
 * @apiGroup logs
@@ -166,14 +164,12 @@ router.get('/alerts/:page/:count', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /logs/alerts/count Count alerts
 * @apiName CountAlerts
 * @apiGroup logs
 * @apiDescription Get total `alerts` count.
-*
 * @apiSuccess {integer} count `alerts` count.
-*
 * @apiSuccessExample Example data on success
 * 122
 */
@@ -181,18 +177,19 @@ router.get('/alerts/count', getCountEntitiesHandler('log',
 	{ level: { $in: [consts.logsLevel.WARNING, consts.logsLevel.ERROR] }, 'meta.acknowledged': false }));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /logs/acknowledge Acknowledge logged alert
 * @apiName AckLog
 * @apiGroup logs
 * @apiDescription Acknowledge a specified `log` by `ID`.
 *
-*
-* @apiParam {object} logID The `log ID` to acknowledge.<br />
-* For example: `{ "id": "55d46a6a05847d2d34f9f19c" }`.
-*
+* @apiBody {object} Object including the `log ID` to acknowledge.
+* @apiBody {string} id The `log ID` to acknowledge.
+* @apiExample {object} Payload example
+* {
+*	"id": "55d46a6a05847d2d34f9f19c"
+* }
 * @apiSuccess {object} success status
-*
 * @apiSuccessExample Example data on success
 * {
 * 	"success": true,
@@ -215,7 +212,7 @@ router.post('/acknowledge/', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /logs/acknowledgeAll Acknowledge all logged alerts
 * @apiName AckAll
 * @apiGroup logs
@@ -237,18 +234,16 @@ router.post('/acknowledgeAll', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /logs/:id Get log by ID
 * @apiName GetLog
 * @apiGroup logs
 * @apiDescription Get specific `log` by `ID`.
 *
-* @apiParam {string} log `log's ID` to fetch.
+* @apiParam {string} id `log's ID` to fetch.
 * @apiParamExample {string} Example request
 * logs/661fbdbc078a05dced487817
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "_id": "661fbdbc078a05dced487817",

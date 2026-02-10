@@ -17,7 +17,7 @@ const { Entities } = require('../modules/error.js');
 const router = express.Router();
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /upgradeSteps/all/:page/:count?filter={}&sort={} Get upgrade steps
 * @apiName GetUpgradeSteps
 * @apiGroup upgradeSteps
@@ -29,9 +29,7 @@ const router = express.Router();
 * @apiParam {object} [sort] `Sort` before fetching.
 * @apiParamExample {object[]} Example request
 * /upgradeSteps/all/0/2?filter={"upgradeID":"1"}&sort={"dateModified":-1}
-*
 * @apiSuccess {object[]} upgradeSteps List of `upgradeSteps`.
-*
 * @apiSuccessExample Example data on success
 * [{
 *    _id: '4c275241-3659-11f0-a7ac-b9c53b0d839f',
@@ -76,14 +74,12 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /upgradeSteps/count Count upgrade steps
 * @apiName CountUpgradeSteps
 * @apiGroup upgradeSteps
 * @apiDescription Get total `upgradeSteps` count.
-*
 * @apiSuccess {integer} count `upgradeSteps` count.
-*
 * @apiSuccessExample Example data on success
 * 4
 */
@@ -91,17 +87,20 @@ router.get('/count', getCountEntitiesHandler('upgradeStep'));
 
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /upgradeSteps/setBreakpoint Set breakpoint
 * @apiName SetBreakpoint
 * @apiGroup upgradeSteps
 * @apiDescription Set a breakpoint for an upgrade step.
 
-* @apiParam {string} upgradeStepID `ID` of the `Upgrade step`.
-* @apiParam {boolean} isBreakpointSet Whether to set or clear the breakpoint.
-*
+* @apiBody {string} upgradeStepID `ID` of the `Upgrade step`.
+* @apiBody {boolean} isBreakpointSet Whether to set or clear the breakpoint.
+* @apiExample {object} Payload example
+* {
+*	"upgradeStepID": "4c275241-3659-11f0-a7ac-b9c53b0d839f",
+*	"isBreakpointSet": true
+* }
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * {
 *	"uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
@@ -122,16 +121,18 @@ router.post('/setBreakpoint', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /upgradeSteps/markAsCompleted Mark as completed
 * @apiName MarkAsCompleted
 * @apiGroup upgradeSteps
 * @apiDescription Mark an upgrade step as completed manually.
 
-* @apiParam {string} upgradeStepID `ID` of the `Upgrade step`.
-*
+* @apiBody {string} upgradeStepID `ID` of the `Upgrade step`.
+* @apiExample {object} Payload example
+* {
+*	"upgradeStepID": "4c275241-3659-11f0-a7ac-b9c53b0d839f"
+* }
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * {
 *	"uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",

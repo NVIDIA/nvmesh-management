@@ -28,7 +28,7 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /operatingSystems/all/:page/:count?filter={}&sort={} Get operatingSystems
 * @apiName GetOperatingSystems
 * @apiGroup operatingSystems
@@ -62,15 +62,15 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /operatingSystems/save Create new operatingSystems
 * @apiName CreateOperatingSystems
 * @apiGroup operatingSystems
 * @apiDescription Create new `operatingSystems` from a list of objects.
-* @apiParam {Object[]} - Array of operatingSystem objects to create. Each object must contain `version` and `distributionTypeID`.
-* @apiParam {string} operatingSystems.version The `version` of the `operatingSystem`.
-* @apiParam {string} operatingSystems.distributionTypeID The `distributionTypeID` of the `operatingSystem`.
-* @apiParamExample {json} Example request
+* @apiBody {Object[]} operatingSystems Array of operatingSystem objects to create. Each object must contain `version` and `distributionTypeID`.
+* @apiBody {string} operatingSystems.version The `version` of the `operatingSystem`.
+* @apiBody {string} operatingSystems.distributionTypeID The `distributionTypeID` of the `operatingSystem`.
+* @apiExample {json} Example request
 * [{ "version": "24.04", "distributionTypeID": 2 }]
 * @apiSuccess {Object[]} result List of results for each operatingSystem creation.
 * @apiSuccessExample {json} Example data on success
@@ -92,16 +92,16 @@ router.post('/save', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /operatingSystems/update Update existing operatingSystems
 * @apiName UpdateOperatingSystems
 * @apiGroup operatingSystems
 * @apiDescription Update existing `operatingSystems` from a list of operatingSystem objects.
-* @apiParam {Object[]} - Array of operatingSystem objects to update. Each object must contain `ID`, `version`, and `distributionTypeID`.
-* @apiParam {string} operatingSystems.ID The `ID` of the `operatingSystem`.
-* @apiParam {string} operatingSystems.version The `version` of the `operatingSystem`.
-* @apiParam {string} operatingSystems.distributionTypeID The `distributionTypeID` of the `operatingSystem`.
-* @apiParamExample {json} Example request
+* @apiBody {Object[]} operatingSystems Array of operatingSystem objects to update. Each object must contain `ID`, `version`, and `distributionTypeID`.
+* @apiBody {string} operatingSystems.ID The `ID` of the `operatingSystem`.
+* @apiBody {string} operatingSystems.version The `version` of the `operatingSystem`.
+* @apiBody {string} operatingSystems.distributionTypeID The `distributionTypeID` of the `operatingSystem`.
+* @apiExample {json} Example request
 * [{"ID": 1, "version": "24.04", "distributionTypeID": 2}]
 * @apiSuccess {Object[]} result List of results for each operatingSystem update.
 * @apiSuccessExample {json} Example data on success
@@ -124,15 +124,15 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /operatingSystems/delete Delete existing operatingSystems
 * @apiName DeleteOperatingSystems
 * @apiGroup operatingSystems
 * @apiDescription Delete existing `operatingSystems` from a list of operatingSystem objects.
-* @apiParam {Object[]} - Array of operatingSystem objects to delete.
-* @apiParam {string} operatingSystems.ID The `ID` of the `operatingSystem`.
-* @apiParam {string} operatingSystems.version The `version` of the `operatingSystem`.
-* @apiParamExample {json} Example request
+* @apiBody {Object[]} operatingSystems Array of operatingSystem objects to delete.
+* @apiBody {string} operatingSystems.ID The `ID` of the `operatingSystem`.
+* @apiBody {string} operatingSystems.version The `version` of the `operatingSystem`.
+* @apiExample {json} Example request
 * [{"ID": 1, "version": "24.04"}]
 * @apiSuccess {Object[]} result List of results for each operatingSystem deletion.
 * @apiSuccessExample {json} Example data on success
@@ -154,7 +154,7 @@ router.post('/delete', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /operatingSystems/count Count operatingSystems
 * @apiName CountOperatingSystems
 * @apiGroup operatingSystems
@@ -175,7 +175,7 @@ router.get('/count', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /operatingSystems/distributionTypes Get all distribution types
 * @apiName GetAllDistributionTypes
 * @apiGroup operatingSystems

@@ -35,7 +35,7 @@ router.get('/', function(req, res) {
 router.use(isAdminRole);
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /mongoDB/all Get MongoDB
 * @apiName GetMongoDBs
 * @apiGroup mongoDB
@@ -63,7 +63,7 @@ router.use(isAdminRole);
 router.get('/all', (req, res) => mongoDBModule.getAllMongoDB(results => res.json(results)));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /mongoDB/count Count mongoDB replicas
 * @apiName CountMongoDB
 * @apiGroup mongoDB
@@ -88,18 +88,16 @@ router.get('/count', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /mongoDB/:id Get mongoDB by ID
 * @apiName GetMongoDB
 * @apiGroup mongoDB
 * @apiDescription Get specific `mongoDB` by `ID`.
 *
-* @apiParam {string} mongoDB `mongoDB's ID` to fetch.
+* @apiParam {string} id `mongoDB's ID` to fetch.
 * @apiParamExample {string} Example request
-* mongoDB/
-*
+* mongoDB/localhost:27017
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "name": "localhost:27017",

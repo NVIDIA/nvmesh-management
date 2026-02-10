@@ -47,18 +47,16 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /volumeProvisioningGroups/getVolumesCapacityUsageByID/:id Get volumeProvisioningGroup volumes usage data by ID
 * @apiName GetVolumesCapacityUsageByID
 * @apiGroup VPGs
 * @apiDescription Get volumes usage data  for  a specific `volumeProvisioningGroup` by `ID`.
 *
-* @apiParam {string} volumeProvisioningGroup `volumeProvisioningGroup's ID` to fetch.
+* @apiParam {string} id `volumeProvisioningGroup's ID` to fetch.
 * @apiParamExample {string} Example request
 * volumeProvisioningGroups/getVolumesCapacityUsageByID/test
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 *{
 *  "VPG": "test",
@@ -95,17 +93,17 @@ router.get('/getVolumesCapacityUsage/all', (req, res) => {
 router.use(isAdminRole);
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /volumeProvisioningGroups/all/:page/:count?filter={}&sort={} Get VPGs
 * @apiName GetVPGs
 * @apiGroup VPGs
 * @apiDescription Get all `VPGs`.
 *
+* @apiParam {integer} page The `page` number to fetch.
+* @apiParam {integer} count Number of records per `page`.
 * @apiParam {object} [filter] `Filter` before fetching. <small><i>--MongoDB filter obj.</i></small>
 * @apiParam {object} [sort] `Sort` before fetching. <small><i>--MongoDB sort obj.</i></small>
-*
 * @apiSuccess {object[]} VPGs List Of `VPGs`
-*
 * @apiSuccessExample Example data on success
 * [{
 * 	"_id": "VPG1",
@@ -139,55 +137,52 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /volumeProvisioningGroups/count Count VPGs
 * @apiName CountVPGs
 * @apiGroup VPGs
 * @apiDescription Get total `VPG` count.
-*
 * @apiSuccess {integer} count `VPG` count.
-*
 * @apiSuccessExample Example data on success
 * 4
 */
 router.get('/count', getCountEntitiesHandler('volumeProvisioningGroup'));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumeProvisioningGroups/save Create VPGs
 * @apiName CreateVPGs
 * @apiGroup VPGs
 * @apiDescription Create `VPGs`.
 *
-* @apiParam {object[]} VPGs `VPGs` to save.
-* @apiParam {string} VPGs.name <strong>Required</strong>. Name of the `VPG`.
-* @apiParam {string} VPGs.RAIDLevel <strong>Required</strong>. The RAID level for volumes in this VPG.<br />
+* @apiBody {object[]} VPGs `VPGs` to save.
+* @apiBody {string} VPGs.name <strong>Required</strong>. Name of the `VPG`.
+* @apiBody {string} VPGs.RAIDLevel <strong>Required</strong>. The RAID level for volumes in this VPG.<br />
 * <small><i>Options: `Concatenated`, `Striped RAID-0`, `Mirrored RAID-1`, `Striped & Mirrored RAID-10`, `Erasure Coding`, `Striped Erasure Coding`.</i></small>
-* @apiParam {string} [VPGs.capacity=0] Space to reserve for the VPG in GB.
-* @apiParam {string} [VPGs.description] `Description` of the `VPG`.
-* @apiParam {string[]} [VPGs.diskClasses] Limit volumes allocation to specific `diskClasses`.
-* @apiParam {string[]} [VPGs.serverClasses] Limit volumes allocation to specific `serverClasses`.
-* @apiParam {string[]} [VPGs.VSGs] Associated volume security groups.
-* @apiParam {boolean} [VPGs.allowOverflow=true] Allow allocation outside of reserved space.
-* @apiParam {boolean} [VPGs.allowAllocationOnOfflineDrives=false] Use offline drives for allocation.
-* @apiParam {string} [VPGs.type] `type` of the VPG. Set to `METADATA_VOLUME` if the VPG is for a snapshot's metadata volume.
+* @apiBody {string} [VPGs.capacity=0] Space to reserve for the VPG in GB.
+* @apiBody {string} [VPGs.description] `Description` of the `VPG`.
+* @apiBody {string[]} [VPGs.diskClasses] Limit volumes allocation to specific `diskClasses`.
+* @apiBody {string[]} [VPGs.serverClasses] Limit volumes allocation to specific `serverClasses`.
+* @apiBody {string[]} [VPGs.VSGs] Associated volume security groups.
+* @apiBody {boolean} [VPGs.allowOverflow=true] Allow allocation outside of reserved space.
+* @apiBody {boolean} [VPGs.allowAllocationOnOfflineDrives=false] Use offline drives for allocation.
+* @apiBody {string} [VPGs.type] `type` of the VPG. Set to `METADATA_VOLUME` if the VPG is for a snapshot's metadata volume.
 This will force `RAIDLevel` to `Mirrored RAID-1`.
-* @apiParam {boolean} [VPGs.isEncrypted=false] Volumes in this VPG will be encrypted.
-* @apiParam {object} [VPGs.encryption] Encryption options. <strong>Available when `isEncrypted` is true.</strong>
-* @apiParam {integer} [VPGs.encryption.headerSize=16] Volume encryption header size in MiB.
-* @apiParam {string} [VPGs.domain] `Protection Domain` to use for allocation.
-*
-* @apiParam (RAID) {integer} [stripeSize=32] Stripe size in 4k blocks (e.g., 32 for 128k). <br/><strong>Depends on `RAIDLevel`.</strong>
-* @apiParam (RAID) {integer} [stripeWidth=2] Number of disks for stripe. <br/><strong>Depends on `RAIDLevel`.</strong>
-* @apiParam (RAID) {integer} [numberOfMirrors=1] Number of mirrors. <br/><strong>Depends on `RAIDLevel`.</strong>
-* @apiParam (RAID) {integer} [dataBlocks=8] Number of data disks for Erasure Coding. <br/><strong>Depends on `RAIDLevel`.</strong>
-* @apiParam (RAID) {integer} [parityBlocks=2] Number of parity disks for Erasure Coding. <br/><strong>Depends on `RAIDLevel`.</strong>
-* @apiParam (RAID) {string} [protectionLevel='Full Separation'] Protection level. <small><i>Options: `Full Separation`, `Minimal Separation`,
+* @apiBody {boolean} [VPGs.isEncrypted=false] Volumes in this VPG will be encrypted.
+* @apiBody {object} [VPGs.encryption] Encryption options. <strong>Available when `isEncrypted` is true.</strong>
+* @apiBody {integer} [VPGs.encryption.headerSize=16] Volume encryption header size in MiB.
+* @apiBody {string} [VPGs.domain] `Protection Domain` to use for allocation.
+* @apiBody (RAID) {integer} [stripeSize=32] Stripe size in 4k blocks (e.g., 32 for 128k). <br/><strong>Depends on `RAIDLevel`.</strong>
+* @apiBody (RAID) {integer} [stripeWidth=2] Number of disks for stripe. <br/><strong>Depends on `RAIDLevel`.</strong>
+* @apiBody (RAID) {integer} [numberOfMirrors=1] Number of mirrors. <br/><strong>Depends on `RAIDLevel`.</strong>
+* @apiBody (RAID) {integer} [dataBlocks=8] Number of data disks for Erasure Coding. <br/><strong>Depends on `RAIDLevel`.</strong>
+* @apiBody (RAID) {integer} [parityBlocks=2] Number of parity disks for Erasure Coding. <br/><strong>Depends on `RAIDLevel`.</strong>
+* @apiBody (RAID) {string} [protectionLevel='Full Separation'] Protection level. <small><i>Options: `Full Separation`, `Minimal Separation`,
 `Ignore Separation`.</i></small> <br/><strong>Depends on `RAIDLevel`.</strong>
-* @apiParam (RAID) {boolean} [ignoreNodeSeparation=false] Disable node separation for mirrored volumes. <br/><strong>Depends on `RAIDLevel`.</strong>
-* @apiParam (RAID) {boolean} [enableCrcCheck=false] `enableCrcCheck` Enables CRC check for the derived volumes.
+* @apiBody (RAID) {boolean} [ignoreNodeSeparation=false] Disable node separation for mirrored volumes. <br/><strong>Depends on `RAIDLevel`.</strong>
+* @apiBody (RAID) {boolean} [enableCrcCheck=false] `enableCrcCheck` Enables CRC check for the derived volumes.
 Defaults to true for Erasure Coding and Striped Erasure Coding.
-* @apiParamExample {string} Payload example
+* @apiExample {object[]} Payload example
 * [{
 * 	"RAIDLevel": "Striped RAID-0",
 *	"capacity": 100,
@@ -202,9 +197,7 @@ Defaults to true for Erasure Coding and Striped Erasure Coding.
 *	"stripeWidth": 2,
 *	"enableCrcCheck": false
 * }]
-
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
 * [{
 *	"_id": "highEndurance",
@@ -228,15 +221,16 @@ router.post('/save', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumeProvisioningGroups/delete Delete VPGs
 * @apiName DeleteVPGs
 * @apiGroup VPGs
 * @apiDescription Delete `VPGs`. <small><i>A VPG cannot be deleted if it has volumes.</i></small>
-* @apiParam {object[]} volumes `VPG[s]` to delete.
-* @apiParam {string} _id The `id[s]` of the `VPG[s]` to delete.
-* @apiParam {string} uuid The `UUID[s]` of the `VPG[s]` to delete.
-* @apiParamExample {object[]} Payload example
+*
+* @apiBody {object[]} VPGs `VPGs` to delete.
+* @apiBody {string} VPGs._id The `ID` of the `VPG` to delete.
+* @apiBody {string} VPGs.uuid The `UUID` of the `VPG` to delete.
+* @apiExample {object[]} Payload example
 * [{
 * 	"_id": "VPG1",
 *	"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398"
@@ -268,18 +262,18 @@ router.post('/delete', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumeProvisioningGroups/update Update VPGs
 * @apiName UpdateVPGs
 * @apiGroup VPGs
 * @apiDescription Update VPGs. Only the properties listed below can be updated.
-* @apiParam {object[]} VPGs `VPGs` to update.
-* @apiParam {string} update._id <strong>Required</strong>. The `ID` of the `VPG` to update.
-* @apiParam {string} update.uuid <strong>Required</strong>. The `UUID` of the `VPG` to update.
-* @apiParam {string} [update.description] The `VPG`'s description.
-* @apiParam {string[]} [update.VSGs] Associated volume security groups.
-* @apiParam {boolean} [update.allowAllocationOnOfflineDrives] Use offline drives for allocation.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} VPGs `VPGs` to update.
+* @apiBody {string} VPGs._id <strong>Required</strong>. The `ID` of the `VPG` to update.
+* @apiBody {string} VPGs.uuid <strong>Required</strong>. The `UUID` of the `VPG` to update.
+* @apiBody {string} [VPGs.description] The `VPG`'s description.
+* @apiBody {string[]} [VPGs.VSGs] Associated volume security groups.
+* @apiBody {boolean} [VPGs.allowAllocationOnOfflineDrives] Use offline drives for allocation.
+* @apiExample {object[]} Payload example
 * [{
 *		"_id": "VPG5",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
@@ -312,23 +306,22 @@ router.post('/update', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /volumeProvisioningGroups/extend Extend VPGs
 * @apiName ExtendVPGs
 * @apiGroup VPGs
 * @apiDescription Extend VPGs.
-* @apiParam {object[]} VPGs `VPGs` to extend.
-* @apiParam {string} update._id The `ID` of the `VPG` to extend.
-* @apiParam {string} update.uuid The `UUID` of the `VPG` to extend.
-* @apiParam {integer} [update.capacity] Extend the `VPG` capacity.
-* @apiParam {boolean} [VPGs.allowAllocationOnOfflineDrives] Use offline drives for allocation, defaults to false.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} VPGs `VPGs` to extend.
+* @apiBody {string} VPGs._id The `ID` of the `VPG` to extend.
+* @apiBody {string} VPGs.uuid The `UUID` of the `VPG` to extend.
+* @apiBody {integer} [VPGs.capacity] Extend the `VPG` capacity.
+* @apiBody {boolean} [VPGs.allowAllocationOnOfflineDrives] Use offline drives for allocation, defaults to false.
+* @apiExample {object[]} Payload example
 * [{
 *		"_id": "VPG5",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * 		"capacity": 200,
 * }]
-*
 * @apiSuccess {object} results success statuses
 * @apiSuccessExample Example data on success
 * [{
@@ -375,18 +368,16 @@ router.get('/getDisksByID/:id', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /volumeProvisioningGroups/:id Get volumeProvisioningGroup by ID
 * @apiName GetVolumeProvisioningGroup
 * @apiGroup VPGs
 * @apiDescription Get specific `volumeProvisioningGroup` by `ID`.
 *
-* @apiParam {string} volumeProvisioningGroup `volumeProvisioningGroup's ID` to fetch.
+* @apiParam {string} id `volumeProvisioningGroup's ID` to fetch.
 * @apiParamExample {string} Example request
 * volumeProvisioningGroups/DEFAULT_CONCATENATED_VPG
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "_id": "DEFAULT_CONCATENATED_VPG",

@@ -36,14 +36,12 @@ router.get('/', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /users/count Count Users
 * @apiName CountUsers
 * @apiGroup users
 * @apiDescription Get total `users` count.
-*
 * @apiSuccess {integer} count `users` count.
-*
 * @apiSuccessExample Example data on success
 * 4
 */
@@ -88,14 +86,13 @@ router.post('/updateDefaultDomain', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /users/all Get users
 * @apiName GetUsers
 * @apiGroup users
 * @apiDescription Get all `users`.
 *
 * @apiSuccess {object[]} users List of `users`.
-*
 * @apiSuccessExample Example data on success
 * [{
 * 	"_id": "admin@nvidia.com",
@@ -129,23 +126,23 @@ router.get('/concurrentSessions', function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /users/save Create users
 * @apiName CreateUsers
 * @apiGroup users
 * @apiDescription Create `users`.
 *
-* @apiParam {object[]} users `users` to save.
-* @apiParam {string} users.email `Email` of the `user`.
-* @apiParam {string} users.role `Role` of the `user`.<br />
+* @apiBody {object[]} users `users` to save.
+* @apiBody {string} users.email `Email` of the `user`.
+* @apiBody {string} users.role `Role` of the `user`.<br />
 * <small><i>Options:<br />
 * `Observer`.<br />
 * `Admin`.
-* @apiParam {string} users.notificationLevel `NotificationLevel` of the `user` possible values are: `NONE`, `WARNING` & `ERROR`.
-* @apiParam {string} users.password `Password` of the `user`.
-* @apiParam {string} users.confirmationPassword `ConfirmationPassword` of the `user`.
-* @apiParam {boolean} [users.relogin] Determines if the newly created `user` will be prompted to change the password upon first login.
-* @apiParamExample {string} Payload example
+* @apiBody {string} users.notificationLevel `NotificationLevel` of the `user` possible values are: `NONE`, `WARNING` & `ERROR`.
+* @apiBody {string} users.password `Password` of the `user`.
+* @apiBody {string} users.confirmationPassword `ConfirmationPassword` of the `user`.
+* @apiBody {boolean} [users.relogin] Determines if the newly created `user` will be prompted to change the password upon first login.
+* @apiExample {object[]} Payload example
 * [{
 *	"email": "ron@nvidia.com",
 *	"role": "Observer",
@@ -154,7 +151,6 @@ router.get('/concurrentSessions', function(req, res) {
 *	"confirmationPassword": "qwer",
 *	"relogin": true
 * }]
-*
 * @apiSuccess {object} results success statuses
 * @apiSuccessExample Example data on success
 * [
@@ -184,24 +180,24 @@ router.post('/save', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /users/update Updates users
 * @apiName UpdateUsers
 * @apiGroup users
 * @apiDescription Update `users`.
 *
-* @apiParam {object[]} users `users` to update.
-* @apiParam {string} users._id `Email` of the `user`.
-* @apiParam {string} users.uuid `UUID` of the `user`.
-* @apiParam {string} users.role `Role` of the `user`.<br />
+* @apiBody {object[]} users `users` to update.
+* @apiBody {string} users._id `Email` of the `user`.
+* @apiBody {string} users.uuid `UUID` of the `user`.
+* @apiBody {string} users.role `Role` of the `user`.<br />
 * <small><i>Options:<br />
 * `Observer`.<br />
 * `Admin`.
-* @apiParam {string} users.notificationLevel `NotificationLevel` of the `user` possible values are: `NONE`, `WARNING` & `ERROR`.
-* @apiParam {boolean} [users.relogin] Determines if the updated `user` will be prompted to change the password upon first login.
-* @apiParam {boolean} [users.resetPassword] Determines if the `user` password will be reset.
+* @apiBody {string} users.notificationLevel `NotificationLevel` of the `user` possible values are: `NONE`, `WARNING` & `ERROR`.
+* @apiBody {boolean} [users.relogin] Determines if the updated `user` will be prompted to change the password upon first login.
+* @apiBody {boolean} [users.resetPassword] Determines if the `user` password will be reset.
 
-* @apiParamExample {string} Payload example
+* @apiExample {object[]} Payload example
 * [{
 *	"_id": "chris@nvidia.com",
 *	"uuid": "f87329b0-7af0-11ed-807a-25d20c788f0a",
@@ -210,7 +206,6 @@ router.post('/save', isAdminRole, function(req, res) {
 *	"relogin": true,
 *	"resetPassword": true
 * }]
-*
 * @apiSuccess {object} results success statuses
 * @apiSuccessExample Example data on success
 * [
@@ -255,22 +250,20 @@ router.post('/update', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /users/delete Deletes users
 * @apiName DeleteUsers
 * @apiGroup users
 * @apiDescription Delete `users`.
 *
-* @apiParam {object[]} users `users` to delete.
-* @apiParam {string} users._id `Email` of the `user`.
-* @apiParam {string} users.uuid `UUID` of the `user`.
-
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} users `users` to delete.
+* @apiBody {string} users._id `Email` of the `user`.
+* @apiBody {string} users.uuid `UUID` of the `user`.
+* @apiExample {object[]} Payload example
 * [{
 *	"_id": "chris@nvidia.com",
 *	"uuid": "f87329b0-7af0-11ed-807a-25d20c788f0a"
 * }]
-*
 * @apiSuccess {object} results success statuses
 * @apiSuccessExample Example data on success
 * [
@@ -298,21 +291,19 @@ router.post('/delete', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /users/changePassword Change user's password
 * @apiName ChangePassword
 * @apiGroup users
 * @apiDescription Change authenticated user's password.
 *
-* @apiParam {string} users.password new password of the `user`.
-* @apiParam {string} users.confirmationPassword new password of the `user`.
-
-* @apiParamExample {string} Payload example
+* @apiBody {string} users.password new password of the `user`.
+* @apiBody {string} users.confirmationPassword new password of the `user`.
+* @apiExample {object} Payload example
 * {
 *	"password": "new_password"
 *	"confirmationPassword": "new_password"
 * }
-*
 * @apiSuccess {object} results success statuses
 * @apiSuccessExample Example data on success
 *   {
@@ -349,18 +340,16 @@ router.post('/disconnect', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /users/:id Get user by ID
 * @apiName GetUser
 * @apiGroup users
 * @apiDescription Get specific `user` by `ID`.
 *
-* @apiParam {string} user `user's ID` to fetch.
+* @apiParam {string} id `user's ID` to fetch.
 * @apiParamExample {string} Example request
 * users/observer@nvidia.com
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "_id": "observer@nvidia.com",

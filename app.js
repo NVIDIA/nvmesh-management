@@ -38,6 +38,7 @@ var moment = require('moment');
 var EventEmitter = require('eventemitter3');
 var WebSocket = require('websocket').server;
 
+const { apidoc: { version: APIVersion } } = require('./package.json');
 var utils = require('./utils.js');
 var logger = require('./logger.js');
 var bootstrapper = require('./bootstrapper.js');
@@ -309,7 +310,7 @@ function doAfterDatabasesArePopulatedAndConnected() {
 
 		app.locals.user = 'placeholder';
 
-		app.set('APIVersion', '16');
+		app.set('APIVersion', APIVersion);
 
 		utils.readVersionFile((err, version) => {
 			if (err || !version.changeID) {

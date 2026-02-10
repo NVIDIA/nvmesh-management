@@ -52,14 +52,13 @@ router.get('/servers', (req, res) => {
 router.use(isAdminRole);
 
 /**
-* @apiVersion 1.0.0
-* @api {get} /serverClasses/all/:page/:count?filter={}&sort={} Get serverClasses
+* @apiVersion 17.0.0
+* @api {get} /serverClasses/all Get serverClasses
 * @apiName GetServerClasses
 * @apiGroup serverClasses
 * @apiDescription Get all `serverClasses`.
-*
+
 * @apiSuccess {object[]} serverClasses List of `serverClasses`.
-*
 * @apiSuccessExample Example data on success
 * [{
 * 	"_id": "groupAServers",
@@ -93,41 +92,37 @@ router.get('/all/:page/:count', validateProjection, (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /serverClasses/count Count Server Classes
 * @apiName CountServerClasses
 * @apiGroup serverClasses
 * @apiDescription Get total `serverClasses` count.
-*
 * @apiSuccess {integer} count `serverClasses` count.
-*
 * @apiSuccessExample Example data on success
 * 4
 */
 router.get('/count', getCountEntitiesHandler('serverClass'));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /serverClasses/save Create serverClasses
 * @apiName CreateServerClasses
 * @apiGroup serverClasses
 * @apiDescription Create `serverClasses`.
 *
-* @apiParam {object[]} serverClasses `serverClasses` to create.
-* @apiParam {string[]} serverClasses.targetNodes Array of `server ID[s]`.
-* @apiParam {string} serverClasses.name `Name` of the `serverClass`.
-* @apiParam {string} [serverClasses.description] `Description` of the `serverClass`.
-* @apiParam {object[]} [serverClasses.domains] `Domains` of the `serverClass`.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} serverClasses `serverClasses` to create.
+* @apiBody {string[]} serverClasses.targetNodes Array of `serverIDs`.
+* @apiBody {string} serverClasses.name `Name` of the `serverClass`.
+* @apiBody {string} [serverClasses.description] `Description` of the `serverClass`.
+* @apiBody {object[]} [serverClasses.domains] `Domains` of the `serverClass`.
+* @apiExample {string} Payload example
 * [{
 * 	"targetNodes": ["nvme31.acme.com"],
 * 	"name": "RandomServer",
 * 	"description": "This server wasn't really randomized",
 *	"domains": [{ "scope": "Rack", "identifier": "A" }]
 * }]
-*
 * @apiSuccess {object} results success statuses
-*
 * @apiSuccessExample Example data on success
  [{
 *	"_id": "RandomServer",
@@ -146,9 +141,9 @@ router.post('/save', (req, res) => {
 
 		if (serverClass.description)
 			message.addInfo(Entities.ServerClass.description, serverClass.description);
-			
+
 		serverClass.targetNodes.forEach(target => message.addInfo(Entities.Target.ID, target));
-		serverClass?.domain?.length?.forEach(domain => 
+		serverClass?.domain?.length?.forEach(domain =>
 			message.addInfo(Entities.Domain.scope, domain.scope).addInfo(Entities.Domain.identifier, domain.identifier));
 		return message;
 	});
@@ -177,19 +172,20 @@ router.get('/getDomains', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /serverClasses/delete Delete serverClasses.
 * @apiName DeleteServerClasses
 * @apiGroup serverClasses
 * @apiDescription Delete `serverClasses`
 *
-* @apiParam {string} _id The `id[s]` of the `serverClasses[s]` to delete.
-* @apiParamExample {object[]} Payload example
+* @apiBody {object[]} serverClasses `serverClasses` to delete.
+* @apiBody {string} serverClasses._id The `ID` of the `serverClass` to delete.
+* @apiBody {string} serverClasses.uuid The `UUID` of the `serverClass` to delete.
+* @apiExample {object[]} Payload example
 * [{
 * 	"_id": "groupAServers",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb"
 * }]
-*
 * @apiSuccess {object} results success statuses
 * @apiSuccessExample Example data on success
  [{
@@ -214,18 +210,19 @@ router.post('/delete', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {post} /serverClasses/update Update serverClasses
 * @apiName UpdateServerClasses
 * @apiGroup serverClasses
 * @apiDescription Update `serverClasses`.
 *
-* @apiParam {object[]} serverClasses `serverClasses` to update.
-* @apiParam {string} serverClasses._id The `id` of the `serverClass` to update.
-* @apiParam {string[]} [serverClasses.targetNodes] Array of the new `server ID[s]`.
-* @apiParam {string} [serverClasses.description] The new `description` of the `serverClass`.
-* @apiParam {object[]} [serverClasses.domains] `Domains` of the `serverClass`.
-* @apiParamExample {string} Payload example
+* @apiBody {object[]} serverClasses `serverClasses` to update.
+* @apiBody {string} serverClasses._id The `ID` of the `serverClass` to update.
+* @apiBody {string} serverClasses.uuid The `UUID` of the `serverClass` to update.
+* @apiBody {string[]} [serverClasses.targetNodes] Array of the new `serverIDs`.
+* @apiBody {string} [serverClasses.description] The new `description` of the `serverClass`.
+* @apiBody {object[]} [serverClasses.domains] `Domains` of the `serverClass`.
+* @apiExample {string} Payload example
 * [{
 * 	"_id": "SC1",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
@@ -233,12 +230,10 @@ router.post('/delete', (req, res) => {
 * 	"domains": [{ "scope": "Rack", "identifier": "B" }],
 * 	"targetNodes": ["nvme31.acme.com", "nvme50.acme.com"]
 * }]
-*
 * @apiSuccess {object[]} results Results for the serverClasses we tried to update.
 * @apiSuccess {string} results.ServerClassID the `ID` of the `serverClass` we attempted to update.
 * @apiSuccess {boolean} results.success Indication whether `serverClass` update succeeded or not.<br />
 * <small><i>`true` if succeeded, `false` if failed.</i></small>
-*
 * @apiSuccessExample Example data on success
  [{
 *	"_id": "SC1",
@@ -262,18 +257,16 @@ router.post('/update', (req, res) => {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.0.0
 * @api {get} /serverClasses/:id Get serverClass by ID
 * @apiName GetServerClass
 * @apiGroup serverClasses
 * @apiDescription Get specific `serverClass` by `ID`.
 *
-* @apiParam {string} serverClass `serverClass's ID` to fetch.
+* @apiParam {string} id `serverClass's ID` to fetch.
 * @apiParamExample {string} Example request
 * serverClasses/server-class-1
-*
 * @apiSuccess {object} API Response
-*
 * @apiSuccessExample Example data on success
 * {
 *         "_id": "server-class-1",
