@@ -2993,7 +2993,7 @@ scope.getAvailableSegments = function(minValue, maxValue, diskSegments) {
 			if (blocksFromLeft > 0) {
 				segments.push({
 					lbs: minVal,
-					lbe: ds.lbs - 1
+					lbe: Math.min(ds.lbs - 1, maxValue - 1)
 				});
 			}
 
