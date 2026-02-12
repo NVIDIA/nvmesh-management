@@ -664,7 +664,6 @@ scope.getManagementTopicsToCreate = (rpmVersion, callback) => {
 		const configEntries = [
 			{ name: 'cleanup.policy', value: 'compact,delete' },
 			{ name: 'segment.bytes', value: String(consts.kafka.LOG_COMPACTION.SEGMENT_BYTES) },
-			{ name: 'min.cleanable.dirty.ratio', value: String(consts.kafka.LOG_COMPACTION.MIN_CLEANABLE_DIRTY_RATIO) },
 			{ name: 'segment.ms', value: String(consts.kafka.LOG_COMPACTION.SEGMENT_MS) }
 		];
 
