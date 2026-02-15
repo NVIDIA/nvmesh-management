@@ -57,7 +57,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_CONNECTION_ERROR: {
-		message: 'Connection to kafka closed, so shutting down; if kafka is up and restarting both management and kafka does not help, contact support.',
+		message: 'Failed to connect to kafka; if kafka is up and restarting both management and kafka does not help, contact support.',
 		id: 3000,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
