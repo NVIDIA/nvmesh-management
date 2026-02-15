@@ -11,7 +11,7 @@ const { getAllReleases, updateReleases, createReleases } = require('./release.js
 const { getAllArtifacts, createArtifacts } = require('./artifacts.js');
 const { createComponents, getAllComponentTypes, getAllComponents, getAllComponentVersions, updateComponents } = require('./component.js');
 const { compareVersionRelease } = require('../utils.js');
-const { getAllUpgrades, getAllUpgradeTypes, createUpgrades, updateUpgrades } = require('./upgradeScenario.js');
+const { getAllUpgrades, createUpgrades, updateUpgrades } = require('./upgradeScenario.js');
 const systemMessages = require('../systemMessages.js');
 
 const scope = {};
@@ -86,11 +86,6 @@ const fetchComponentTypeIdsByName = callback => {
 const fetchComponentIdsByName = (queryObj = {}, eagerLoading = false, callback) => {
 	getAllComponents(queryObj, eagerLoading, (error, components) =>
 		fetchEntityIdsByNameCallback(error, components, consts.entity.component, 'name', queryObj, callback));
-};
-
-const fetchUpgradeTypeIdsByName = callback => {
-	getAllUpgradeTypes((error, upgradeTypes) =>
-		fetchEntityIdsByNameCallback(error, upgradeTypes, consts.entity.upgradeType, 'name', null, callback));
 };
 
 const fetchReleaseIdsByName = (queryObj = {}, callback) => {
@@ -848,75 +843,59 @@ const inheritComponents = (releaseN, releaseNMinus1, callback) => {
 };
 
 // prepare upgrade scenarios for the release n based on the release n-1
-// if the release is a hotfix, we will copy all upgrade scenarios with * -> n-1 to * -> n
-// otherwise, we will copy all upgrade scenarios with n-1 -> n-1 to n-1 -> n and n -> n
-const prepareUpgradeScenarios = (releaseN, releaseNMinus1, versions, upgradeTypesIDByName, releaseIDbyName, callback) => {
+// we will copy all upgrade scenarios with n-1 -> n-1 to n-1 -> n
+// if not hotfix, we will also create upgrade scenarios with n -> n
+const prepareUpgradeScenarios = (releaseN, releaseNMinus1, versions, releaseIDbyName, callback) => {
 	logger.sysDEBUG(`Preparing upgrade scenarios for release ${releaseN}`);
 
-	const isHotfix = releaseN.includes(consts.HOTFIX_RELEASE_SUBSTRING);
-	if (isHotfix)
-		logger.sysDEBUG(`Release ${releaseN} is a hotfix release`);
-
-
-	const upgradeTypesByComponentName = {
-		[consts.components.CLIENT]: [upgradeTypesIDByName[consts.upgradeTypes.CLIENT_AND_TARGET], upgradeTypesIDByName[consts.upgradeTypes.CLIENT_ONLY]],
-		[consts.components.MANAGEMENT]: [upgradeTypesIDByName[consts.upgradeTypes.MANAGEMENT]],
-		[consts.components.UPGRADE_AGENT]: [upgradeTypesIDByName[consts.upgradeTypes.UPGRADE_AGENT]]
-	};
-
-
 	const preparedUpgradeScenarios = [];
-	async.eachSeries(Object.keys(upgradeTypesByComponentName), (componentName, cb) => {
+	const sourceComponentVersions = versions[releaseNMinus1];
+
+	async.eachSeries(Object.keys(sourceComponentVersions), (componentName, next) => {
+		const sourceComponentVersion = sourceComponentVersions[componentName];
 		const queryObj = {
 			filter: {
 				destinationReleaseID: releaseIDbyName[releaseNMinus1],
-				upgradeTypeID: { $in: upgradeTypesByComponentName[componentName] }
+				sourceVersionID: sourceComponentVersion.ID
 			}
 		};
 
-		if (!isHotfix) {
-			if (!versions[releaseNMinus1][componentName])
-				return cb(new SystemMessage(systemMessages.COMPONENT_VERSION_NOT_FOUND_IN_RELEASE)
-					.addInfo(Entities.Component.name, componentName)
-					.addInfo(Entities.Release.name, releaseNMinus1));
-
-			queryObj.filter['componentVersion.version'] = versions[releaseNMinus1][componentName].version;
-		}
-
-		logger.sysDEBUG(`Getting upgrade scenarios to copy from release ${releaseNMinus1} to release ${releaseN} for component ${componentName}:`, queryObj);
-
+		logger.sysDEBUG(`Getting upgrade scenarios to copy for component ${componentName} from ` +
+			`release ${releaseNMinus1} to release ${releaseN}:`, queryObj);
 		getAllUpgrades(queryObj, (error, upgradeScenariosFound) => {
 			if (error)
-				return callback(error);
+				return next(error);
 
-			const upgradeScenarios = [];
-			for (const upgradeScenarioFound of upgradeScenariosFound) {
-				if (isHotfix)
-					upgradeScenarios.push({
-						sourceVersionID: upgradeScenarioFound.sourceVersionID,
-						destinationReleaseID: releaseIDbyName[releaseN],
-						upgradeTypeID: upgradeScenarioFound.upgradeTypeID,
-						steps: upgradeScenarioFound.steps
-					});
-				else
-					for (const releaseName of [releaseNMinus1, releaseN]) {
-						upgradeScenarios.push({
-							sourceVersionID: versions[releaseName][componentName].ID,
-							destinationReleaseID: releaseIDbyName[releaseN],
-							upgradeTypeID: upgradeScenarioFound.upgradeTypeID,
-							steps: upgradeScenarioFound.steps
-						});
-					}
+			if (!upgradeScenariosFound.length)
+				return next();
+
+			const destinationComponentVersion = versions[releaseN][componentName];
+			if (!destinationComponentVersion) {
+				logger.sysDEBUG(`Can't find corresponding component version in release ${releaseN} for component ${componentName}, skipping`);
+				return next();
 			}
 
-			preparedUpgradeScenarios.push(...upgradeScenarios);
-			cb();
+			const isSameVersion = sourceComponentVersion.ID === destinationComponentVersion.ID;
+			for (const upgradeScenarioFound of upgradeScenariosFound) {
+				const newScenario = {
+					sourceVersionID: upgradeScenarioFound.sourceVersionID,
+					destinationReleaseID: releaseIDbyName[releaseN],
+					upgradeTypeID: upgradeScenarioFound.upgradeTypeID,
+					steps: upgradeScenarioFound.steps
+				};
+				preparedUpgradeScenarios.push(newScenario);
+
+				if (!isSameVersion)
+					preparedUpgradeScenarios.push({ ...newScenario, sourceVersionID: destinationComponentVersion.ID });
+			}
+
+			next();
 		});
-	}, error => {
+	}, (error) => {
 		if (error)
 			return callback(error);
 
-		logger.sysDEBUG(`Upgrade scenarios to copy from release ${releaseNMinus1} to release ${releaseN}:`, preparedUpgradeScenarios);
+		logger.sysDEBUG(`Prepared upgrade scenarios for release ${releaseN}:`, preparedUpgradeScenarios);
 		callback(null, preparedUpgradeScenarios);
 	});
 };
@@ -927,11 +906,8 @@ const createPreparedUpgradeScenarios = (upgradeScenarios, callback) => {
 };
 
 const fetchDataForUpgradeScenariosInheritance = (releaseN, releaseNMinus1, callback) => {
-	const componentNames = [consts.components.CLIENT, consts.components.MANAGEMENT, consts.components.UPGRADE_AGENT];
-
 	async.parallel({
-		upgradeTypesIDByName: fetchUpgradeTypeIdsByName,
-		componentIDbyName: cb => fetchComponentIdsByName({ filter: { name: { $in: componentNames } } }, false, cb),
+		componentIDbyName: cb => fetchComponentIdsByName({ filter: { name: { $in: Object.values(consts.components) } } }, false, cb),
 		releaseIDbyName: cb => fetchReleaseIdsByName({ filter: { version: { $in: [releaseN, releaseNMinus1] } } }, cb),
 	}, (error, data) => {
 		if (error)
@@ -993,7 +969,7 @@ const inheritUpgradeScenarios = (releaseN, releaseNMinus1, callback) => {
 
 	async.waterfall([
 		cb => fetchDataForUpgradeScenariosInheritance(releaseN, releaseNMinus1, cb),
-		(data, cb) => prepareUpgradeScenarios(releaseN, releaseNMinus1, data.versions, data.upgradeTypesIDByName, data.releaseIDbyName, cb),
+		(data, cb) => prepareUpgradeScenarios(releaseN, releaseNMinus1, data.versions, data.releaseIDbyName, cb),
 		(preparedUpgradeScenarios, cb) => {
 			upgradeScenarios = preparedUpgradeScenarios;
 
