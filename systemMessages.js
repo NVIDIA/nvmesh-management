@@ -490,11 +490,6 @@ var systemMessages = {
 		id: 10787,
 		sysLogLevel: consts.loggingLevel.ERROR,
 	},
-	COMPONENT_VERSION_NOT_FOUND_IN_RELEASE: {
-		message: 'Component version not found in release',
-		id: 10789,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
 	PREPARED_UPGRADE_SCENARIO_NOT_FOUND: {
 		message: 'Prepared upgrade scenario not found',
 		id: 10790,

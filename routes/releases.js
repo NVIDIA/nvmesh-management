@@ -192,7 +192,7 @@ router.get('/count', (req, res) => {
  *
  *   For each component in the previous release, this process will add compatibility with the new version (`n`) of that component.
  * - **Upgrade Scenario Inheritance**: Inherits and adapts upgrade scenarios from the `inheritRelationsFrom` release.
- *   - For a hotfix release, scenarios targeting the previous release (e.g., `* -> n-1`) are adapted to target the new release (`* -> n`).
+ *   - For a hotfix release, scenarios for the previous release (`n-1 -> n-1`) are adapted to target the new release (`n-1 -> n`).
  *   - For a standard release, scenarios for the previous release (`n-1 -> n-1`) are adapted for the new release (`n-1 -> n` and `n -> n`).
  *
  * **Note:** This endpoint will not update any other existing entities, with the exception of:
