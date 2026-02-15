@@ -57,7 +57,7 @@ const VolumeDiagram = ({
 						{Object.entries(mainVolumeDiagram.metadata).map(([key, value]) => (
 							<tr key={key}>
 								<th className="col-3">{key}</th>
-								<td className="text-muted">{value}</td>
+								<td className="text-muted">{String(value)}</td>
 							</tr>
 						))}
 					</table>
