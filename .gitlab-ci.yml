@@ -11,12 +11,13 @@ before_script:
   - echo "Starting CI"
   - whoami
   - rm -rf ../interop-db && git clone https://gitlab-ci-token:$CI_JOB_TOKEN@gitlab-master.nvidia.com/excelero/interop-db.git ../interop-db
-  - npm install ---prefix ../interop-db/
+  - npm install --prefix ../interop-db/
+  - echo "Install node-gyp and prebuild cache" && npm install -g node-gyp && node-gyp install
+  - npm install
 
 lint:
   stage: lint
   script:
-    - npm install
     - npm run lint
 
 unittests:
@@ -31,7 +32,6 @@ unittests:
       echo "changeID=\"=$(git log -n1 --format=%b | awk '/^Change-Id: / {print $2}')\"" >> ./version
       echo "branch=\"$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\"" >> ./version
     - cat ./version
-    - npm install
     - npm run test
   artifacts:
     paths:
