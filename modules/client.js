@@ -1310,7 +1310,8 @@ function sendConfigurationToAttachVolumes(client, volumesToAttach, originID, cb)
 			const attachingVolumes = volumesToAttach.map(vol => ({
 				...vol,
 				attachmentsVersionRef: client.attachmentsVersion,
-				referenceIDs: client.attachments[vol.uuid].referenceIDs
+				referenceIDs: client.attachments[vol.uuid].referenceIDs,
+				version: client.attachments[vol.uuid].version
 			}));
 
 			setAttachmentOnConfigResponses(clientConfigResponse, attachingVolumes);
