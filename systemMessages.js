@@ -3044,6 +3044,11 @@ var systemMessages = {
 		id: 1560,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	SANITY_AUTO_REMOVE_IS_EXTENSION_SEGMENT_FAILED: {
+		message: 'Failed to auto remove dirty segment with isExtension',
+		id: 15601,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	SANITY_IS_EXTENSION_VOLUME_AUTO_REMOVED: {
 		message: 'Automatically removed dirty volume with isExtension',
 		id: 1561,

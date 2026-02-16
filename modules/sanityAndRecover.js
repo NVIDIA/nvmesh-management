@@ -1009,7 +1009,7 @@ scope.checkAndResumeStuckUpgrades = function(cb) {
 				defaultQuery, confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt,
 				'runningUpgrade.createdBy', getHandledBy
 			);
-			
+
 			if (!query)
 				return callback(true);
 
@@ -1268,6 +1268,12 @@ scope.checkAndRemoveToBeExtendedVolumes = function(cb) {
 		},
 		function acquireLock(callback) {
 			zone = diskSegmentsToRemove.map(d => d.zone)[0];
+			if (!zone)
+				return callback(new SystemMessage(systemMessages.SANITY_AUTO_REMOVE_IS_EXTENSION_SEGMENT_FAILED)
+					.addInfo(Entities.Error, 'No zone found for diskSegment')
+					.addInfo(Entities.DiskSegment.UUID, diskSegmentsToRemove[0].uuid)
+					.log());
+
 			lockModule.acquireLockByZone(zone, err => { isLocked = !err; callback(err); });
 		},
 		function validateOrphanDiskSegments(callback) {
