@@ -17,9 +17,11 @@ var generalSettingsModule = require('./modules/generalSettings.js');
 var consts = require('./consts.js');
 var logger = require('./logger.js');
 var utils = require('./utils');
+const kafkaModule = require('./modules/kafka.js');
 
 var { Entities, SystemMessage, MongoError, SystemAdminMessage } = require('./modules/error.js');
 var systemMessages = require('./systemMessages.js');
+const events = require('./events.js');
 
 scope.afterModuleLoaded = () => {
 	logger = require('./logger.js');
@@ -594,6 +596,29 @@ monitoredObjects[scope.events.newUpstreamTopicEvent.name] = {
 	}
 };
 
+monitoredObjects[scope.events.upstreamTopicChangeEvent.name] = {
+	getUpdatedObj: function(callback) {
+		kafkaModule.getSubscribableTopics((err, topics) => {
+			if (err)
+				return callback(err);
+
+			const currentSubscribableTopics = kafkaModule.subscribableTopics;
+			const newSubscribableTopics = new Set(topics);
+
+			if (!utils.isEqualSet(currentSubscribableTopics, newSubscribableTopics)) {
+				const current = [...currentSubscribableTopics].join(', ');
+				const next = [...newSubscribableTopics].join(', ');
+				logger.sysDEBUG(`subscribable topics changed, current: ${current}, new: ${next}`);
+
+				kafkaModule.subscribableTopics = newSubscribableTopics;
+				events.emitEvent(null, scope.events.upstreamTopicChangeEvent);
+			}
+
+			callback();
+		});
+	}
+};
+
 monitoredObjects[scope.events.interopDBVersionChangedEvent.name] = {
 	getUpdatedObj: function(callback) {
 		callback();
@@ -796,6 +821,7 @@ scope.isEmpty = function(obj) {
 };
 
 scope.updateCache = function(cb) {
+	logger.sysDEBUG('Updating all monitored objects cache');
 	async.each(Object.keys(monitoredObjects), scope.updateObject, cb || function() {});
 };
 

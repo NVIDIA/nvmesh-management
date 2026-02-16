@@ -527,6 +527,50 @@ scope.connect = (callback) => {
 	})();
 };
 
+scope.getSubscribableTopics = (callback) => {
+	async.parallel([
+		cb => {
+			const rpmVersion = utils.getVRPartsObj(app.get('rpmVersion')).version;
+			scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, null, topics => {
+				cb(null, topics);
+			});
+		},
+		cb => {
+			scope.getZoneUpstreamTopics((err, upstreamTopicsByZone) => {
+				if (err)
+					return cb(err);
+
+				cb(null, Object.values(upstreamTopicsByZone).flat());
+			});
+		}
+	], (err, [managementTopics, zoneTopics]) => {
+		if (err)
+			return callback(err, []);
+
+		callback(null, [...managementTopics, ...zoneTopics]);
+	});
+};
+
+scope.getZoneUpstreamTopics = (callback) => {
+	const db = app.get('db');
+	const configurationVersionCollection = db.collection('configurationVersion');
+
+	configurationVersionCollection.find({}, { projection: { topics: 1 } }).toArray((err, configurationVersions) => {
+		if (err)
+			return callback(new MongoError(err).log());
+
+		const upstreamTopicsByZone = {};
+
+		configurationVersions.forEach(configurationVersion => {
+			if (configurationVersion.topics) {
+				const upstreamTopics = Object.values(configurationVersion.topics).filter(scope.isUpstreamTopicByName);
+				upstreamTopicsByZone[configurationVersion._id] = upstreamTopics;
+			}
+		});
+		callback(null, upstreamTopicsByZone);
+	});
+};
+
 scope.initTopics = (callback) => {
 	async.parallel([
 		initManagementTopics,
@@ -565,20 +609,13 @@ function initManagementTopics(callback) {
 }
 
 function initZoneTopics(callback) {
-	const db = app.get('db');
-	const configurationVersionCollection = db.collection('configurationVersion');
-
-	configurationVersionCollection.find({}, { projection: { topics: 1 } }).toArray((err, configurationVersions) => {
+	scope.getZoneUpstreamTopics((err, upstreamTopicsByZone) => {
 		if (err)
-			return callback(new MongoError(err).log());
+			return callback(err);
 
-		configurationVersions.forEach(configurationVersion => {
-			if (configurationVersion.topics) {
-				const upstreamTopics = Object.values(configurationVersion.topics).filter(scope.isUpstreamTopicByName);
-				events.emitEvent([events.getZoneID(configurationVersion._id)], objectNotifier.events.newUpstreamTopicEvent, { topics: upstreamTopics });
-			}
+		Object.entries(upstreamTopicsByZone).forEach(([zoneID, upstreamTopics]) => {
+			events.emitEvent([events.getZoneID(zoneID)], objectNotifier.events.newUpstreamTopicEvent, { topics: upstreamTopics });
 		});
-
 		callback();
 	});
 }
