@@ -31,13 +31,15 @@ function setupEnvironment() {
 			log.debug('enableZones: ' + app.get('globalSettings').enableZones);
 		})
 		.then(() => {
-			targets = [
-				generateTarget('server1.acme.com', '1'),
-				generateTarget('server2.acme.com', '2'),
-				generateTarget('server3.acme.com', '3'),
-				generateTarget('server4.acme.com', '4'),
-			];
-			return Promise.all(targets.map(t => t.save()));
+			return Promise.all([
+				generateTarget('server1.acme.com').save().then(t => t.setZone('1')),
+				generateTarget('server2.acme.com').save().then(t => t.setZone('2')),
+				generateTarget('server3.acme.com').save().then(t => t.setZone('3')),
+				generateTarget('server4.acme.com').save().then(t => t.setZone('4')),
+			]);
+		})
+		.then(savedTargets => {
+			targets = savedTargets;
 		})
 		.then(() => log.debug('setupEnvironment finished'))
 		.catch(err => {
@@ -50,8 +52,7 @@ async function setupSingleTargetEnvironment() {
 		let opts = new SetupOptions().setEnableZones(false);
 		await setup.newSetup(opts);
 		log.debug('enableZones: ' + app.get('globalSettings').enableZones);
-		targets = [generateTarget('server1.acme.com', '1')];
-		await Promise.all(targets.map(t => t.save()));
+		targets = [await generateTarget('server1.acme.com').save()];
 		log.debug('setupSingleTargetEnvironment finished');
 	} catch (err) {
 		throw new Error(`Error Setting Up Environment! Error: ${err}`);
@@ -77,7 +78,7 @@ describe('Targets', function() {
 
 		it('Target should be saved', () =>{
 			let nodeID = 'test.single.target';
-			let target = generateTarget(nodeID, '1');
+			let target = generateTarget(nodeID);
 			return target.save()
 				.then(() => serverCollection.findOne({ _id: nodeID }))
 				.then(dbTarget => {
@@ -85,6 +86,31 @@ describe('Targets', function() {
 					assert.strictEqual(target.nics.length, dbTarget.nics.length);
 					assert.strictEqual(target.disks.length, dbTarget.disks.length);
 				});
+		});
+	});
+
+	describe('#setZone', function() {
+		describe('Zones enabled', function() {
+			before(async() => {
+				let opts = new SetupOptions().setEnableZones(true);
+				await setup.newSetup(opts);
+			});
+
+			it('Target should be saved without zone', async() => {
+				let target = await generateTarget('test-setzone').save();
+				assert.strictEqual(target.zone, '-1');
+			});
+
+			it('setZone should assign zone to saved target', async() => {
+				let target = await generateTarget('test-setzone-assign').save();
+				assert.strictEqual(target.zone, '-1');
+				await target.setZone('1');
+				assert.strictEqual(target.zone, '1');
+
+				let dbTarget = await serverCollection.findOne({ _id: 'test-setzone-assign' });
+				assert(dbTarget);
+				assert.strictEqual(dbTarget.zone, '1');
+			});
 		});
 	});
 
@@ -96,7 +122,7 @@ describe('Targets', function() {
 			beforeEach(async() => {
 				await setupSingleTargetEnvironment();
 				// Add another target to zone 1
-				await generateTarget('zone1serverB.acme.com', '1').save();
+				await generateTarget('zone1serverB.acme.com').save();
 				targetToDelete = targets[0];
 			});
 
@@ -444,11 +470,11 @@ describe('Targets', function() {
 
 			describe('#Zones do not exists', () => {
 				let nodeID = 'test.multi.zones';
-				let target = generateTarget(nodeID, '1');
+				let target = generateTarget(nodeID);
 
 				before(() => {
 					return setupEnvironment()
-						.then(() => target.save())
+						.then(() => target.save().then(t => t.setZone('1')))
 						.then(() => serverCollection.findOne({ _id: nodeID }))
 						.then(dbTarget => {
 							assert(dbTarget);
@@ -490,7 +516,7 @@ describe('Targets', function() {
 				});
 
 				it.skip('should send updateTOMAKAToken with correct token and targetUpdatesSequence after setZone', () => {
-					return target._addToZone()
+					return target._addToZone('1')
 						.then(() => target.readMessageFromCommandsTopic()) // updateTOMAKAToken with token 2 (original queue was deleted after target deletion)
 						.then(msg => {
 							assert.strictEqual(msg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateTomaKeepaliveToken);
@@ -502,8 +528,7 @@ describe('Targets', function() {
 		describe('#Race Adding two targets', () => {
 			const zoneID = '1';
 
-			let targetALeader = generateTarget('targetA', zoneID);
-			// we don't set the desired zone so it won't get set by targetA.save()
+			let targetALeader = generateTarget('targetA');
 			let targetB = generateTarget('targetB');
 			let targetC = generateTarget('targetC');
 
@@ -511,7 +536,7 @@ describe('Targets', function() {
 				let opts = new SetupOptions().setEnableZones(true);
 				await setup.newSetup(opts);
 				log.debug('enableZones: ' + app.get('globalSettings').enableZones);
-				await targetALeader.save();
+				await targetALeader.save().then(t => t.setZone(zoneID));
 				await targetB.save();
 				await targetC.save();
 

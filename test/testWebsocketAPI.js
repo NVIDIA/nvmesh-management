@@ -353,7 +353,7 @@ describe('WebsocketAPI', function() {
 							regMsg.accessToken = loginRes.payload.accessToken;
 							connection.sendMessageToMgmt(regMsg);
 
-							var target = generateTarget('targetA', '1', 1, 1);
+							var target = generateTarget('targetA', 1, 1);
 							target.save();
 							break;
 						case websocketMessageTypes.eventResponse:

@@ -165,7 +165,7 @@ describe('Configuration Profiles', () => {
 	describe('Update Configuration Profile', () => {
 		let nodeID = 'node1';
 		let client = new Client(nodeID);
-		let target = generateTarget(nodeID, '1');
+		let target = generateTarget(nodeID);
 
 		before(() => {
 			return setup.newSetup()

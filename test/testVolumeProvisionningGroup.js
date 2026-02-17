@@ -22,7 +22,7 @@ let vpgCollection, volumeCollection;
 
 
 function generateAndSaveTargets(count, numOfDisks) {
-	let targets = generateTargets(count, '1', numOfDisks);
+	let targets = generateTargets(count, numOfDisks);
 	return Promise.all(targets.map(t => t.save()));
 }
 

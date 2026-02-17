@@ -124,7 +124,7 @@ describe('Counters', function() {
 	describe('#Test with object flows', function() {
 		let targetCounter = new Counter();
 		let emitter;
-		let t1 = generateTarget('target-1', '1', 2, 2);
+		let t1 = generateTarget('target-1', 2, 2);
 
 
 		before(async() => {
@@ -136,7 +136,7 @@ describe('Counters', function() {
 		});
 
 		it('New Target - Should show 1 healthy target', async() => {
-			await t1.save();
+			await t1.save().then(t => t.setZone('1'));
 
 			assert.strictEqual(targetCounter.total, 1, 'wrong number of total targets');
 			assert.strictEqual(targetCounter.critical, 0, 'wrong number of critical targets');
@@ -183,7 +183,7 @@ describe('Counters', function() {
 	describe('Test NIC Counter', () => {
 		const nicCounter = new Counter();
 		const nodeID = 'rpff';
-		const target = generateTarget(nodeID, '1');
+		const target = generateTarget(nodeID);
 		const nicA = target.nics[0];
 		const sendReport = async() => {
 			target.messageSequence++;
@@ -197,7 +197,7 @@ describe('Counters', function() {
 		
 		it('create new target without nic', async() => {
 			target.nics = [];
-			await target.save();
+			await target.save().then(t => t.setZone('1'));
 		});
 
 		it('add 1 nic and send report', async() => {

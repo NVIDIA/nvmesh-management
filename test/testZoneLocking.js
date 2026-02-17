@@ -34,15 +34,15 @@ function setupMultiZoneEnvironment() {
 	let opts = new SetupOptions().setEnableZones(true);
 	return setup.newSetup(opts)
 		// Zone 1
-		.then(() => generateTarget('nvme81.acme.com', ZONE_1).save())
-		.then(() => generateTarget('nvme82.acme.com', ZONE_1).save())
-		.then(() => generateTarget('nvme83.acme.com', ZONE_1).save())
-		.then(() => generateTarget('nvme84.acme.com', ZONE_1).save())
+		.then(() => generateTarget('nvme81.acme.com').save().then(t => t.setZone(ZONE_1)))
+		.then(() => generateTarget('nvme82.acme.com').save().then(t => t.setZone(ZONE_1)))
+		.then(() => generateTarget('nvme83.acme.com').save().then(t => t.setZone(ZONE_1)))
+		.then(() => generateTarget('nvme84.acme.com').save().then(t => t.setZone(ZONE_1)))
 		// Zone 2
-		.then(() => generateTarget('nvme91.acme.com', ZONE_2).save())
-		.then(() => generateTarget('nvme92.acme.com', ZONE_2).save())
-		.then(() => generateTarget('nvme93.acme.com', ZONE_2).save())
-		.then(() => generateTarget('nvme94.acme.com', ZONE_2).save())
+		.then(() => generateTarget('nvme91.acme.com').save().then(t => t.setZone(ZONE_2)))
+		.then(() => generateTarget('nvme92.acme.com').save().then(t => t.setZone(ZONE_2)))
+		.then(() => generateTarget('nvme93.acme.com').save().then(t => t.setZone(ZONE_2)))
+		.then(() => generateTarget('nvme94.acme.com').save().then(t => t.setZone(ZONE_2)))
 
 		.then(() => log.debug('setupZoneLockingEnvironment finished'));
 }
@@ -188,10 +188,10 @@ describe('ZoneLocking', function() {
 			let opts = new SetupOptions().setEnableZones(true);
 			return setup.newSetup(opts)
 				// Set Targets with no zone and we will set the zone later in the test
-				.then(() => generateTarget('nvme81.acme.com', '2').save())
-				.then(() => generateTarget('nvme82.acme.com', '1').save())
-				.then(() => generateTarget('nvme83.acme.com', '2').save())
-				.then(() => generateTarget('nvme84.acme.com', '2').save())
+				.then(() => generateTarget('nvme81.acme.com').save().then(t => t.setZone('2')))
+				.then(() => generateTarget('nvme82.acme.com').save().then(t => t.setZone('1')))
+				.then(() => generateTarget('nvme83.acme.com').save().then(t => t.setZone('2')))
+				.then(() => generateTarget('nvme84.acme.com').save().then(t => t.setZone('2')))
 				.then(() => {
 					log.debug('setupZoneLockingEnvironment finished');
 				});
@@ -355,14 +355,13 @@ describe('ZoneLocking', function() {
 
 
 	describe('#Acquire zone with limiters with zones disabled', () => {
-		let NO_ZONE = null;
 		before(() => {
 			return setup.newSetup()
 				.then(() => setEnabledZones(false))
-				.then(() => generateTarget('nvme81.acme.com', NO_ZONE).save())
-				.then(() => generateTarget('nvme82.acme.com', NO_ZONE).save())
-				.then(() => generateTarget('nvme83.acme.com', NO_ZONE).save())
-				.then(() => generateTarget('nvme84.acme.com', NO_ZONE).save())
+				.then(() => generateTarget('nvme81.acme.com').save())
+				.then(() => generateTarget('nvme82.acme.com').save())
+				.then(() => generateTarget('nvme83.acme.com').save())
+				.then(() => generateTarget('nvme84.acme.com').save())
 				.then(() => log.debug('setupZoneLockingEnvironment finished'));
 		});
 

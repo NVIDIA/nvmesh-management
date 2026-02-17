@@ -28,14 +28,14 @@ const RAID_1_VPG = 'DEFAULT_RAID_1_VPG';
 
 var serverCollection;
 
-function generateAndSaveTargets(count, numOfDisks, zone) {
-	let targets = generateTargets(count, zone, numOfDisks);
+function generateAndSaveTargets(count, numOfDisks) {
+	let targets = generateTargets(count, numOfDisks);
 	return Promise.all(targets.map(t => t.save()));
 }
 
 function setupEnvironment() {
 	return setup.newSetup()
-		.then(() => generateAndSaveTargets(3, 3, ZONE_1))
+		.then(() => generateAndSaveTargets(3, 3))
 		.then(() => log.debug('setupEnvironment finished'));
 }
 

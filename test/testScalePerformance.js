@@ -7,7 +7,7 @@
 
 const consts = require('../consts.js');
 const dbManager = require('./testUtils/dbManager.js');
-const { setup } = require('./testUtils/setup.js');
+const { setup, SetupOptions } = require('./testUtils/setup.js');
 const { TestResultsReport } = require('./testUtils/testReport.js');
 const { diskSegmentStatuses } = require('../consts.js');
 const { getAllTOMAsConfigurations } = require('./testCommons/target.js');
@@ -117,7 +117,7 @@ describe.skip('Scale Performance Testing', () => {
 		this.timeout(SUITE_TIMEOUT);
 
 		before(function() {
-			return setup.newSetup()
+			return setup.newSetup(new SetupOptions().setEnableZones(true))
 				.then(() => generateAndSaveTargetsPerZone(120, 40, 1, 1))
 				.then(() => generateAndSaveClients(1000))
 				.then(() => generateAndSaveVolumes(10, 10, 10, 10, 10));

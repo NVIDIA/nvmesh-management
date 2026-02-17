@@ -298,7 +298,7 @@ describe('Client', function() {
 	describe('Upgrade', function() {
 		let client = new Client('Client1');
 		let v1 = new VolumeConcatenated('v1');
-		let target = generateTarget('server1.acme.com', '1');
+		let target = generateTarget('server1.acme.com');
 
 		before(async() => {
 			await setup.newSetup();
@@ -391,7 +391,7 @@ describe('Client', function() {
 	describe('Send Attach Volumes', function() {
 		let client = new Client('Client1');
 		let v1 = new VolumeConcatenated('v1');
-		let target = generateTarget('server1.acme.com', '1');
+		let target = generateTarget('server1.acme.com');
 
 		before(async() => {
 			await setup.newSetup();
@@ -489,8 +489,8 @@ describe('Client', function() {
 		let v1 = new VolumeConcatenated('v1');
 		let v2 = new VolumeConcatenated('v2');
 		let v3 = new VolumeConcatenated('v3');
-		let target1 = generateTarget('server1.acme.com', '1');
-		let target2 = generateTarget('server2.acme.com', '2');
+		let target1 = generateTarget('server1.acme.com');
+		let target2 = generateTarget('server2.acme.com');
 
 		before(async() => {
 			await setup.newSetup();

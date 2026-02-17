@@ -55,7 +55,7 @@ describe('Get Space Allocation', function() {
 		const TOTAL_CAPACITY = 1597.21;
 
 		before(() => {
-			let target1 = generateTarget('server1.acme.com', '1');
+			let target1 = generateTarget('server1.acme.com');
 			return setup.newSetup()
 				.then(() => target1.save());
 		});
@@ -82,8 +82,8 @@ describe('Get Space Allocation', function() {
 		const TOTAL_CAPACITY = 1597.21;
 
 		before(() => {
-			let target1 = generateTarget('server1.acme.com', '1');
-			let target2 = generateTarget('server2.acme.com', '1');
+			let target1 = generateTarget('server1.acme.com');
+			let target2 = generateTarget('server2.acme.com');
 			return setup.newSetup()
 				.then(() => target1.save())
 				.then(() => target2.save());
@@ -116,7 +116,7 @@ describe('Get Space Allocation', function() {
 		const TOTAL_CAPACITY = 798.6;
 
 		before(() => {
-			let target1 = generateTarget('server1.acme.com', '1');
+			let target1 = generateTarget('server1.acme.com');
 			return setup.newSetup()
 				.then(() => target1.save());
 		});
@@ -160,7 +160,7 @@ describe('Get Space Allocation', function() {
 		let volume;
 
 		before(() => {
-			let targets = generateTargets(3, '1');
+			let targets = generateTargets(3);
 			return setup.newSetup()
 				.then(() => Promise.all(targets.map(t => t.save())));
 		});
@@ -197,7 +197,7 @@ describe('Get Space Allocation', function() {
 		let volume;
 
 		before(() => {
-			let targets = generateTargets(3, '1');
+			let targets = generateTargets(3);
 			return setup.newSetup()
 				.then(() => Promise.all(targets.map(t => t.save())));
 		});
@@ -253,7 +253,7 @@ describe('Get Space Allocation', function() {
 		let volume;
 
 		before(() => {
-			let targets = generateTargets(2, '1');
+			let targets = generateTargets(2);
 			return setup.newSetup()
 				.then(() => Promise.all(targets.map(t => t.save())));
 		});
@@ -304,7 +304,7 @@ describe('Get Space Allocation', function() {
 		let volume;
 
 		before(() => {
-			let targets = generateTargets(10, '1');
+			let targets = generateTargets(10);
 			return setup.newSetup()
 				.then(() => Promise.all(targets.map(t => t.save())));
 		});
@@ -376,7 +376,7 @@ describe('Get Space Allocation', function() {
 		let volume;
 
 		before(() => {
-			let targets = generateTargets(13, '1', 1); // 13 targets * 1 disks of ~792 TB = 10.296 PB
+			let targets = generateTargets(13, 1); // 13 targets * 1 disks of ~792 TB = 10.296 PB
 			targets.forEach(t => t.disks.forEach(d => makeDiskHuge(d)));
 			return setup.newSetup().then(() => Promise.all(targets.map(t => t.save())));
 		});
@@ -411,7 +411,7 @@ describe('Get Space Allocation', function() {
 		let volume;
 
 		before(() => {
-			let targets = generateTargets(13, '1', 2); // 13 targets * 2 disks of ~792 TB = 20.6 PB
+			let targets = generateTargets(13, 2); // 13 targets * 2 disks of ~792 TB = 20.6 PB
 			targets.forEach(t => t.disks.forEach(d => makeDiskHuge(d)));
 			return setup.newSetup().then(() => Promise.all(targets.map(t => t.save())));
 		});
@@ -446,7 +446,7 @@ describe('Get Space Allocation', function() {
 		let volume;
 
 		before(() => {
-			let targets = generateTargets(13, '1', 2); // 13 targets * 2 disks of ~792 TB = 20.6 PB
+			let targets = generateTargets(13, 2); // 13 targets * 2 disks of ~792 TB = 20.6 PB
 			targets.forEach(t => t.disks.forEach(d => makeDiskHuge(d)));
 			return setup.newSetup().then(() => Promise.all(targets.map(t => t.save())));
 		});
@@ -481,7 +481,7 @@ describe('Get Space Allocation', function() {
 		let volume;
 
 		before(() => {
-			let targets = generateTargets(13, '1', 3); // 13 targets * 3 disks of ~792 TB = 30.9 PB
+			let targets = generateTargets(13, 3); // 13 targets * 3 disks of ~792 TB = 30.9 PB
 			targets.forEach(t => t.disks.forEach(d => makeDiskHuge(d)));
 			return setup.newSetup().then(() => Promise.all(targets.map(t => t.save())));
 		});
@@ -515,7 +515,7 @@ describe('Get Space Allocation', function() {
 		let volume;
 
 		before(() => {
-			let targets = generateTargets(10, '1', 1);
+			let targets = generateTargets(10, 1);
 			return setup.newSetup().then(() => Promise.all(targets.map(t => t.save())));
 		});
 
@@ -557,7 +557,7 @@ describe('Get Space Allocation', function() {
 		};
 
 		before(() => {
-			targets = generateTargets(10, '1', 1);
+			targets = generateTargets(10, 1);
 			return setup.newSetup().then(() => Promise.all(targets.map(t => t.save())));
 		});
 

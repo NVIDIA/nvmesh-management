@@ -25,7 +25,6 @@ const { ClientUpdateAttachmentStatusBuilder } = require('./kafkaMessages/fromCli
 const { Entities } = require('../modules/error.js');
 const { promiseAttachVolume, promiseDetachVolume, promiseHandleUpdateAttachment } = require('./testUtils/clientUtils.js');
 
-const ZONE_1 = 'zone_1';
 const VOL_1 = { name: 'vol-1' };
 const VOL_2 = { name: 'vol-2' };
 const VOL_3 = { name: 'vol-3' };
@@ -34,8 +33,8 @@ const CLIENT_1 = CLIENTS[0];
 let clientCollection;
 let volumeCollection;
 
-function generateAndSaveTargets(count, numOfDisks, zone) {
-	let targets = generateTargets(count, zone, numOfDisks);
+function generateAndSaveTargets(count, numOfDisks) {
+	let targets = generateTargets(count, numOfDisks);
 	return Promise.all(targets.map(t => t.save()));
 }
 
@@ -62,7 +61,7 @@ describe('AttachDetachAndReservation', () => {
 
 		beforeEach(() => {
 			return setup.newSetup()
-				.then(() => generateAndSaveTargets(3, 2, ZONE_1))
+				.then(() => generateAndSaveTargets(3, 2))
 				.then(() => Promise.all(volumes.map(v => v.save())))
 				.then(() => log.debug('finished setup'))
 				.then(() => {
@@ -1390,7 +1389,7 @@ describe('AttachDetachAndReservation', () => {
 
 		beforeEach(async() => {
 			await setup.newSetup();
-			await generateAndSaveTargets(3, 2, ZONE_1);
+			await generateAndSaveTargets(3, 2);
 			await Promise.all(volumes.map(v => v.save()));
 			clientObjs = CLIENTS.map(c => new Client(c));
 			await Promise.all(clientObjs.map(c => c.save()));

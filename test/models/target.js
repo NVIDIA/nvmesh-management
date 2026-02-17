@@ -49,7 +49,6 @@ exports.Target = class Target extends Entity {
 		this.zone = '-1';
 		this.reportID = 1;
 		this.tomaToken = 1;
-		this.desiredZone = null;
 	}
 
 	addDisk(disk) {
@@ -60,12 +59,13 @@ exports.Target = class Target extends Entity {
 		this.nics.push(nic);
 	}
 
-	setZone(zone) {
-		this.zone = zone;
-	}
+	async setZone(zone) {
+		if (!app.get('globalSettings').enableZones)
+			throw new Error('setZone must not be called when zones are disabled');
 
-	setDesiredZone(zone) {
-		this.desiredZone = zone;
+		await this._addToZone(zone);
+		await this._completeZoneAssignment();
+		return this;
 	}
 
 	async readMessageFromCommandsTopic() {
@@ -84,63 +84,42 @@ exports.Target = class Target extends Entity {
 		let self = this;
 		const isZonesEnabled = app.get('globalSettings').enableZones;
 
-		async function waitForNewTokenMessageFromMgmt() {
-			let msg = await self.readMessageFromCommandsTopic();
-			if (msg.type == 'updateTomaKeepaliveToken') {
-				self.tomaToken = msg.token;
-				if (msg.zone)
-					self.setZone(msg.zone);
-			}
-		}
-
-		async function waitForAddTargetMessageFromMgmt() {
-			let msg = await self.readMessageFromIncrementalUpdatesTopic();
-			if (msg.type == 'addTarget') {
-				return msg;
-			} else {
-				console.log(`waiting for addTarget message but got ${msg.type} from incrementalUpdates`);
-				return waitForAddTargetMessageFromMgmt();
-			}
-		}
-
-
-		/* TOMA <> MGMT startup flow
-		Before zone approval
-			TOMA → MGMT Keepalive { zone: ‘-1’ }
-			TOMA → MGMT Keepalive { zone: ‘-1’ }
-			TOMA → MGMT Keepalive { zone: ‘-1’ }
-			...
-		After zone approval
-			MGMT → TOMA UpdateTomaKeepaliveToken { nodeID: ‘nvme1.acme.com’, token: 1, zone: ‘2’ }
-			TOMA → MGMT Keepalive { zone: ‘2’}
-			TOMA → MGMT reportTarget {zone: ‘2’, ...} 	(Due to zone change)
-		*/
-
-		if (!isZonesEnabled)
-			this.zone = this.desiredZone;
-
 		await self.sendKeepAlive();
 		await self.setUUID();
 
-		if (!isZonesEnabled)
-			await waitForNewTokenMessageFromMgmt();
+		if (isZonesEnabled)
+			return self;
 
-		if (isZonesEnabled && self.desiredZone != null) {
-			await self._addToZone();
-			await waitForNewTokenMessageFromMgmt();
-			await self.sendKeepAlive();
-			await self.sendReport();
-			await waitForAddTargetMessageFromMgmt();
-		} else {
-			await self.sendKeepAlive();
+		// zones disabled — management auto-assigns zone '1'
+		self.zone = '1';
+		await self._completeZoneAssignment();
+		return self;
+	}
 
-			if (!isZonesEnabled) {
-				await self.sendReport();
-				await waitForAddTargetMessageFromMgmt();
-			}
+	async _waitForNewTokenMessageFromMgmt() {
+		let msg = await this.readMessageFromCommandsTopic();
+		if (msg.type == 'updateTomaKeepaliveToken') {
+			this.tomaToken = msg.token;
+			if (msg.zone)
+				this.zone = msg.zone;
 		}
+	}
 
-		return;
+	async _waitForAddTargetMessageFromMgmt() {
+		let msg = await this.readMessageFromIncrementalUpdatesTopic();
+		if (msg.type == 'addTarget') {
+			return msg;
+		} else {
+			console.log(`waiting for addTarget message but got ${msg.type} from incrementalUpdates`);
+			return this._waitForAddTargetMessageFromMgmt();
+		}
+	}
+
+	async _completeZoneAssignment() {
+		await this._waitForNewTokenMessageFromMgmt();
+		await this.sendKeepAlive();
+		await this.sendReport();
+		await this._waitForAddTargetMessageFromMgmt();
 	}
 
 	async sendReport() {
@@ -178,14 +157,9 @@ exports.Target = class Target extends Entity {
 		throw new Error(`Failed to set UUID for target ${this._id} after ${MAX_RETRIES} retries`);
 	}
 
-	_addToZone() {
-		let zone = this.desiredZone;
+	_addToZone(zone) {
 		let nodeID = this.node_id;
 
-		if (!app.get('globalSettings').enableZones)
-			return Promise.resolve();
-
-		// if zones are enable we simulate here a user setting zone on this target.
 		return new Promise((resolve, reject) => {
 			if (!zone)
 				return resolve();

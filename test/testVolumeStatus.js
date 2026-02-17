@@ -25,7 +25,6 @@ const { UpdatePRaidReportBuilder, PRaidReport } = require('./kafkaMessages/fromT
 const { SegmentZeroingProgress } = require('./kafkaMessages/fromTOMA/segmentZeroingProgress.js');
 const { reportAllSegmentsOnline, sendPRaidUpdate } = require('./testUtils/volumeUtils.js');
 
-const ZONE_1 = '1';
 const allSegmentOnline = [
 	consts.diskSegmentStatuses.NORMAL,
 	consts.diskSegmentStatuses.NORMAL,
@@ -50,7 +49,7 @@ describe('Volume Statuses and Actions', () => {
 
 		before(() => {
 			return setup.newSetup()
-				.then(() => targets = generateTargets(5, ZONE_1))
+				.then(() => targets = generateTargets(5))
 				.then(() => Promise.all(targets.map(t => t.save())))
 				.then(() => log.debug('finished setup'));
 		});
@@ -554,7 +553,7 @@ describe('Volume Statuses and Actions', () => {
 
 		before(() => {
 			return setup.newSetup()
-				.then(() => targets = generateTargets(5, ZONE_1))
+				.then(() => targets = generateTargets(5))
 				.then(() => Promise.all(targets.map(t => t.save())))
 				.then(() => volume.save())
 				.then(() => volRaid1.save())

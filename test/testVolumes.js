@@ -31,8 +31,8 @@ const ZONE_2 = '2';
 
 var volumeCollection;
 
-function generateAndSaveTargets(count, numOfDisks, zone) {
-	let targets = generateTargets(count, zone, numOfDisks);
+function generateAndSaveTargets(count, numOfDisks) {
+	let targets = generateTargets(count, numOfDisks);
 	return Promise.all(targets.map(t => t.save()));
 }
 
@@ -222,7 +222,7 @@ describe('Volumes', () => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
 					let minTargets = testableVolume.getMinimumNumOfTargets();
 					return setup.newSetup()
-						.then(() => generateAndSaveTargets(minTargets, minDisks, ZONE_1));
+						.then(() => generateAndSaveTargets(minTargets, minDisks));
 				});
 	
 				it('Volume should be created', () => {
@@ -249,7 +249,7 @@ describe('Volumes', () => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
 					let minTargets = testableVolume.getMinimumNumOfTargets();
 					return setup.newSetup()
-						.then(() => generateAndSaveTargets(minTargets, minDisks, ZONE_1));
+						.then(() => generateAndSaveTargets(minTargets, minDisks));
 				});
 	
 				it('Volume should be created', () => {
@@ -283,7 +283,7 @@ describe('Volumes', () => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
 					let minTargets = testableVolume.getMinimumNumOfTargets();
 					return setup.newSetup()
-						.then(() => generateAndSaveTargets(minTargets - 1, minDisks, ZONE_1));
+						.then(() => generateAndSaveTargets(minTargets - 1, minDisks));
 				});
 	
 				it('Volume should fail to create', () => {
@@ -309,7 +309,7 @@ describe('Volumes', () => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
 					let minTargets = testableVolume.getMinimumNumOfTargets();
 					return setup.newSetup()
-						.then(() => generateAndSaveTargets(minTargets, minDisks - 1, ZONE_1));
+						.then(() => generateAndSaveTargets(minTargets, minDisks - 1));
 				});
 	
 				it('Volume should fail to create', () => {
@@ -336,7 +336,7 @@ describe('Volumes', () => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
 					let minTargets = testableVolume.getMinimumNumOfTargets();
 					return setup.newSetup()
-						.then(() => generateAndSaveTargets(minTargets, minDisks, ZONE_1));
+						.then(() => generateAndSaveTargets(minTargets, minDisks));
 				});
 	
 				it('Volume should be created', () => {
@@ -360,7 +360,7 @@ describe('Volumes', () => {
 			describe('Create with TargetClass', function() {
 				let minTargets = testableVolume.getMinimumNumOfTargets();
 				// create double the amount of targets
-				let targets = generateTargets(minTargets * 2, ZONE_1);
+				let targets = generateTargets(minTargets * 2);
 				let minRequiredTargetsIDs = targets.slice(0, minTargets).map(t => t.node_id);
 				// create target class with the min. required num of targets
 				let targetClass = new TargetClass('target_class_1', minRequiredTargetsIDs);
@@ -412,7 +412,7 @@ describe('Volumes', () => {
 					let minTargets = testableVolume.getMinimumNumOfTargets();
 	
 					return setup.newSetup()
-						.then(() => targets = generateTargets(minTargets, ZONE_1, minDisks))
+						.then(() => targets = generateTargets(minTargets, minDisks))
 						.then(() => Promise.all(targets.map(t => t.save())));
 				});
 	
@@ -468,7 +468,7 @@ describe('Volumes', () => {
 					let minTargets = testableVolume.getMinimumNumOfTargets();
 	
 					return setup.newSetup()
-						.then(() => targets = generateTargets(minTargets, ZONE_1, minDisks))
+						.then(() => targets = generateTargets(minTargets, minDisks))
 						.then(() => Promise.all(targets.map(t => t.save())));
 				});
 	
@@ -546,17 +546,19 @@ describe('Volumes', () => {
 			let disksPerTarget = 2;
 			let targetsPerZone = 4;
 			let zone1TargetIDs = Array(targetsPerZone).fill(0).map((val, i) => `server${i}_zone1`);
-			zone1Targets = generateTargetsByIds(zone1TargetIDs, ZONE_1, disksPerTarget);
+			zone1Targets = generateTargetsByIds(zone1TargetIDs, disksPerTarget);
 
 			let zone2TargetIDs = Array(targetsPerZone).fill(0).map((val, i) => `server${i + targetsPerZone}_zone2`);
-			zone2Targets = generateTargetsByIds(zone2TargetIDs, ZONE_2, disksPerTarget);
-			let targets = zone1Targets.concat(zone2Targets);
+			zone2Targets = generateTargetsByIds(zone2TargetIDs, disksPerTarget);
 
 			let opts = new SetupOptions().setEnableZones(true);
 			return setup.newSetup(opts)
 				.then(() => log.debug('enableZones: ' + app.get('globalSettings').enableZones))
 				.then(() => {
-					return Promise.all(targets.map(t => t.save()));
+					return Promise.all([
+						...zone1Targets.map(t => t.save().then(t => t.setZone(ZONE_1))),
+						...zone2Targets.map(t => t.save().then(t => t.setZone(ZONE_2))),
+					]);
 				});
 		});
 
@@ -685,15 +687,20 @@ describe('Volumes', () => {
 			const RAID_1_VPG = 'DEFAULT_RAID_1_VPG';
 			const originalGetZonesRank = zoneModule.getZonesRanks;
 			const targets = [
-				generateTarget('server1', '1'),
-				generateTarget('server2', '1'),
-				generateTarget('server3', '2'),
-				generateTarget('server4', '2'),				
+				generateTarget('server1'),
+				generateTarget('server2'),
+				generateTarget('server3'),
+				generateTarget('server4'),
 			];
 
 			before(async() => {
 				await setup.newSetup(new SetupOptions().setEnableZones(true));
-				await Promise.all(targets.map(t => t.save()));
+				await Promise.all([
+					targets[0].save().then(t => t.setZone('1')),
+					targets[1].save().then(t => t.setZone('1')),
+					targets[2].save().then(t => t.setZone('2')),
+					targets[3].save().then(t => t.setZone('2')),
+				]);
 
 				// force volume allocation to start with zone 2
 				zoneModule.getZonesRanks = () => ({ '1': 0, '2': 1 });
@@ -727,7 +734,7 @@ describe('Volumes', () => {
 		let targets;
 		before(() => {
 			return setup.newSetup()
-				.then(() => targets = generateTargets(3, ZONE_1, 2))
+				.then(() => targets = generateTargets(3, 2))
 				.then(() => Promise.all(targets.map(t => t.save())));
 		});
 

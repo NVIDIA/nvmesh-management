@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* global log */
+/* global app, log */
 
 const { Target } = require('../models/target');
 const { Client } = require('../models/client');
@@ -11,23 +11,21 @@ const { Disk } = require('../models/disk');
 const { TargetNIC } = require('../models/targetNic');
 const { VolumeRAID10, VolumeConcatenated, VolumeRAID0, VolumeRAID1, VolumeEC } = require('../models/volume.js');
 
-const { setEnableZones } = require('./settingsUtils.js');
 
-
-exports.generateTargetsByIds = function(nodeIDs, zone, numOfDisks, numOfNics) {
+exports.generateTargetsByIds = function(nodeIDs, numOfDisks, numOfNics) {
 	log.debug(`generateTargetsByIds: generating ${nodeIDs.length} targets`);
 
 	let targets = [];
 
 	nodeIDs.forEach(nodeID => {
-		let t = exports.generateTarget(nodeID, zone, numOfDisks, numOfNics);
+		let t = exports.generateTarget(nodeID, numOfDisks, numOfNics);
 		targets.push(t);
 	});
 
 	return targets;
 };
 
-exports.generateTargets = function(count, zone, numOfDisks, numOfNics) {
+exports.generateTargets = function(count, numOfDisks, numOfNics) {
 	log.debug(`generating ${count} targets`);
 	let nodeIDs = [];
 
@@ -35,7 +33,7 @@ exports.generateTargets = function(count, zone, numOfDisks, numOfNics) {
 		nodeIDs.push('test-server-' + nodeIDs.length);
 	}
 
-	return exports.generateTargetsByIds(nodeIDs, zone, numOfDisks, numOfNics);
+	return exports.generateTargetsByIds(nodeIDs, numOfDisks, numOfNics);
 };
 
 exports.generateClientsByIds = function(clientIDs) {
@@ -68,9 +66,6 @@ exports.generateTargetsPerZones = function(count, numOfZones, numOfDisks, numOfN
 	let zones = [];
 	let targets = [];
 
-	if (numOfZones > 1)
-		setEnableZones(true);
-
 	for (let zoneIndex = 1; zoneIndex <= numOfZones; zoneIndex++) {
 		let zone = [];
 
@@ -81,12 +76,12 @@ exports.generateTargetsPerZones = function(count, numOfZones, numOfDisks, numOfN
 		zones.push(zone);
 	}
 
-	zones.forEach((zone, zoneIndex) => targets = targets.concat(exports.generateTargetsByIds(zone, zoneIndex + 1, numOfDisks, numOfNics)));
+	zones.forEach((zone) => targets = targets.concat(exports.generateTargetsByIds(zone, numOfDisks, numOfNics)));
 
 	return targets;
 };
 
-exports.generateTarget = function(nodeID, zone, numOfDisks, numOfNics) {
+exports.generateTarget = function(nodeID, numOfDisks, numOfNics) {
 	numOfDisks = numOfDisks != undefined ? numOfDisks : 2;
 	numOfNics = numOfNics != undefined ? numOfNics : 1;
 
@@ -101,9 +96,6 @@ exports.generateTarget = function(nodeID, zone, numOfDisks, numOfNics) {
 		let nic = exports.generateTargetNIC(nodeID, target.uuid, i);
 		target.addNIC(nic);
 	}
-
-	if (zone)
-		target.setDesiredZone(zone);
 
 	return target;
 };
@@ -124,13 +116,34 @@ exports.generateTargetNIC = function(nodeID, nodeUUID, nicIndex) {
 };
 
 exports.generateAndSaveTargets = function(count, zone) {
-	let targets = exports.generateTargets(count, zone);
+	let targets = exports.generateTargets(count);
+	const isZonesEnabled = app.get('globalSettings').enableZones;
+	if (isZonesEnabled && zone) {
+		return Promise.all(targets.map(t => t.save().then(t => t.setZone(zone))));
+	}
 	return Promise.all(targets.map(t => t.save()));
 };
 
 exports.generateAndSaveTargetsPerZone = function(count, numOfZones, numOfDisks, numOfNics) {
-	let targets = exports.generateTargetsPerZones(count, numOfZones, numOfDisks, numOfNics);
-	return Promise.all(targets.map(t => t.save()));
+	const isZonesEnabled = app.get('globalSettings').enableZones;
+	let promises = [];
+
+	for (let zoneIndex = 1; zoneIndex <= numOfZones; zoneIndex++) {
+		let nodeIDs = [];
+		for (let i = 0; i < count; i++) {
+			nodeIDs.push(`test-server-${i}-zone-${zoneIndex}`);
+		}
+		let targets = exports.generateTargetsByIds(nodeIDs, numOfDisks, numOfNics);
+		let zone = String(zoneIndex);
+
+		if (isZonesEnabled) {
+			promises.push(...targets.map(t => t.save().then(t => t.setZone(zone))));
+		} else {
+			promises.push(...targets.map(t => t.save()));
+		}
+	}
+
+	return Promise.all(promises);
 };
 
 exports.generateAndSaveClients = function(count) {

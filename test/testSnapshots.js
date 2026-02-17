@@ -226,7 +226,7 @@ describe('Snapshots', () => {
 
 		before(() => {
 			return setup.newSetup()
-				.then(() => targets = generateTargets(5, ZONE_1))
+				.then(() => targets = generateTargets(5))
 				.then(() => Promise.all(targets.map(t => t.save())))
 				.then(() => sourceVolume.createOrReject())
 				.then(() => snapshot.createOrReject())
@@ -331,7 +331,7 @@ describe('Snapshots', () => {
 
 			before(() => {
 				return setup.newSetup()
-					.then(() => targets = generateTargets(5, ZONE_1))
+					.then(() => targets = generateTargets(5))
 					.then(() => Promise.all(targets.map(t => t.save())))
 					.then(() => sourceVolume.createOrReject())
 					.then(() => snapshot.createOrReject())
@@ -422,7 +422,7 @@ describe('Snapshots', () => {
 
 			before(() => {
 				return setup.newSetup()
-					.then(() => targets = generateTargets(5, ZONE_1))
+					.then(() => targets = generateTargets(5))
 					.then(() => Promise.all(targets.map(t => t.save())))
 					.then(() => sourceVolume.createOrReject())
 					.then(() => snapshot.createOrReject())

@@ -38,7 +38,7 @@ describe('Target Report', function() {
 	});
 
 	describe('#New Target - Zones Enabled', function() {
-		let target = generateTarget(NODE_ID, '1');
+		let target = generateTarget(NODE_ID);
 
 		before(() => {
 			let opts = new SetupOptions().setEnableZones(true);
@@ -66,7 +66,7 @@ describe('Target Report', function() {
 	});
 
 	describe('#New Target - Zones Disabled', function() {
-		let target = generateTarget(NODE_ID, '1');
+		let target = generateTarget(NODE_ID);
 
 		before(() => {
 			let opts = new SetupOptions().setEnableZones(false);
