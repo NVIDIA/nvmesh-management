@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/* global consts */
+
 export function getProperty(obj, path) {
 	return path.split('.').reduce((acc, key) => (acc ? acc[key] : undefined), obj);
 }
@@ -175,9 +177,29 @@ export const pipe = funcs => {
 	};
 };
 
-export const getBaseVersion = (version) => {
-	return version.split('-')[0];
+// This is a copy of the function in utils.js
+export const parseVersionString = (input) => {
+	const result = { packageName: '', baseVersion: '', releaseNumber: '', distTag: '', buildNumber: '', arch: '', extension: '' };
+
+	if (!input || typeof input !== 'string') return result;
+
+	const match = input.match(consts.versionStringRegex);
+	if (!match) return result;
+
+	result.packageName = match[1] || '';
+	result.baseVersion = match[2] || '';
+	result.releaseNumber = match[3] || '';
+	result.distTag = match[4] || '';
+	result.buildNumber = match[5] || '';
+	result.arch = match[6] || '';
+	result.extension = match[7] || '';
+	return result;
 };
+
+export const getBaseVersion = (version) => {
+	return parseVersionString(version).baseVersion;
+};
+
 
 function isAlphaNumeric(char) {
 	var anPattern = new RegExp(/^[a-z0-9]+$/i);

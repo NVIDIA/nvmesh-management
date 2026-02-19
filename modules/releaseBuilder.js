@@ -10,6 +10,7 @@ const { getAllArchTypes, createPlatforms, getAllPlatforms } = require('./platfor
 const { getAllReleases, updateReleases, createReleases } = require('./release.js');
 const { getAllArtifacts, createArtifacts } = require('./artifacts.js');
 const { createComponents, getAllComponentTypes, getAllComponents, getAllComponentVersions, updateComponents } = require('./component.js');
+const { parseVersionString } = require('../utils.js');
 const { getAllUpgrades, createUpgrades, updateUpgrades } = require('./upgradeScenario.js');
 const systemMessages = require('../systemMessages.js');
 
@@ -448,32 +449,27 @@ const prepareArtifacts = (requestedPlatforms, callback) => {
 // artifacts names are parsed to extract the component name and base version
 const extractVersionsFromArtifacts = (artifacts, interestComponents) => {
 	const result = {};
-	const regex = consts.artifactNameRegex;
 
 	for (const artifact of artifacts) {
-		const artifactName = artifact.name;
-		const match = artifactName.match(regex);
+		const parsed = parseVersionString(artifact.name);
 
-		if (match) {
-			// eslint-disable-next-line no-unused-vars
-			const [_, componentName, baseVersion] = match;
-
-			// skip the artifact if it is not in the interest components
-			if (!interestComponents.includes(componentName))
-				continue;
-
-			if (result[componentName] && result[componentName] !== baseVersion) {
-				const error = new SystemMessage(systemMessages.MORE_THAN_ONE_ARTIFACT_BASE_VERSION_FOR_COMPONENT)
-					.addInfo(Entities.Component.name, componentName)
-					.addInfo(Entities.Component.version, result[componentName], Differentiators.First)
-					.addInfo(Entities.Component.version, baseVersion, Differentiators.Second);
-				return [error, result];
-			}
-
-			result[componentName] = baseVersion;
-		} else {
-			logger.sysDEBUG(`Artifact ${artifactName} does not match the regex ${regex}, skipping`);
+		if (!parsed.packageName || !parsed.baseVersion) {
+			logger.sysDEBUG(`Artifact ${artifact.name} could not be parsed, skipping`);
+			continue;
 		}
+
+		if (!interestComponents.includes(parsed.packageName))
+			continue;
+
+		if (result[parsed.packageName] && result[parsed.packageName] !== parsed.baseVersion) {
+			const error = new SystemMessage(systemMessages.MORE_THAN_ONE_ARTIFACT_BASE_VERSION_FOR_COMPONENT)
+				.addInfo(Entities.Component.name, parsed.packageName)
+				.addInfo(Entities.Component.version, result[parsed.packageName], Differentiators.First)
+				.addInfo(Entities.Component.version, parsed.baseVersion, Differentiators.Second);
+			return [error, result];
+		}
+
+		result[parsed.packageName] = parsed.baseVersion;
 	}
 
 	return [null, result];

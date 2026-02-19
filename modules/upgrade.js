@@ -148,7 +148,7 @@ function handleSteps(machine, destinationVersion, steps, cb) {
 }
 
 function getBaseVersion(version) {
-	return version?.split('-')[0];
+	return utils.parseVersionString(version).baseVersion;
 }
 
 function getComponentSteps(machine, component, sourceVersion, destinationVersion, upgradeType, cb) {
@@ -176,34 +176,19 @@ function getComponentSteps(machine, component, sourceVersion, destinationVersion
 		});
 }
 
-const parseArtifactName = (artifactName) => {
-	// Supports:
-	//   nvmesh-base_3.3.0-3000.ubuntu2404.0.0_amd64.deb
-	//   nvmesh-client-3.3.0-3000.el8_10.0.0.x86_64.rpm
-	const match = artifactName.match(/^([^-_]+(?:-[^-_]+)*?)[_-](\d+\.\d+\.\d+)-(\d+)\./);
-	if (!match) return null;
-	return {
-		packageName: match[1],
-		baseVersion: match[2],
-		releaseNumber: match[3]
-	};
-};
-
 const isComponentVersionAlreadyInRelease = (component, componentVersion, release) => {
-	const match = componentVersion.match(/^(\d+\.\d+\.\d+)-(\d+)/);
-	if (!match) return false;
-	const baseVersion = match[1];
-	const releaseNumber = match[2];
+	const parsedComponentVersion = utils.parseVersionString(componentVersion);
+	if (!parsedComponentVersion.baseVersion || !parsedComponentVersion.releaseNumber)
+		return false;
 
 	return release.artifacts.some(artifact => {
-		if (!artifact.name) return false;
+		if (!artifact.name)
+			return false;
 
-		const parsedArtifact = parseArtifactName(artifact.name);
-
-		return parsedArtifact
-			&& parsedArtifact.packageName === component
-			&& parsedArtifact.baseVersion === baseVersion
-			&& parseInt(parsedArtifact.releaseNumber, 10) === parseInt(releaseNumber, 10);
+		const parsedArtifact = utils.parseVersionString(artifact.name);
+		return parsedArtifact.packageName === component
+			&& parsedArtifact.baseVersion === parsedComponentVersion.baseVersion
+			&& parseInt(parsedArtifact.releaseNumber, 10) === parseInt(parsedComponentVersion.releaseNumber, 10);
 	});
 };
 

@@ -1146,9 +1146,20 @@ consts.components = {
 };
 
 const componentNamesRegex = Object.values(consts.components).join('|');
-const baseVersionRegex = '[\\d+.]+';
-const rpmDebRegex = '\\.(rpm|deb)$';
-consts.artifactNameRegex = new RegExp(`^(${componentNamesRegex})[-_](${baseVersionRegex}).*${rpmDebRegex}`);
+const packageNameRegex = '([a-zA-Z][a-zA-Z0-9-]*?)';
+const baseVersionRegex = '(\\d+\\.\\d+\\.\\d+(?:\\.\\d+)*)';
+const releaseNumberRegex = '(\\d+)';
+const distTagRegex = '([a-zA-Z]+\\d+(?:_[\\d*]+|\\*)?)';
+const buildNumberRegex = '((?:\\d+|\\*)(?:\\.(?:\\d+|\\*))*|[a-zA-Z]+)';
+const archRegex = '(x86_64|amd64|aarch64|arm64|noarch|ppc64le|s390x)';
+const extensionRegex = '(rpm|deb)';
+const versionPartRegex = `${baseVersionRegex}(?:-${releaseNumberRegex}(?:\\.${distTagRegex}(?:\\.${buildNumberRegex})?)?(?:[._]${archRegex})?)?`;
+
+// groups: 1=packageName, 2=baseVersion, 3=releaseNumber, 4=distTag, 5=buildNumber, 6=arch, 7=extension
+consts.versionStringRegex = new RegExp(`^(?:${packageNameRegex}[-_])?${versionPartRegex}(?:\\.${extensionRegex})?$`);
+
+// same as versionStringRegex but for artifact names (defined component name + extension required)
+consts.artifactNameRegex = new RegExp(`^(${componentNamesRegex})[-_]${versionPartRegex}\\.${extensionRegex}$`);
 
 consts.HOTFIX_RELEASE_SUBSTRING = 'HF';
 
