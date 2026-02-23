@@ -1221,12 +1221,12 @@ scope.recycleConsumer = callback => {
 	})();
 };
 
-scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, requestID = uuid.v4()) => {
+scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, requestID = uuid.v4(), retrying = false) => {
 	const currentConsumer = app.get('kafkaConsumer');
 	const currentConsumerId = currentConsumer?.customConsumerInstanceID;
 	const currentConsumerSubscribedTopics = currentConsumer?.subscribedTopics || new Set();
 	const loggingInfo = `requestingConsumerId: ${requestingConsumerId}, currentConsumerId: ${currentConsumerId}, runTimeID: ${requestID}`;
-	const retryRequestConsumerRecycle = () => scope.requestConsumerRecycle(requestingConsumerId, callback, requestID);
+	const retryRequestConsumerRecycle = () => scope.requestConsumerRecycle(requestingConsumerId, callback, requestID, true);
 
 	logger.sysDEBUG(`Got a recycle consumer request, ${loggingInfo}`);
 
@@ -1236,7 +1236,8 @@ scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, reque
 			return callback();
 		}
 
-		if (consumerIdOnRecycle && consumerIdOnRecycle >= requestingConsumerId && utils.isEqualSet(currentConsumerSubscribedTopics, scope.subscribableTopics)) {
+		if (consumerIdOnRecycle && (consumerIdOnRecycle > requestingConsumerId || (!retrying && consumerIdOnRecycle === requestingConsumerId))
+			&& utils.isEqualSet(currentConsumerSubscribedTopics, scope.subscribableTopics)) {
 			logger.sysDEBUG(`Recycle for consumer is already in progress, continuing... , ${loggingInfo}`);
 			return callback();
 		}
