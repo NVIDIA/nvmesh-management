@@ -52,13 +52,14 @@ const DiskSegmentsGraph = ({
 			const params = { nodeID: disk.nodeID, diskID: disk.diskID };
 			const res = await VolumesService.getSegmentsStatusByDisk(params);
 
-			Object.entries(res).forEach(([segID, status]) => {
+			Object.entries(res).forEach(([segID, data]) => {
 				if (diskSegments[segID])
-					diskSegments[segID].status = status;
+					diskSegments[segID] = data;
 			});
 		}
 
-		const segments = DiskUtilsService.getSegments(disk);
+		let segments = DiskUtilsService.getSegments(disk);
+		segments = segments.map(segment => ({ ...segment, ...diskSegments[segment.id] }));
 
 		segmentsById = keyBy(segments, s => s.id);
 

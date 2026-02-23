@@ -256,7 +256,8 @@ router.get('/segments/:page/:count', function(req, res) {
 				{
 					$project: {
 						'chunks.pRaids.diskSegments.uuid': 1,
-						'chunks.pRaids.diskSegments.status': 1
+						'chunks.pRaids.diskSegments.status': 1,
+						'chunks.pRaids.diskSegments.isDead': 1
 					}
 				},
 				{
@@ -285,7 +286,8 @@ router.get('/segments/:page/:count', function(req, res) {
 		},
 		{
 			$addFields: {
-				'disks.diskSegments.status': '$volSegStatus.chunks.pRaids.diskSegments.status'
+				'disks.diskSegments.status': '$volSegStatus.chunks.pRaids.diskSegments.status',
+				'disks.diskSegments.isDead': '$volSegStatus.chunks.pRaids.diskSegments.isDead'
 			}
 		},
 		{ $project: { 'volSegStatus': 0 } },

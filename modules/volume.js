@@ -1234,12 +1234,14 @@ scope.updatePRaidWithoutDeprecations = function(pRaidToUpdate, callback) {
 	$set[pRaidSetter + '.tomaLeaderRaftTerm'] = pRaidToUpdate.tomaLeaderRaftTerm;
 	$set[pRaidSetter + '.lastReport'] = new Date();
 
-	// set pendingStatus for each segment
 	pRaidToUpdate.segments.forEach((seg, i)=> {
 		var segFilterName = 'seg' + i;
 		var segmentSetPath = pRaidSetter + '.diskSegments.$[' + segFilterName + ']';
 
-		$set[segmentSetPath + '.pendingStatus'] = seg.status;
+		$set[segmentSetPath + '.pending'] = {
+			status: seg.status,
+			isDead: seg.isDead
+		};
 
 		if (seg.status === consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA) {
 			segmentsUnderRecovery.push(seg.segmentID);
@@ -1395,17 +1397,17 @@ scope.calculateAndUpdateVolumeStatus = function(volumeID, volume, callback) {
 				volume.chunks.forEach((chunk, chunkIdx)=> {
 					chunk.pRaids.forEach((pRaid, pRaidIdx)=> {
 						pRaid.diskSegments.forEach((segment, segtIdx) => {
-							if (segment.pendingStatus) {
+							if (segment.pending) {
 								var filterName = 'c' + chunkIdx + 'p' + pRaidIdx + 's' + segtIdx;
 								var filter = {};
 								filter[filterName + '.uuid'] = segment.uuid;
 								arrayFilters.push(filter);
 
-								// make sure the pendingStatus didn't change
+								// make sure the pending status didn't change
 								var segPendingStatusMustMatch = {
 									$elemMatch: {
 										uuid: segment.uuid,
-										pendingStatus: segment.pendingStatus,
+										'pending.status': segment.pending.status,
 										status: segment.status
 									}
 								};
@@ -1416,17 +1418,14 @@ scope.calculateAndUpdateVolumeStatus = function(volumeID, volume, callback) {
 
 								var segmentUpdatePath = 'chunks.$[].pRaids.$[].diskSegments.$[' + filterName + ']';
 
-								// update status from pendingStatus
 								if (!isPersistentSegmentStatus(segment.status) ||
-									isTransitionFromMarkedForRebuildToUnderRecovery(segment.status, segment.pendingStatus))
-									$set[segmentUpdatePath + '.status'] = segment.pendingStatus;
+									isTransitionFromMarkedForRebuildToUnderRecovery(segment.status, segment.pending.status))
+									$set[segmentUpdatePath + '.status'] = segment.pending.status;
 
-								// Keep backward compatibility for isDead
-								if (segment.pendingStatus !== consts.diskSegmentStatuses.DEAD)
-									$set[segmentUpdatePath + '.isDead'] = false;
+								$set[segmentUpdatePath + '.isDead'] = segment.pending.isDead;
 
-								// remove pendingStatus
-								$unset[segmentUpdatePath + '.pendingStatus'] = '';
+								// remove pending
+								$unset[segmentUpdatePath + '.pending'] = '';
 							}
 						}
 						);
@@ -1434,7 +1433,7 @@ scope.calculateAndUpdateVolumeStatus = function(volumeID, volume, callback) {
 				});
 			}
 
-			// make sure pendingStatus fields did not change, and update status to be pendingStatus
+			// make sure pending status fields did not change, and update status to be pending status
 			processPendingStatusesOnVolume(volume, false);
 
 			var updateObj = { $set: $set };
@@ -1701,13 +1700,20 @@ scope.getPRaidStatusAndAction = function(volume, pRaid) {
 	var effectiveSegments = pRaid.diskSegments.filter(s=>s.status != consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
 
 	effectiveSegments = effectiveSegments.map(s => {
-		// save original pendingStatus and status since we are manipulating the volume object
-		if (s.pendingStatus)
-			s.originalPendingStatus = s.pendingStatus;
+		// save original pending status and status since we are manipulating the volume object
+		s.original = {
+			status: s.status,
+			isDead: s.isDead
+		};
 
-		s.originalStatus = s.status;
-		s.status = s.pendingStatus || s.status;
-		delete s.pendingStatus;
+		if (s.pending) {
+			s.originalPending = { ...s.pending };
+
+			s.status = s.pending.status;
+			s.isDead = s.pending.isDead;
+		}
+
+		delete s.pending;
 		return s;
 	});
 
@@ -1763,13 +1769,15 @@ scope.getPRaidStatusAndAction = function(volume, pRaid) {
 
 	// restore pending statuses and statuses
 	effectiveSegments.forEach(s => {
-		if (s.originalPendingStatus) {
-			s.pendingStatus = s.originalPendingStatus;
-			delete s.originalPendingStatus;
+		if (s.originalPending) {
+			s.pending = { ...s.originalPending };
+			delete s.originalPending;
 		}
 
-		s.status = s.originalStatus;
-		delete s.originalStatus;
+		s.status = s.original.status;
+		s.isDead = s.original.isDead;
+
+		delete s.original;
 	});
 
 	return {

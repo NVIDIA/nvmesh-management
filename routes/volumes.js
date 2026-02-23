@@ -309,12 +309,12 @@ router.get('/getSegmentsStatusByDisk', (req, res) => {
 					},
 					{ $unwind: '$allDiskSegments' },
 					{ $match: { $expr: { $eq: ['$allDiskSegments._id', '$$diskSegmentID'] } } },
-					{ $project: { _id: 0, status: '$allDiskSegments.status' } }
+					{ $project: { _id: 0, status: '$allDiskSegments.status', isDead: '$allDiskSegments.isDead' } }
 				],
-				as: 'status'
+				as: 'segmentInfo'
 			}
 		},
-		{ $project: { k: '$diskSegmentID', v: { $first: '$status.status' } } },
+		{ $project: { k: '$diskSegmentID', v: { $first: '$segmentInfo' } } },
 		{ $group: { _id: null, data: { $push: { k: '$k', v: '$v' } } } },
 		{ $replaceRoot: { newRoot: { $arrayToObject: '$data' } } }
 	  ]).toArray((err, results) => {

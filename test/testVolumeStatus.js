@@ -665,7 +665,7 @@ describe('Volume Statuses and Actions', () => {
 					dbVolume = dbVol;
 				})
 				.then(() => volumeCollection.updateOne({ _id: volRaid1._id }, {
-					$set: { 'chunks.0.pRaids.0.diskSegments.1.pendingStatus': '???' }
+					$set: { 'chunks.0.pRaids.0.diskSegments.1.pending.status': '???' }
 				}))
 				.then(() => {
 					// 1. Evict a drive - this will run the calculateVolumeStatus from updateVolumeDiskSegmentsAfterEvict
