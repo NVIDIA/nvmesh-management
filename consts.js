@@ -1122,6 +1122,11 @@ consts.pRaidOptionsPropertiesByRaidLevel = {
 
 consts.updateExcludedPropertiesForVPGVolumes = ['limitByNodes', 'limitByDisks', 'VSGs', 'diskClasses', 'serverClasses', 'enableCrcCheck'];
 
+consts.nodeSeparation = {
+	IGNORE: 'ignore',
+	ENFORCE: 'enforce',
+};
+
 
 consts.capacityAllocationTypes = {
 	CUSTOM: 'custom',

@@ -37,7 +37,7 @@ const VolumePRaidOptions = ({
 			protectionLevel: consts.ecSeparationTypes.FULL,
 			enableCrcCheck: false,
 			...volume,
-			ignoreNodeSeparation: volume.ignoreNodeSeparation ? 'ignore' : 'enforce',
+			ignoreNodeSeparation: volume.ignoreNodeSeparation ? consts.nodeSeparation.IGNORE : consts.nodeSeparation.ENFORCE,
 		},
 		shouldUnregister: true
 	});
@@ -58,7 +58,7 @@ const VolumePRaidOptions = ({
 		const data = { ...formData };
 
 		if (data.ignoreNodeSeparation !== undefined) {
-			data.ignoreNodeSeparation = formData.ignoreNodeSeparation === 'ignore';
+			data.ignoreNodeSeparation = formData.ignoreNodeSeparation === consts.nodeSeparation.IGNORE;
 		}
 
 		if (isMirrored) {
@@ -90,7 +90,8 @@ const VolumePRaidOptions = ({
 
 	useEffect(() => {
 		const numberOfMirrors = isMirrored ? 1 : 0;
-		if (!AllocationService.calcHasEnoughMirrors({ ...formData, numberOfMirrors }, availableMirrors)) {
+		const ignoreNodeSeparation = formData.ignoreNodeSeparation === consts.nodeSeparation.IGNORE;
+		if (!AllocationService.calcHasEnoughMirrors({ ...formData, numberOfMirrors, ignoreNodeSeparation }, availableMirrors)) {
 			setError('noMirrors', { type: 'custom', message: 'No mirrors available' });
 		} else {
 			clearErrors('noMirrors');
@@ -145,12 +146,12 @@ const VolumePRaidOptions = ({
 						        labelField="name"
 						        options={[
 							        {
-								        value: 'enforce',
+								        value: consts.nodeSeparation.ENFORCE,
 								        name: '1+1 Target Node Separation',
 								        description: 'Mirrored volume segments on different targets. Survive one target failure.'
 							        },
 							        {
-								        value: 'ignore',
+								        value: consts.nodeSeparation.IGNORE,
 								        name: 'No Target Redundancy',
 								        description: 'No restriction on volume segments per target. May not survive even one target failure.'
 							        },

@@ -22,7 +22,7 @@ export const AllocationService = {
 
 			return availableMirrors >= requiredTargets - 1;
 		} else if (volume.RAIDLevel === consts.RAIDLevel.MIRRORED_RAID_1 || volume.RAIDLevel === consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10) {
-			return volume.ignoreNodeSeparation === 'ignore' || (availableMirrors >= volume.numberOfMirrors);
+			return volume.ignoreNodeSeparation || (availableMirrors >= volume.numberOfMirrors);
 		}
 
 		return true;
