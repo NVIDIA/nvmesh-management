@@ -851,7 +851,7 @@ const prepareUpgradeScenarios = (releaseN, releaseNMinus1, versions, releaseIDby
 	const preparedUpgradeScenarios = [];
 	const sourceComponentVersions = versions[releaseNMinus1];
 
-	async.eachSeries(Object.keys(sourceComponentVersions), (componentName, next) => {
+	async.eachSeries(Object.keys(sourceComponentVersions), (componentName, eachCb) => {
 		const sourceComponentVersion = sourceComponentVersions[componentName];
 		const queryObj = {
 			filter: {
@@ -864,15 +864,15 @@ const prepareUpgradeScenarios = (releaseN, releaseNMinus1, versions, releaseIDby
 			`release ${releaseNMinus1} to release ${releaseN}:`, queryObj);
 		getAllUpgrades(queryObj, (error, upgradeScenariosFound) => {
 			if (error)
-				return next(error);
+				return eachCb(error);
 
 			if (!upgradeScenariosFound.length)
-				return next();
+				return eachCb();
 
 			const destinationComponentVersion = versions[releaseN][componentName];
 			if (!destinationComponentVersion) {
 				logger.sysDEBUG(`Can't find corresponding component version in release ${releaseN} for component ${componentName}, skipping`);
-				return next();
+				return eachCb();
 			}
 
 			const isSameVersion = sourceComponentVersion.ID === destinationComponentVersion.ID;
@@ -889,7 +889,7 @@ const prepareUpgradeScenarios = (releaseN, releaseNMinus1, versions, releaseIDby
 					preparedUpgradeScenarios.push({ ...newScenario, sourceVersionID: destinationComponentVersion.ID });
 			}
 
-			next();
+			eachCb();
 		});
 	}, (error) => {
 		if (error)
