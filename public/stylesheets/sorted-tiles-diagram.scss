@@ -4,6 +4,7 @@ $tileSize : 15px;
 
 .tiles-diagram-container {
 	display: flex;
+	flex-wrap: wrap;
 	gap: 5px;
 	padding: 5px;
 
