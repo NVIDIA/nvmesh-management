@@ -8,13 +8,12 @@
 var scope = {};
 module.exports = scope;
 
-let logger = require('../logger.js');
+let logger, utils; // lazy-loaded  (afterModuleLoaded()) to break circular dependency with logger.js and utils.js which require error.js
 var systemMessages = require('../systemMessages.js');
 var consts = require('../consts.js');
 
 var path = require('path');
 const { KafkaJSError } = require('kafkajs');
-let utils = require('../utils.js');
 let entityToCreateLinkFn = {}, logLevelToSysLogLevelFn = {};
 
 scope.afterModuleLoaded = function() {
