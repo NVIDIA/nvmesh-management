@@ -109,6 +109,8 @@ const AppShell = () => {
 				attachToRoot
 				noCloseButton
 				className="vertical-align-center"
+				modalClassName="no-connection"
+				backdropClassName="no-connection"
 			>
 				<div className="modal-body">
 					<p style={{ padding: '20px 0' }}>Could not connect to Management Server</p>

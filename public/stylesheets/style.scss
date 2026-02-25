@@ -1399,7 +1399,7 @@ a[disabled] {
 //progressBar
 #progress {
 	position: fixed;
-	z-index: 2147483647;
+	z-index: 1040;
 	top: 0;
 	left: 0;
 	width: 1%;
@@ -1740,6 +1740,18 @@ a.edit-button {
 		}
 	}
 }
+
+#modal-root {
+	.no-connection {
+		&.modal {
+			z-index: 3160;
+		}
+		&.modal-backdrop {
+				z-index: 3150;
+		}
+	}
+}
+
 
 .modal-body {
 	overflow: auto;
@@ -2370,7 +2382,6 @@ input.md-input {
 	}
 }
 
-// confirmation dialogs should be on top of all other modals
 .confirmation-dialog {
 	&.modal {
 		z-index: 2150;
