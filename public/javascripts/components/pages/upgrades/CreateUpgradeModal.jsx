@@ -13,29 +13,10 @@ import RadioInputGroup from '../../core/RadioInputGroup.jsx';
 import UpgradeRedundancyLevelsSelect from './UpgradeRedundancyLevelsSelect.jsx';
 import FormControl from '../../core/FormControl.jsx';
 import Select from '../../core/Select.jsx';
-import { getBaseVersion, groupBy } from '../../utils.js';
-import { ReleasesService } from '../../services/api/release.service.js';
 import Input from '../../core/Input.jsx';
-import { NDUService } from '../../services/ndu.service.js';
 
 const { useForm, Controller } = ReactHookForm;
-const { useRef, useState, useEffect, useMemo } = React;
-
-const getReleaseByVersion = async(version) => {
-	const response = await ReleasesService.loadReleases({ version }, {}, 0, 1);
-	if (!response.length) return null;
-	return response[0];
-};
-
-const isSourceVersionValid = async(machineDestVersions, destinationVersion) => {
-	if (!destinationVersion) return false;
-
-	const release = await getReleaseByVersion(destinationVersion);
-	if (!release) return false;
-
-	// check every target version is matched the release
-	return NDUService.isReleaseMatchMachineDestVersion(release, machineDestVersions);
-};
+const { useRef, useState, useEffect } = React;
 
 const CreateUpgrade = ({
 	upgrade = {},
@@ -43,50 +24,26 @@ const CreateUpgrade = ({
 	// eslint-disable-next-line no-unused-vars
 	onSubmit = _ => {}
 }) => {
-	const { handleSubmit, formState, control, watch } = useForm({ mode: 'all' });
+	const { handleSubmit, formState, control } = useForm({ mode: 'all' });
 	const tableRef = useRef();
 	const [selectedUpgradeAgents, setSelectedUpgradeAgents] = useState(upgrade.machinesToUpgrade || []);
 	const [versions, setVersions] = useState([]);
-	const [isDestVersionValid, setIsDestVersionValid] = useState(false);
 	const [skipMachinesOnFailure, setSkipMachinesOnFailure] = useState(upgrade.skipMachinesOnFailure || false);
-	const destinationVersion = watch('destinationVersion');
-
-	const versionsByBaseVersion = useMemo(() => {
-		const sourceVersions = NDUService.getUpgradeAgentsSourceVersions(selectedUpgradeAgents);
-		return groupBy(sourceVersions, sourceVersion => getBaseVersion(sourceVersion.version));
-	}, [selectedUpgradeAgents]);
-
-	const { sourceBaseVersion, targetBaseVersion } = useMemo(() =>
-		NDUService.extractSourceAndTargetBaseVersions(versionsByBaseVersion), [versionsByBaseVersion]);
 
 	useEffect(() => {
-		if (!sourceBaseVersion) {
+		const hostnames = selectedUpgradeAgents.map(agent => agent._id);
+		if (!hostnames.length) {
 			setVersions([]);
 			return;
 		}
 
-		async function fetchPossibleUpgrade() {
-			const versions = await UpgradesService.getPossibleUpgrade(sourceBaseVersion);
+		async function fetchPossibleUpgrades() {
+			const versions = await UpgradesService.getPossibleUpgradesByHostnames(hostnames);
 			setVersions(versions);
 		}
 
-		fetchPossibleUpgrade();
-	}, [sourceBaseVersion]);
-
-	useEffect(() => {
-		if (!targetBaseVersion || !destinationVersion) {
-			setIsDestVersionValid(true);
-			return;
-		}
-
-		// if we have target version, check if upgradeable
-		async function checkIfDestVersionIsValid() {
-			const isValid = await isSourceVersionValid(versionsByBaseVersion[targetBaseVersion], destinationVersion);
-			setIsDestVersionValid(isValid);
-		}
-
-		checkIfDestVersionIsValid();
-	}, [targetBaseVersion, destinationVersion]);
+		fetchPossibleUpgrades();
+	}, [selectedUpgradeAgents]);
 
 	const onFormSubmit = (data) => {
 		const editedUpgrade = {
@@ -170,12 +127,13 @@ const CreateUpgrade = ({
 					/>
 				</FormControl>
 
-				{!isDestVersionValid && destinationVersion && (
+				{selectedUpgradeAgents.length && !versions.length && (
 					<div className="text-danger">
 						<i className="ion ion-alert-circled red"></i>
-						Cannot upgrade from version(s): {Object.keys(versionsByBaseVersion).join(', ')}
+						No possible upgrades found for the selected machines
 					</div>
 				)}
+
 
 				<FormControl label="Skip machine on failure" name="skipMachinesOnFailure">
 					<Toggle isChecked={skipMachinesOnFailure}
@@ -243,7 +201,7 @@ const CreateUpgrade = ({
 			<div className="modal-footer">
 				<button className="btn btn-primary mgmt-btn-primary"
 				        onClick={handleSubmit(onFormSubmit)}
-				        disabled={!formState.isValid || !selectedUpgradeAgents.length || !isDestVersionValid}>
+				        disabled={!formState.isValid || !selectedUpgradeAgents.length}>
 					Add
 				</button>
 				<button className="btn btn-default" onClick={() => handleCancel()}>Cancel</button>

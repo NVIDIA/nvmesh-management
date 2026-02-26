@@ -1,6 +1,6 @@
 /* global consts */
 
-import { compareV, parseVersionString } from '../utils.js';
+import { compareV } from '../utils.js';
 
 export const NDUService = {
 
@@ -35,20 +35,4 @@ export const NDUService = {
 		}
 		return { sourceBaseVersion: source, targetBaseVersion: target };
 	},
-
-	isReleaseMatchMachineDestVersion: (release, machineDestVersions) => {
-		return machineDestVersions.every(machineDestVersion => {
-			const parsed = parseVersionString(machineDestVersion.version);
-			if (!parsed.baseVersion) return false;
-
-			return release.artifacts.some(artifact => {
-				const parsedArtifact = parseVersionString(artifact.name);
-
-				return parsedArtifact.packageName === machineDestVersion.name
-					&& parsedArtifact.baseVersion === parsed.baseVersion
-					&& parseInt(parsedArtifact.releaseNumber, 10) >= parseInt(parsed.releaseNumber, 10);
-			});
-		});
-	},
-
 };

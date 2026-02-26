@@ -73,7 +73,7 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 		limit: count
 	};
 
-	upgradeScenarioModule.getAllUpgrades(queryObj, (error, upgradeScenarios) => {
+	upgradeScenarioModule.getAllUpgrades(queryObj, false, (error, upgradeScenarios) => {
 		if (error)
 			return res.json(error.createApiResponse());
 

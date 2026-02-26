@@ -13,10 +13,10 @@ const events = require('../events.js');
 
 const scope = {};
 
-scope.getAllUpgrades = (queryObj, cb) => {
+scope.getAllUpgrades = (queryObj, loadArtifacts, cb) => {
 	const interopDB = app.get('interopDB');
 
-	interopDB.getAllUpgrades(queryObj, (results) => {
+	interopDB.getAllUpgrades(queryObj, loadArtifacts, (results) => {
 		if (results.error)
 			return cb(new SystemMessage(systemMessages.FAILED_TO_LOAD_UPGRADE_SCENARIOS)
 				.addInfo(Entities.Error, new InteropDBError(results.error)));

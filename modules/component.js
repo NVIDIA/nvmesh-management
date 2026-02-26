@@ -8,9 +8,14 @@
 const async = require('async');
 const systemMessages = require('../systemMessages.js');
 
-const { SystemAdminMessage, Entities, InteropDBError } = require('./error.js');
+const { SystemAdminMessage, Entities, InteropDBError, SystemMessage } = require('./error.js');
+let utils = require('../utils.js');
 
 let scope = {};
+
+scope.afterModuleLoaded = () => {
+	utils = require('../utils.js');
+};
 
 scope.getAllComponentVersions = (queryObj, callback) => {
 	const interopDB = app.get('interopDB');
@@ -128,6 +133,28 @@ scope.countComponents = (filterObj, cb) => {
 	interopDB.countComponents(filterObj, (results) => {
 		cb(results.data);
 	});
+};
+
+scope.getComponentVersionsFromInstalledNvmeshVersions = (installedVersions, callback) => {
+	const componentVersions = [];
+
+	async.each(installedVersions, ({ componentName, version }, eachCb) => {
+		const baseVersion = utils.parseVersionString(version).baseVersion;
+		const queryObj = { filter: { 'component.name': componentName, version: baseVersion } };
+
+		scope.getAllComponentVersions(queryObj, (err, data) => {
+			if (err)
+				return eachCb(err);
+
+			if (!data || !data.length)
+				return eachCb(new SystemMessage(systemMessages.COMPONENT_VERSION_NOT_FOUND)
+					.addInfo(Entities.Component.name, componentName)
+					.addInfo(Entities.Component.version, baseVersion));
+
+			componentVersions.push(...data);
+			eachCb();
+		});
+	}, (err) => callback(err, componentVersions));
 };
 
 module.exports = scope;

@@ -1161,6 +1161,12 @@ consts.versionStringRegex = new RegExp(`^(?:${packageNameRegex}[-_])?${versionPa
 // same as versionStringRegex but for artifact names (defined component name + extension required)
 consts.artifactNameRegex = new RegExp(`^(${componentNamesRegex})[-_]${versionPartRegex}\\.${extensionRegex}$`);
 
+consts.UPGRADEABLE_COMPONENT_NAMES = [
+	consts.components.CLIENT,
+	consts.components.MANAGEMENT,
+	consts.components.UPGRADE_AGENT
+];
+
 consts.HOTFIX_RELEASE_SUBSTRING = 'HF';
 
 consts.thirdPartyLibs = {

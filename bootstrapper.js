@@ -35,6 +35,9 @@ var errorModule = require('./modules/error.js');
 var logModule = require('./modules/log.js');
 var sanityAndRecover = require('./modules/sanityAndRecover.js');
 var volumeEncryptionModule = require('./modules/volumeEncryption.js');
+const upgradeModule = require('./modules/upgrade.js');
+const componentModule = require('./modules/component.js');
+
 var scope = {};
 
 function setCounter(eventName, alarm, critical, total) {
@@ -704,6 +707,8 @@ scope.afterModulesLoaded = function(callback) {
 	objectNotifier.afterModuleLoaded();
 	generalSettingsModule.afterModuleLoaded();
 	volumeEncryptionModule.afterModuleLoaded();
+	upgradeModule.afterModuleLoaded();
+	componentModule.afterModuleLoaded();
 	callback();
 };
 

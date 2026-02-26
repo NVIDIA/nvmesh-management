@@ -12,6 +12,7 @@ const consts = require('../consts.js');
 const utils = require('../utils.js');
 const systemMessages = require('../systemMessages.js');
 const validateProjection = require('../middlewares/validateProjection.js');
+const isDeprecated = require('../middlewares/isDeprecated.js');
 const { getCountEntitiesHandler } = require('./common.js');
 const { Entities } = require('../modules/error.js');
 const { createAuditRequestLog } = require('../modules/log.js');
@@ -165,7 +166,8 @@ router.post('/save', function(req, res) {
 });
 
 /**
- * @apiVersion 17.0.0
+ * @apiDeprecated
+ * @apiVersion 17.1.0
  * @api {get} /upgrades/getPossibleUpgrades Get possible upgrades
  * @apiName GetPossibleUpgrades
  * @apiGroup upgrades
@@ -178,10 +180,38 @@ router.post('/save', function(req, res) {
  * @apiSuccessExample Example data on success
  * ["3.2.0-15", "3.2.1-16"]
  */
-router.get('/getPossibleUpgrades', function(req, res) {
+router.get('/getPossibleUpgrades', isDeprecated, function(req, res) {
 	const sourceVersion = req.query.sourceVersion;
 
 	upgradeModule.getPossibleUpgrades(sourceVersion, (error, versions) => {
+		if (error)
+			return res.json(error.createApiResponse());
+
+		res.json(versions);
+	});
+});
+
+/**
+ * @apiVersion 17.1.0
+ * @api {post} /upgrades/getPossibleUpgradesByHostnames Get possible upgrades by hostnames
+ * @apiName GetPossibleUpgradesByHostnames
+ * @apiGroup upgrades
+ * @apiDescription Get possible upgrade destination releases for a set of hostnames.
+ * Validates per-component upgrade paths and version comparisons.
+ *
+ * @apiBody {string[]} hostnames List of hostnames to check upgrades for.
+ * @apiBody {string[]} [components] Optional list of component names to check.
+ * Defaults to all upgradeable components (nvmesh-client, nvmesh-management, nvmesh-upgrade-agent).
+ * @apiSuccess {string[]} versions List of valid destination release versions.
+ * @apiExample {json} Example request
+ * { "hostnames": ["host1", "host2"], "components": ["nvmesh-management"] }
+ * @apiSuccessExample Example data on success
+ * ["3.4.0-15", "3.4.1-16"]
+ */
+router.post('/getPossibleUpgradesByHostnames', function(req, res) {
+	const { hostnames, components } = req.body;
+
+	upgradeModule.getPossibleUpgradesByHostnames(hostnames, components, (error, versions) => {
 		if (error)
 			return res.json(error.createApiResponse());
 

@@ -857,7 +857,7 @@ const prepareUpgradeScenarios = (releaseN, releaseNMinus1, versions, releaseIDby
 
 		logger.sysDEBUG(`Getting upgrade scenarios to copy for component ${componentName} from ` +
 			`release ${releaseNMinus1} to release ${releaseN}:`, queryObj);
-		getAllUpgrades(queryObj, (error, upgradeScenariosFound) => {
+		getAllUpgrades(queryObj, false, (error, upgradeScenariosFound) => {
 			if (error)
 				return eachCb(error);
 
@@ -925,7 +925,7 @@ const updateUpgradeScenarios = (createdResponses, preparedUpgradeScenarios, call
 	if (!createdIDs.length)
 		return callback();
 
-	getAllUpgrades({ filter: { ID: { $in: createdIDs } } }, (error, createdUpgradeScenarios) => {
+	getAllUpgrades({ filter: { ID: { $in: createdIDs } } }, false, (error, createdUpgradeScenarios) => {
 		if (error)
 			return callback(error);
 

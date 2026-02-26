@@ -10,7 +10,7 @@ const uuid = require('uuid');
 const events = require('../events.js');
 const consts = require('../consts.js');
 const utils = require('../utils.js');
-const { getVRPartsObj } = require('./versionUtils.js');
+const { getVRPartsObj, compareVersionRelease } = require('./versionUtils.js');
 const objectNotifier = require('../objectNotifier.js');
 const systemMessages = require('../systemMessages.js');
 const { Entities, SystemMessage, SystemAdminMessage, MongoError, Differentiators, InteropDBError } = require('../modules/error.js');
@@ -18,11 +18,18 @@ const kafkaModule = require('../modules/kafka.js');
 const { UpgradeAgentCommand } = require('../models/kafkaMessages/UpgradeAgentCommand');
 const volumeModule = require('../modules/volume.js');
 const releaseModule = require('../modules/release.js');
+const upgradeScenarioModule = require('../modules/upgradeScenario.js');
 const logger = require('../logger.js');
+const componentModule = require('./component.js');
+let upgradeAgentModule = require('./upgradeAgent.js');
 
 let checkUpgradeStatusTimeout;
 
 const scope = {};
+
+scope.afterModuleLoaded = () => {
+	upgradeAgentModule = require('./upgradeAgent.js');
+};
 
 scope.getAllUpgrades = (queryObj, cb) => {
 	utils.loadCollection('upgrade', queryObj, function(err, upgrades) {
@@ -46,6 +53,97 @@ scope.getPossibleUpgrades = (sourceVersion, cb) => {
 		const possibleUpgrades = releases.map(r => r.release.version);
 
 		cb(null, possibleUpgrades);
+	});
+};
+
+function getValidDestinationReleases(scenarios, componentVersions, installedVersions, callback) {
+	const { releaseBySourceVersionID, artifactsByReleaseVersion } = scenarios.reduce((acc, scenario) => {
+		if (!acc.releaseBySourceVersionID[scenario.sourceVersionID])
+			acc.releaseBySourceVersionID[scenario.sourceVersionID] = new Set();
+
+		acc.releaseBySourceVersionID[scenario.sourceVersionID].add(scenario.release.version);
+
+		if (!acc.artifactsByReleaseVersion[scenario.release.version])
+			acc.artifactsByReleaseVersion[scenario.release.version] = scenario.release.artifacts || [];
+
+		return acc;
+	}, { releaseBySourceVersionID: {}, artifactsByReleaseVersion: {} });
+
+	// if any component version has no upgrade scenario, no valid upgrades exist
+	const noUpgradeScenarioFound = componentVersions.some(cv => !releaseBySourceVersionID[cv.ID]);
+	if (noUpgradeScenarioFound)
+		return callback(null, []);
+
+	// keep only releases that are a valid destination for ALL component versions
+	const releaseSets = Object.values(releaseBySourceVersionID);
+	let intersection = new Set(releaseSets[0]);
+	for (let i = 1; i < releaseSets.length; i++)
+		intersection = new Set([...intersection].filter(v => releaseSets[i].has(v)));
+
+	if (!intersection.size)
+		return callback(null, []);
+
+	const candidateReleases = [...intersection];
+
+	// ensure release artifacts version >= current version for all host/component
+	const validReleases = candidateReleases.filter(releaseVersion => {
+		const artifacts = artifactsByReleaseVersion[releaseVersion];
+		if (!artifacts || !artifacts.length)
+			return true;
+
+		return installedVersions.every(({ componentName, version }) => {
+			const matchingArtifact = artifacts.find(artifact => utils.parseVersionString(artifact.name).packageName === componentName);
+
+			if (!matchingArtifact)
+				return true;
+
+			const artifactParsed = utils.parseVersionString(matchingArtifact.name);
+			const destVersion = `${artifactParsed.baseVersion}-${[artifactParsed.releaseNumber, artifactParsed.buildNumber].filter(Boolean).join('.')}`;
+			const versionParsed = utils.parseVersionString(version);
+			const currentVersion = `${versionParsed.baseVersion}-${[versionParsed.releaseNumber, versionParsed.buildNumber].filter(Boolean).join('.')}`;
+
+			return compareVersionRelease(destVersion, currentVersion) >= 0;
+		});
+	});
+
+	callback(null, validReleases);
+}
+
+scope.getPossibleUpgradesByHostnames = (hostnames, components, cb) => {
+	components = components || consts.UPGRADEABLE_COMPONENT_NAMES;
+
+	async.waterfall([
+		cb => upgradeAgentModule.getInstalledNvmeshVersions(hostnames, components, cb),
+		(installedVersions, cb) => {
+			if (!installedVersions.length)
+				return cb(null, [], []);
+
+			componentModule.getComponentVersionsFromInstalledNvmeshVersions(
+				installedVersions,
+				(err, componentVersions) => cb(err, componentVersions, installedVersions)
+			);
+		},
+		(componentVersions, installedVersions, cb) => {
+			if (!componentVersions.length)
+				return cb(null, [], [], []);
+
+			upgradeScenarioModule.getAllUpgrades(
+				{ filter: { sourceVersionID: { $in: componentVersions.map(cv => cv.ID) } } },
+				true,
+				(err, scenarios) => cb(err, scenarios || [], componentVersions, installedVersions)
+			);
+		},
+		(scenarios, componentVersions, installedVersions, cb) => {
+			if (!scenarios.length)
+				return cb(null, []);
+
+			getValidDestinationReleases(scenarios, componentVersions, installedVersions, cb);
+		}
+	], (err, validReleases = []) => {
+		if (err)
+			return cb(err);
+
+		cb(null, validReleases);
 	});
 };
 
@@ -1272,6 +1370,19 @@ function preUpgradeChecks(upgrade, callback) {
 	let skip;
 
 	async.waterfall([
+		// Validate destination release is a valid upgrade for the selected hosts
+		(cb) => {
+			scope.getPossibleUpgradesByHostnames(upgrade.machinesToUpgrade.map(machine => machine._id), null, (err, validReleases) => {
+				if (err)
+					return cb(err);
+
+				if (!validReleases.includes(upgrade.destinationVersion))
+					return cb(new SystemMessage(systemMessages.DESTINATION_VERSION_NOT_VALID_FOR_HOSTS)
+						.addInfo(Entities.Upgrade.DestinationVersion, upgrade.destinationVersion));
+
+				cb();
+			});
+		},
 		// Validate MongoDB information on NVMesh components (client/target/upgradeAgent)
 		(cb) => {
 			getPreUpgradeComponentsData(upgrade, (err, componentsInformation) => {

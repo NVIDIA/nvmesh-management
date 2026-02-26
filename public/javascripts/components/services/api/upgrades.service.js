@@ -32,8 +32,13 @@ export const UpgradesService = {
 		return await apiService.post('/delete', upgrades);
 	},
 
-	async getPossibleUpgrade(sourceVersion) {
-		return await apiService.get('/getPossibleUpgrades/', { sourceVersion }, { disableParamsAsJSON: true });
+	async getPossibleUpgradesByHostnames(hostnames, components) {
+		const body = { hostnames };
+
+		if (components)
+			body.components = components;
+
+		return await apiService.post('/getPossibleUpgradesByHostnames', body);
 	},
 
 	async startUpgrade(upgrade) {

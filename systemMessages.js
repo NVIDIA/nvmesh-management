@@ -4634,6 +4634,11 @@ var systemMessages = {
 		header: 'Volume Being Deleted',
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	DESTINATION_VERSION_NOT_VALID_FOR_HOSTS: {
+		message: 'Destination version is not a valid upgrade target for the selected hosts',
+		id: 11213,
+		sysLogLevel: consts.loggingLevel.ERROR
 	}
 };
 // add the key name to each systemMessage, for debugging purposes

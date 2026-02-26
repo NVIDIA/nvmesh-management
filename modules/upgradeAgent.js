@@ -417,4 +417,30 @@ scope.requestFreshKeepalive = (upgradeAgentID, cb) => {
 	});
 };
 
+scope.getInstalledNvmeshVersions = (hostnames, components, callback) => {
+	const db = app.get('db');
+	const upgradeAgentCollection = db.collection('upgradeAgent');
+	const pipeline = [
+		{ $match: { _id: { $in: hostnames } } },
+		{ $project: {
+			versions: {
+				$filter: {
+					input: { $objectToArray: '$upgradeAgentData.nvmeshVersions' },
+					cond: { $in: ['$$this.k', components] }
+				}
+			}
+		} },
+		{ $unwind: '$versions' },
+		{ $group: { _id: { componentName: '$versions.k', version: '$versions.v' } } },
+		{ $project: { _id: 0, componentName: '$_id.componentName', version: '$_id.version' } }
+	];
+
+	upgradeAgentCollection.aggregate(pipeline).toArray((err, installedVersions) => {
+		if (err)
+			return callback(new MongoError(err));
+
+		callback(null, installedVersions);
+	});
+};
+
 module.exports = scope;
