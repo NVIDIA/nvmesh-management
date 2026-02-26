@@ -186,7 +186,7 @@ router.get('/count', (req, res) => {
 
 /**
  * @apiVersion 17.0.0
- * @api {post} /releases/save Save a new release
+ * @api {post} /releases/save Save a release
  * @apiName SaveRelease
  * @apiGroup releases
  * @apiDescription Saves a release from a payload. This complex operation can perform the following actions:
@@ -205,6 +205,9 @@ router.get('/count', (req, res) => {
  * - **Upgrade Scenario Inheritance**: Inherits and adapts upgrade scenarios from the `inheritRelationsFrom` release.
  *   - For a hotfix release, scenarios for the previous release (`n-1 -> n-1`) are adapted to target the new release (`n-1 -> n`).
  *   - For a standard release, scenarios for the previous release (`n-1 -> n-1`) are adapted for the new release (`n-1 -> n` and `n -> n`).
+ *
+ * **Important:** When `inheritRelationsFrom` is specified, artifacts for **all** NVMesh package components must be included in the payload
+ * (nvmesh-client, nvmesh-management, nvmesh-target, nvmesh-upgrade-agent, nvmesh-interopdb, nvmesh-base, nvmesh-utils).
  *
  * **Note:** This endpoint will not update any other existing entities, with the exception of:
  *  - linking new artifacts to an existing release
@@ -242,7 +245,12 @@ router.get('/count', (req, res) => {
  *             "arch": "x86_64",
  *             "artifacts": [
  *                 "nvmesh-client-3.4.0-237.el8_10.1.1089.x86_64.rpm",
- *                 "nvmesh-target-3.4.0-237.el8_10.1.1089.x86_64.rpm"
+ *                 "nvmesh-target-3.4.0-237.el8_10.1.1089.x86_64.rpm",
+ *                 "nvmesh-utils-3.4.0-237.el8_10.1.1089.x86_64.rpm",
+ *                 "nvmesh-upgrade-agent-3.4.0-237.el8_10.1.1089.x86_64.rpm",
+ *                 "nvmesh-management-3.4.0-237.el8_10.1.1089.x86_64.rpm",
+ *                 "nvmesh-interopdb-3.4.0-237.el8_10.1.1089.x86_64.rpm",
+ *                 "nvmesh-base-3.4.0-237.el8_10.1.1089.x86_64.rpm"
  *             ]
  *         }
  *     ]

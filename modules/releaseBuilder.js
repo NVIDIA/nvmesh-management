@@ -1009,14 +1009,29 @@ const saveRelease = (payload, callback) => {
 
 			createOrUpdateRelease(releaseName, artifacts, cb);
 		},
-		// inherit components
+		cb => {
+			if (!payload.inheritRelationsFrom)
+				return cb();
+
+			const { platforms } = payload;
+			const artifacts = getUniqueStrings(platforms.flatMap(platform => platform.artifacts), 'artifacts');
+			const requiredComponents = Object.values(consts.components).filter(c => c !== consts.components.MONITOR);
+			const missingComponents = requiredComponents.filter(c => !artifacts.some(artifact => artifact.startsWith(c)));
+
+			if (missingComponents.length)
+				return cb(missingComponents.reduce(
+					(acc, name) => acc.addInfo(Entities.Component.name, name),
+					new SystemMessage(systemMessages.INCOMPLETE_ARTIFACTS_FOR_INHERITANCE)));
+
+			cb();
+		},
+
 		cb => {
 			if (!payload.inheritRelationsFrom)
 				return cb();
 
 			inheritComponents(payload.releaseName, payload.inheritRelationsFrom, cb);
 		},
-		// inherit upgrade scenarios
 		cb => {
 			if (!payload.inheritRelationsFrom)
 				return cb();
