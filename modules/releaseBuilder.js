@@ -10,7 +10,6 @@ const { getAllArchTypes, createPlatforms, getAllPlatforms } = require('./platfor
 const { getAllReleases, updateReleases, createReleases } = require('./release.js');
 const { getAllArtifacts, createArtifacts } = require('./artifacts.js');
 const { createComponents, getAllComponentTypes, getAllComponents, getAllComponentVersions, updateComponents } = require('./component.js');
-const { compareVersionRelease } = require('./versionUtils.js');
 const { getAllUpgrades, createUpgrades, updateUpgrades } = require('./upgradeScenario.js');
 const systemMessages = require('../systemMessages.js');
 
@@ -668,12 +667,12 @@ const prepareNComponentVersions = (componentVersionsToUpdate, versions, mappedEn
 		}, {});
 
 		for (const [componentName, nMinus1Compatibilities] of Object.entries(nMinus1compatibilitiesByComponentName)) {
-			// sort the nvmesh package compatibilities by version - will allow us to add the latest compatibility first
-			const nMinus1sortedCompatibilities = [...nMinus1Compatibilities].sort((a, b) => compareVersionRelease(a.version, b.version));
 			const newCompatibilities = [];
 
-			// add the n-1 nvmesh package compatibility (latest version)
-			newCompatibilities.push(nMinus1sortedCompatibilities.pop());
+			const nMinus1Compatibility = nMinus1Compatibilities.find(c => c.version === nMinus1ComponentVersion.version);
+			if (nMinus1Compatibility)
+				newCompatibilities.push(nMinus1Compatibility);
+
 
 			// get the version for the component in release n - i.e. '3.3.2'
 			const version = versions.n[componentName]?.version;
