@@ -1,0 +1,85 @@
+{
+  "parserOptions": {
+    "ecmaVersion": 11,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "settings": {
+    "react": {
+      "version": "18.3.1"
+    }
+  },
+  "env": {
+    "browser": true,
+    "es6": true,
+    "node": true
+  },
+  "extends": ["eslint:recommended", "plugin:react/recommended"],
+  "rules": {
+    "linebreak-style": [
+      "error",
+      "unix"
+    ],
+    "quotes": [
+      "error",
+      "single"
+    ],
+    "semi": [
+      "error",
+      "always"
+    ],
+    "keyword-spacing": [
+      "error", {
+        "before": true,
+        "after": true
+      }
+    ],
+    "space-in-parens": [
+      "error",
+      "never"
+    ],
+    "object-curly-newline": [
+      "error",
+      { "consistent": true }
+    ],
+    "object-curly-spacing": [
+      "error", "always", { "objectsInObjects": true }
+    ],
+    "brace-style": [
+      "error",
+      "1tbs",
+      { "allowSingleLine": true }
+    ],
+    "block-spacing": [
+      2, "always"
+    ],
+    "comma-spacing": [
+      "error", {
+        "before": false,
+        "after": true
+      }
+    ],
+    "no-multi-spaces": ["error"],
+    "no-multiple-empty-lines":"error",
+    "space-infix-ops": ["error"],
+    "object-property-newline": [
+      "error", {
+        "allowAllPropertiesOnSameLine": true
+      }
+    ],
+    "max-len": [2, 160, 4],
+    "camelcase": ["error", { "properties": "never" }],
+    "indent": ["error", "tab", { "SwitchCase": 1 }],
+    "array-bracket-spacing": ["error", "never"],
+    "semi-spacing": ["error", {"before": false, "after": true}],
+    "key-spacing" : ["error", { "beforeColon": false }],
+    "space-before-function-paren": ["error", "never"],
+    "react/prop-types": "off",
+    "react/no-unknown-property": "off",
+    "no-mixed-spaces-and-tabs": "off",
+    "react/jsx-indent": "off",
+    "react/jsx-indent-props": "off"
+  }
+}
