@@ -9,5 +9,23 @@
 /public/javascripts/vendor
 
 **/*.min.*
+/public/javascripts/xeditable.js
+/public/javascripts/socket.io-*
+/public/javascripts/tree-grid-directive.js
+/public/javascripts/react.development.js
+/public/javascripts/react-dom.development.js
+/public/javascripts/react-hook-form.js
+
+**/*.min.*
+**/*angular*
+**/c3.js
+**/d3.js
+**/daterangepicker.*
+**/editabletable.*
+**/js.cookie.*
+**/moment-with-locales.*
+**/pjax.*
+**/jquery.easing.1.3.js
+**/google-charts-loader.js
 **/docs
 gulpfile.js
