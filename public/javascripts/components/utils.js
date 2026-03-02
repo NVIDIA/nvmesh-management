@@ -177,7 +177,7 @@ export const pipe = funcs => {
 	};
 };
 
-// This is a copy of the function in utils.js
+// This is a copy of the function in versionUtils.js
 export const parseVersionString = (input) => {
 	const result = { packageName: '', baseVersion: '', releaseNumber: '', distTag: '', buildNumber: '', arch: '', extension: '' };
 

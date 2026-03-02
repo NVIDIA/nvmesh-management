@@ -3,6 +3,29 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+const consts = require('../consts.js');
+
+function parseVersionString(input) {
+	const result = { packageName: '', baseVersion: '', releaseNumber: '', distTag: '', buildNumber: '', arch: '', extension: '' };
+
+	if (!input || typeof input !== 'string')
+		return result;
+
+	const match = input.match(consts.versionStringRegex);
+	if (!match)
+		return result;
+
+	result.packageName = match[1] || '';
+	result.baseVersion = match[2] || '';
+	result.releaseNumber = match[3] || '';
+	result.distTag = match[4] || '';
+	result.buildNumber = match[5] || '';
+	result.arch = match[6] || '';
+	result.extension = match[7] || '';
+
+	return result;
+}
+
 function getVRPartsObj(versionRelease) {
 	var parts = versionRelease.split('-');
 	return {
@@ -145,6 +168,7 @@ function compareVersions(vr1, vr2) {
 }
 
 module.exports = {
+	parseVersionString,
 	getVRPartsObj,
 	compareVersionRelease,
 	compareVersions,

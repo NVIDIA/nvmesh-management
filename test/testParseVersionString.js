@@ -6,7 +6,7 @@
 /* global it, describe */
 
 const assert = require('assert');
-const { parseVersionString } = require('../utils.js');
+const { parseVersionString } = require('../modules/versionUtils.js');
 
 const EMPTY_RESULT = {
 	packageName: '',

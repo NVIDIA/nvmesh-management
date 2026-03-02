@@ -10,7 +10,7 @@ const { getAllArchTypes, createPlatforms, getAllPlatforms } = require('./platfor
 const { getAllReleases, updateReleases, createReleases } = require('./release.js');
 const { getAllArtifacts, createArtifacts } = require('./artifacts.js');
 const { createComponents, getAllComponentTypes, getAllComponents, getAllComponentVersions, updateComponents } = require('./component.js');
-const { parseVersionString } = require('../utils.js');
+const { parseVersionString } = require('./versionUtils.js');
 const { getAllUpgrades, createUpgrades, updateUpgrades } = require('./upgradeScenario.js');
 const systemMessages = require('../systemMessages.js');
 

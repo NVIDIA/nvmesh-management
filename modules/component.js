@@ -9,13 +9,10 @@ const async = require('async');
 const systemMessages = require('../systemMessages.js');
 
 const { SystemAdminMessage, Entities, InteropDBError, SystemMessage } = require('./error.js');
-let utils = require('../utils.js');
+const { parseVersionString } = require('./versionUtils.js');
 
 let scope = {};
 
-scope.afterModuleLoaded = () => {
-	utils = require('../utils.js');
-};
 
 scope.getAllComponentVersions = (queryObj, callback) => {
 	const interopDB = app.get('interopDB');
@@ -139,7 +136,7 @@ scope.getComponentVersionsFromInstalledNvmeshVersions = (installedVersions, call
 	const componentVersions = [];
 
 	async.each(installedVersions, ({ componentName, version }, eachCb) => {
-		const baseVersion = utils.parseVersionString(version).baseVersion;
+		const baseVersion = parseVersionString(version).baseVersion;
 		const queryObj = { filter: { 'component.name': componentName, version: baseVersion } };
 
 		scope.getAllComponentVersions(queryObj, (err, data) => {

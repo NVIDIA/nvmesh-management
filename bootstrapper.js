@@ -36,7 +36,6 @@ var logModule = require('./modules/log.js');
 var sanityAndRecover = require('./modules/sanityAndRecover.js');
 var volumeEncryptionModule = require('./modules/volumeEncryption.js');
 const upgradeModule = require('./modules/upgrade.js');
-const componentModule = require('./modules/component.js');
 
 var scope = {};
 
@@ -708,7 +707,6 @@ scope.afterModulesLoaded = function(callback) {
 	generalSettingsModule.afterModuleLoaded();
 	volumeEncryptionModule.afterModuleLoaded();
 	upgradeModule.afterModuleLoaded();
-	componentModule.afterModuleLoaded();
 	callback();
 };
 

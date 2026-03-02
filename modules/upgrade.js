@@ -10,7 +10,7 @@ const uuid = require('uuid');
 const events = require('../events.js');
 const consts = require('../consts.js');
 const utils = require('../utils.js');
-const { getVRPartsObj, compareVersionRelease } = require('./versionUtils.js');
+const { getVRPartsObj, compareVersionRelease, parseVersionString } = require('./versionUtils.js');
 const objectNotifier = require('../objectNotifier.js');
 const systemMessages = require('../systemMessages.js');
 const { Entities, SystemMessage, SystemAdminMessage, MongoError, Differentiators, InteropDBError } = require('../modules/error.js');
@@ -92,14 +92,14 @@ function getValidDestinationReleases(scenarios, componentVersions, installedVers
 			return true;
 
 		return installedVersions.every(({ componentName, version }) => {
-			const matchingArtifact = artifacts.find(artifact => utils.parseVersionString(artifact.name).packageName === componentName);
+			const matchingArtifact = artifacts.find(artifact => parseVersionString(artifact.name).packageName === componentName);
 
 			if (!matchingArtifact)
 				return true;
 
-			const artifactParsed = utils.parseVersionString(matchingArtifact.name);
+			const artifactParsed = parseVersionString(matchingArtifact.name);
 			const destVersion = `${artifactParsed.baseVersion}-${[artifactParsed.releaseNumber, artifactParsed.buildNumber].filter(Boolean).join('.')}`;
-			const versionParsed = utils.parseVersionString(version);
+			const versionParsed = parseVersionString(version);
 			const currentVersion = `${versionParsed.baseVersion}-${[versionParsed.releaseNumber, versionParsed.buildNumber].filter(Boolean).join('.')}`;
 
 			return compareVersionRelease(destVersion, currentVersion) >= 0;
@@ -246,7 +246,7 @@ function handleSteps(machine, destinationVersion, steps, cb) {
 }
 
 function getBaseVersion(version) {
-	return utils.parseVersionString(version).baseVersion;
+	return parseVersionString(version).baseVersion;
 }
 
 function getComponentSteps(machine, component, sourceVersion, destinationVersion, upgradeType, cb) {
@@ -275,7 +275,7 @@ function getComponentSteps(machine, component, sourceVersion, destinationVersion
 }
 
 const isComponentVersionAlreadyInRelease = (component, componentVersion, release) => {
-	const parsedComponentVersion = utils.parseVersionString(componentVersion);
+	const parsedComponentVersion = parseVersionString(componentVersion);
 	if (!parsedComponentVersion.baseVersion || !parsedComponentVersion.releaseNumber)
 		return false;
 
@@ -283,7 +283,7 @@ const isComponentVersionAlreadyInRelease = (component, componentVersion, release
 		if (!artifact.name)
 			return false;
 
-		const parsedArtifact = utils.parseVersionString(artifact.name);
+		const parsedArtifact = parseVersionString(artifact.name);
 		return parsedArtifact.packageName === component
 			&& parsedArtifact.baseVersion === parsedComponentVersion.baseVersion
 			&& parseInt(parsedArtifact.releaseNumber, 10) === parseInt(parsedComponentVersion.releaseNumber, 10);
