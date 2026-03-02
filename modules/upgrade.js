@@ -10,6 +10,7 @@ const uuid = require('uuid');
 const events = require('../events.js');
 const consts = require('../consts.js');
 const utils = require('../utils.js');
+const { getVRPartsObj } = require('./versionUtils.js');
 const objectNotifier = require('../objectNotifier.js');
 const systemMessages = require('../systemMessages.js');
 const { Entities, SystemMessage, SystemAdminMessage, MongoError, Differentiators, InteropDBError } = require('../modules/error.js');
@@ -1521,10 +1522,10 @@ function validatePreUpgradeCheckComponentsData(componentsInformation) {
 function validateComponentsVersionsCompatibilities(componentsVersions, mainCallback) {
 	const interopDB = app.get('interopDB');
 	const versions = {
-		[consts.components.MANAGEMENT]: utils.getVRPartsObj(app.get('rpmVersion')).version,
-		[consts.components.CLIENT]: componentsVersions.client ? utils.getVRPartsObj(componentsVersions.client).version : null,
-		[consts.components.TARGET]: componentsVersions.target ? utils.getVRPartsObj(componentsVersions.target).version : null,
-		[consts.components.UPGRADE_AGENT]: componentsVersions.upgradeAgent ? utils.getVRPartsObj(componentsVersions.upgradeAgent).version : null
+		[consts.components.MANAGEMENT]: getVRPartsObj(app.get('rpmVersion')).version,
+		[consts.components.CLIENT]: componentsVersions.client ? getVRPartsObj(componentsVersions.client).version : null,
+		[consts.components.TARGET]: componentsVersions.target ? getVRPartsObj(componentsVersions.target).version : null,
+		[consts.components.UPGRADE_AGENT]: componentsVersions.upgradeAgent ? getVRPartsObj(componentsVersions.upgradeAgent).version : null
 	};
 
 	// filter out components with no version
@@ -1614,7 +1615,7 @@ function validateThirdPartyLibCompatibilities(libName, libVersionsFound, nvmeshP
 			.addInfo(Entities.Component.name, libName));
 
 	const interopDB = app.get('interopDB');
-	const nvmeshPackageVersion = utils.getVRPartsObj(nvmeshPackageRawVersion).version;
+	const nvmeshPackageVersion = getVRPartsObj(nvmeshPackageRawVersion).version;
 
 	interopDB.getCompatibilities(nvmeshPackageName, consts.componentTypes.THIRD_PARTY, nvmeshPackageVersion, compatibilities => {
 		if (compatibilities.error)

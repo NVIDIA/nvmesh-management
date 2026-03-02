@@ -8,6 +8,7 @@
 var async = require('async');
 var uuid = require('uuid');
 var utils = require('../utils.js');
+const { compareVersionRelease } = require('./versionUtils.js');
 var events = require('../events.js');
 var logger = require('../logger.js');
 var queue = require('../queue.js');
@@ -1146,7 +1147,7 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 				dbTopics = versionDocument.topics;
 
 				const isNewFeatureCompatibilityVersion = dbFeatureCompatibilityVersion &&
-					utils.compareVersionRelease(message.payload.featureCompatibilityVersion, dbFeatureCompatibilityVersion) > 0;
+					compareVersionRelease(message.payload.featureCompatibilityVersion, dbFeatureCompatibilityVersion) > 0;
 				const isFeatureCompatibilityVersionMismatch = !dbFeatureCompatibilityVersion || isNewFeatureCompatibilityVersion;
 
 				shouldUpdateFeatureCompatibilityVersion = isValidToken && isFeatureCompatibilityVersionMismatch;
@@ -1160,7 +1161,7 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 
 						// drop the keepalive if the topics are not created yet
 						if (!lock.lastKafkaTopicsVersionCreated ||
-							utils.compareVersionRelease(lock.lastKafkaTopicsVersionCreated, message.payload.featureCompatibilityVersion) < 0) {
+							compareVersionRelease(lock.lastKafkaTopicsVersionCreated, message.payload.featureCompatibilityVersion) < 0) {
 							logger.sysDEBUG(`Topics for ${message.payload.zone} are not created yet, skipping this leader keepalive`);
 							return callback(true);
 						}
@@ -1286,7 +1287,7 @@ function handleTargetFeatureCompatibilityVersionChanged(message, target, callbac
 					return cb(new MongoError(err).log());
 
 				if (result.lastKafkaTopicsVersionCreated &&
-					utils.compareVersionRelease(result.lastKafkaTopicsVersionCreated, newFeatureCompatibilityVersion) > 0)
+					compareVersionRelease(result.lastKafkaTopicsVersionCreated, newFeatureCompatibilityVersion) > 0)
 					return cb();
 
 				kafkaModule.getTopicChangesBetweenCompatibilityVersions(consts.FEATURE_COMPATIBILITY_TYPES.LEADER, null, zone,
@@ -1341,7 +1342,7 @@ function handleNewTarget(newTarget, dbZone, callback) {
 				async.series([
 					cb => {
 						if (result.lastKafkaTopicsVersionCreated &&
-							utils.compareVersionRelease(result.lastKafkaTopicsVersionCreated, newTarget.featureCompatibilityVersion) === 0)
+							compareVersionRelease(result.lastKafkaTopicsVersionCreated, newTarget.featureCompatibilityVersion) === 0)
 							return cb();
 
 						kafkaModule.createZoneTopics(dbZone, newTarget.featureCompatibilityVersion, false, cb);
@@ -1473,7 +1474,7 @@ scope.handleKeepAlive = function(message, mainCallback) {
 			};
 
 			const comparisonVersionResult = dbFeatureCompatibilityVersion &&
-				utils.compareVersionRelease(featureCompatibilityVersion, dbFeatureCompatibilityVersion);
+				compareVersionRelease(featureCompatibilityVersion, dbFeatureCompatibilityVersion);
 
 			if (comparisonVersionResult > 0) {
 				const target = { featureCompatibilityVersion: dbFeatureCompatibilityVersion, zone: dbZone };
@@ -1561,7 +1562,7 @@ scope.handleKeepAlive = function(message, mainCallback) {
 				});
 			};
 
-			if (utils.compareVersionRelease(featureCompatibilityVersion, dbFeatureCompatibilityVersion) > 0)
+			if (compareVersionRelease(featureCompatibilityVersion, dbFeatureCompatibilityVersion) > 0)
 				return kafkaModule.getTargetTopicsToCreate(featureCompatibilityVersion, fullTargetID, dbZone, false, topics =>
 					updateTarget(kafkaModule.mapTopicNamesToTopicSuffix(topics.map(topic => topic.name))));
 
@@ -2760,7 +2761,7 @@ scope.setZone = (targets, zoneID, cb) => {
 				const targetFeatureCompatibilityVersion = successTargets[0].featureCompatibilityVersion;
 
 				if (zone.lastKafkaTopicsVersionCreated &&
-					utils.compareVersionRelease(zone.lastKafkaTopicsVersionCreated, targetFeatureCompatibilityVersion) <= 0)
+					compareVersionRelease(zone.lastKafkaTopicsVersionCreated, targetFeatureCompatibilityVersion) <= 0)
 					return callback();
 
 				kafkaModule.createZoneTopics(zoneID, targetFeatureCompatibilityVersion, true, callback);

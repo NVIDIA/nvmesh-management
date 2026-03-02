@@ -18,6 +18,7 @@ var config = require('./config.js');
 var logger = require('../logger.js');
 var consts = require('../consts.js');
 var utils = require('../utils.js');
+const { getVRPartsObj, compareVersionRelease } = require('./versionUtils.js');
 var events = require('../events.js');
 var objectNotifier = require('../objectNotifier.js');
 var systemMessages = require('../systemMessages.js');
@@ -590,9 +591,9 @@ function initManagementTopics(callback) {
 		if (!lock)
 			lock = { _id: '1' };
 
-		const rpmVersion = utils.getVRPartsObj(app.get('rpmVersion')).version;
+		const rpmVersion = getVRPartsObj(app.get('rpmVersion')).version;
 
-		if (lock.lastKafkaTopicsManagementVersionCreated && utils.compareVersionRelease(rpmVersion, lock.lastKafkaTopicsManagementVersionCreated) === 0) {
+		if (lock.lastKafkaTopicsManagementVersionCreated && compareVersionRelease(rpmVersion, lock.lastKafkaTopicsManagementVersionCreated) === 0) {
 			return scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, null, topics => {
 				events.emitEvent(null, objectNotifier.events.newUpstreamTopicEvent, { topics });
 				callback();
@@ -775,7 +776,7 @@ scope.createZoneTopics = (zoneID, leaderCompatibilityVersion, underlock, callbac
 				return cb();
 
 			lockModule.acquireLockByZone(zoneID, (err, dbZone) => {
-				if (dbZone.lastKafkaTopicsVersionCreated && utils.compareVersionRelease(leaderCompatibilityVersion, dbZone.lastKafkaTopicsVersionCreated) === 0)
+				if (dbZone.lastKafkaTopicsVersionCreated && compareVersionRelease(leaderCompatibilityVersion, dbZone.lastKafkaTopicsVersionCreated) === 0)
 					return cb(true);
 
 				cb();
@@ -1465,7 +1466,7 @@ scope.GCManagementZoneTopics = (versionDocument, callback) => {
 
 scope.GCManagementTopics = (callback) => {
 	let groupID = consts.kafka.MANAGEMENT_GROUP_ID;
-	const rpmVersion = utils.getVRPartsObj(app.get('rpmVersion')).version;
+	const rpmVersion = getVRPartsObj(app.get('rpmVersion')).version;
 
 	scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, null, topics =>
 		scope.deleteCommittedRecords(groupID, topics, callback));
@@ -1823,7 +1824,7 @@ function getManagementTopicsInUse(callback) {
 			return callback(new MongoError(err).log());
 
 		const topicsInUse = new Set();
-		const rpmVersions = [...new Set(results.map(result => utils.getVRPartsObj(result.rpmVersion).version))];
+		const rpmVersions = [...new Set(results.map(result => getVRPartsObj(result.rpmVersion).version))];
 
 		async.each(rpmVersions, (rpmVersion, cb) => {
 			scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, null, topics => {

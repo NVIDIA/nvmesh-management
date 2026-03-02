@@ -4,7 +4,7 @@
  */
 
 /* global app */
-const utils = require('../utils.js');
+const { compareVersionRelease } = require('./versionUtils.js');
 
 var scope = {};
 module.exports = scope;
@@ -33,7 +33,7 @@ scope.MongoDBWrapper = class MongoDBWrapper {
 		this.originalDB = db;
 	}
 
-	// private 
+	// private
 	_createCollectionWrapper(collectionName) {
 		let mongoDBCollectionWrapper = new scope.MongoDBCollectionWrapper(collectionName, this.originalDB);
 		return mongoDBCollectionWrapper.createOriginalCollectionProxy();
@@ -64,7 +64,7 @@ scope.MongoDBCollectionWrapper = class MongoDBCollectionWrapper {
 
 		let collectionDocVersions = this.supportedDBCollectionVersions[this.collectionName];
 		if (collectionDocVersions && collectionDocVersions.length)
-			this.docVersion = collectionDocVersions.sort(utils.compareVersionRelease)[collectionDocVersions.length - 1];
+			this.docVersion = collectionDocVersions.sort(compareVersionRelease)[collectionDocVersions.length - 1];
 	}
 
 	// this function creates a proxy that intercepts the class function callings
@@ -80,41 +80,41 @@ scope.MongoDBCollectionWrapper = class MongoDBCollectionWrapper {
 		// then, we can check for upsert=true and add the docVersion
 		if (args.length > 2 && typeof args[2] !== 'function' && args[2].upsert) {
 			let update = args[1];
-	
+
 			// in case of an update pipline, insert the docVersion save stage as the first stage
 			if (Array.isArray(update))
 				update = update.concat([{ $set: { docVersion: this.docVersion } }], update);
 			else {
 				if (!('$setOnInsert' in update))
 					update['$setOnInsert'] = {};
-	
+
 				update['$setOnInsert'].docVersion = this.docVersion;
 			}
 		}
 	}
 
 	insertOne(...args) {
-		args[0].docVersion = this.docVersion;		
+		args[0].docVersion = this.docVersion;
 
 		this.originalCollection.insertOne(...args);
 	}
-	
+
 	insertMany(...args) {
 		args[0].forEach((obj) => obj.docVersion = this.docVersion);
-	
+
 		this.originalCollection.insertMany(...args);
 	}
-	
+
 	updateOne(...args) {
 		this.addDocVersionForUpdateIfNeeded(...args);
 		this.originalCollection.updateOne(...args);
 	}
-	
+
 	updateMany(...args) {
 		this.addDocVersionForUpdateIfNeeded(...args);
 		this.originalCollection.updateMany(...args);
 	}
-	
+
 	findOneAndUpdate(...args) {
 		this.addDocVersionForUpdateIfNeeded(...args);
 		this.originalCollection.findOneAndUpdate(...args);

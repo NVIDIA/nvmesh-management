@@ -10,6 +10,7 @@ var async = require('async');
 const fs = require('fs');
 
 var utils = require('../utils.js');
+const { getVRPartsObj, compareVersions } = require('./versionUtils.js');
 var logger = require('../logger.js');
 var eventsModule = require('../events.js');
 var consts = require('../consts.js');
@@ -672,7 +673,7 @@ function checkForNonLatestManagements(cb) {
 	const managementClusterCollection = db.collection('managementCluster');
 	const managementId = app.get('managementId');
 	const managementVersion = app.get('managementVersion');
-	const myMgmtVersion = utils.getVRPartsObj(managementVersion).version;
+	const myMgmtVersion = getVRPartsObj(managementVersion).version;
 
 	managementClusterCollection.find({ _id: { $ne: managementId } }).toArray((err, managements) => {
 		if (err) {
@@ -684,8 +685,8 @@ function checkForNonLatestManagements(cb) {
 		const newerManagementsIDs = [];
 
 		managements.forEach(mgmt => {
-			const mgmtVersion = utils.getVRPartsObj(mgmt.managementVersion).version;
-			const comparison = utils.compareVersions(mgmtVersion, myMgmtVersion);
+			const mgmtVersion = getVRPartsObj(mgmt.managementVersion).version;
+			const comparison = compareVersions(mgmtVersion, myMgmtVersion);
 
 			if (comparison < 0) {
 				olderManagements.push(mgmt);
@@ -720,7 +721,7 @@ function checkForNonLatestManagements(cb) {
 				}
 
 				async.each(olderManagements, function(mgmt, cb) {
-					const mgmtVersion = utils.getVRPartsObj(mgmt.managementVersion).version;
+					const mgmtVersion = getVRPartsObj(mgmt.managementVersion).version;
 
 					// update only if the version didn't change
 					managementClusterCollection.updateOne(

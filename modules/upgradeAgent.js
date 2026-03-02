@@ -12,6 +12,7 @@ const consts = require('../consts.js');
 const objectNotifier = require('../objectNotifier.js');
 const events = require('../events.js');
 const utils = require('../utils.js');
+const { compareVersionRelease } = require('./versionUtils.js');
 const systemMessages = require('../systemMessages.js');
 const { Entities, SystemMessage, MongoError, SystemAdminMessage, Differentiators } = require('../modules/error.js');
 const logger = require('../logger.js');
@@ -224,7 +225,7 @@ scope.handleKeepAlive = (message, mainCallback) => {
 				return callback();
 
 			const versionComparisonResult =
-					utils.compareVersionRelease(message.payload.featureCompatibilityVersion, dbUpgradeAgent.upgradeAgentData.featureCompatibilityVersion);
+					compareVersionRelease(message.payload.featureCompatibilityVersion, dbUpgradeAgent.upgradeAgentData.featureCompatibilityVersion);
 			if (versionComparisonResult <= 0) return callback();
 
 			logger.sysDEBUG(`UpgradeAgent featureCompatibilityVersion changed for ${message.upgradeAgentID}! ` +

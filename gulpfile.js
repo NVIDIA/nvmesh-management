@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { apidoc: { version: packageJsonApiVersion } } = require('./package.json');
-const utils = require('./utils');
+const { compareVersionRelease } = require('./modules/versionUtils');
 
 const stylesheetsDest = './public/stylesheets/';
 const stylesheetsSrc = stylesheetsDest + 'site*.scss';
@@ -161,11 +161,11 @@ gulp.task('apidoc', function(done) {
 	}
 
 	const apiVersionsGeneratedDistinct = Array.from(new Set(apiVersionsGenerated));
-	const highestApiVersionGenerated = apiVersionsGeneratedDistinct.sort((a, b) => utils.compareVersionRelease(b, a))[0];
+	const highestApiVersionGenerated = apiVersionsGeneratedDistinct.sort((a, b) => compareVersionRelease(b, a))[0];
 	if (!highestApiVersionGenerated)
         return done('No API versions were generated. Check your apidoc configuration and source files.');
 
-	if (utils.compareVersionRelease(highestApiVersionGenerated, packageJsonApiVersion) !== 0)
+	if (compareVersionRelease(highestApiVersionGenerated, packageJsonApiVersion) !== 0)
 		return done(`highest api version generated (${highestApiVersionGenerated}) is not the same as the package.json api version (${packageJsonApiVersion})`);
 
 	done();
