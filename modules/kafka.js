@@ -526,7 +526,7 @@ scope.connect = (callback) => {
 scope.getSubscribableTopics = (callback) => {
 	async.parallel([
 		cb => {
-			const rpmVersion = utils.getVRPartsObj(app.get('rpmVersion')).version;
+			const rpmVersion = getVRPartsObj(app.get('rpmVersion')).version;
 			scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, null, topics => {
 				cb(null, topics);
 			});
