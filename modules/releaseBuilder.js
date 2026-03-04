@@ -838,60 +838,75 @@ const inheritComponents = (releaseN, releaseNMinus1, callback) => {
 };
 
 // prepare upgrade scenarios for the release n based on the release n-1
-// we will copy all upgrade scenarios with n-1 -> n-1 to n-1 -> n
-// if not hotfix, we will also create upgrade scenarios with n -> n
+// we will copy all upgrade scenarios with * -> n-1 (except n-1 -> n-1) to
+// - n-1 -> n
+// - if hotfix: n-2 -> n, otherwise: n -> n
 const prepareUpgradeScenarios = (releaseN, releaseNMinus1, versions, releaseIDbyName, callback) => {
 	logger.sysDEBUG(`Preparing upgrade scenarios for release ${releaseN}`);
-
 	const preparedUpgradeScenarios = [];
-	const sourceComponentVersions = versions[releaseNMinus1];
 
-	async.eachSeries(Object.keys(sourceComponentVersions), (componentName, eachCb) => {
-		const sourceComponentVersion = sourceComponentVersions[componentName];
-		const queryObj = {
-			filter: {
-				destinationReleaseID: releaseIDbyName[releaseNMinus1],
-				sourceVersionID: sourceComponentVersion.ID
-			}
-		};
-
-		logger.sysDEBUG(`Getting upgrade scenarios to copy for component ${componentName} from ` +
-			`release ${releaseNMinus1} to release ${releaseN}:`, queryObj);
-		getAllUpgrades(queryObj, false, (error, upgradeScenariosFound) => {
-			if (error)
-				return eachCb(error);
-
-			if (!upgradeScenariosFound.length)
-				return eachCb();
-
-			const destinationComponentVersion = versions[releaseN][componentName];
-			if (!destinationComponentVersion) {
-				logger.sysDEBUG(`Can't find corresponding component version in release ${releaseN} for component ${componentName}, skipping`);
-				return eachCb();
-			}
-
-			const isSameVersion = sourceComponentVersion.ID === destinationComponentVersion.ID;
-			for (const upgradeScenarioFound of upgradeScenariosFound) {
-				const newScenario = {
-					sourceVersionID: upgradeScenarioFound.sourceVersionID,
-					destinationReleaseID: releaseIDbyName[releaseN],
-					upgradeTypeID: upgradeScenarioFound.upgradeTypeID,
-					steps: upgradeScenarioFound.steps
-				};
-				preparedUpgradeScenarios.push(newScenario);
-
-				if (!isSameVersion)
-					preparedUpgradeScenarios.push({ ...newScenario, sourceVersionID: destinationComponentVersion.ID });
-			}
-
-			eachCb();
-		});
-	}, (error) => {
+	const queryObj = { filter: { destinationReleaseID: releaseIDbyName[releaseNMinus1] } };
+	getAllUpgrades(queryObj, false, (error, upgradeScenariosFound) => {
 		if (error)
 			return callback(error);
 
-		logger.sysDEBUG(`Prepared upgrade scenarios for release ${releaseN}:`, preparedUpgradeScenarios);
-		callback(null, preparedUpgradeScenarios);
+		const nMinus1ComponentVersionIDs = Object.values(versions[releaseNMinus1]).map(componentVersion => componentVersion.ID);
+		const upgradeScenariosToCopy = upgradeScenariosFound.filter(upgradeScenario => !nMinus1ComponentVersionIDs.includes(upgradeScenario.sourceVersionID));
+
+		const componentIDsFromUpgradeScenariosToCopy = upgradeScenariosToCopy.map(upgradeScenarioToCopy => upgradeScenarioToCopy.sourceVersionID);
+		const queryObj = { filter: { ID: { $in: componentIDsFromUpgradeScenariosToCopy } } };
+
+		getAllComponentVersions(queryObj, (error, componentsFromUpgradeScenariosToCopy) => {
+			if (error)
+				return callback(error);
+
+			const componentsNameByID = componentsFromUpgradeScenariosToCopy.reduce((acc, componentFromUpgradeScenariosToCopy) => {
+				acc[componentFromUpgradeScenariosToCopy.ID] = componentFromUpgradeScenariosToCopy.component.name;
+				return acc;
+			}, {});
+
+			for (const upgradeScenarioToCopy of upgradeScenariosToCopy) {
+				const componentName = componentsNameByID[upgradeScenarioToCopy.sourceVersionID];
+				if (!componentName)
+					return callback(new SystemMessage(systemMessages.FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_COMPONENT_NAME)
+						.addInfo(Entities.UpgradeScenario.ID, upgradeScenarioToCopy.ID)
+						.addInfo(Entities.Component.ID, upgradeScenarioToCopy.sourceVersionID));
+
+				const nMinus1ComponentVersion = versions[releaseNMinus1][componentName];
+				if (!nMinus1ComponentVersion)
+					return callback(new SystemMessage(systemMessages.FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_N_MINUS_1_COMPONENT_VERSION)
+						.addInfo(Entities.UpgradeScenario.ID, upgradeScenarioToCopy.ID)
+						.addInfo(Entities.Component.ID, upgradeScenarioToCopy.sourceVersionID)
+						.addInfo(Entities.Component.name, componentName));
+
+				const nComponentVersion = versions[releaseN][componentName];
+				if (!nComponentVersion)
+					return callback(new SystemMessage(systemMessages.FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_N_COMPONENT_VERSION)
+						.addInfo(Entities.UpgradeScenario.ID, upgradeScenarioToCopy.ID)
+						.addInfo(Entities.Component.ID, upgradeScenarioToCopy.sourceVersionID)
+						.addInfo(Entities.Component.name, componentName));
+
+				// n-1 -> n
+				const scenario = {
+					sourceVersionID: nMinus1ComponentVersion.ID,
+					destinationReleaseID: releaseIDbyName[releaseN],
+					upgradeTypeID: upgradeScenarioToCopy.upgradeTypeID,
+					steps: upgradeScenarioToCopy.steps
+				};
+				preparedUpgradeScenarios.push(scenario);
+
+				const isSameVersion = nMinus1ComponentVersion.ID === nComponentVersion.ID;
+				// n-2 -> n
+				if (isSameVersion)
+					preparedUpgradeScenarios.push({ ...scenario, sourceVersionID: upgradeScenarioToCopy.sourceVersionID });
+				// n -> n
+				else
+					preparedUpgradeScenarios.push({ ...scenario, sourceVersionID: nComponentVersion.ID });
+			}
+
+			logger.sysDEBUG(`Prepared upgrade scenarios for release ${releaseN}:`, preparedUpgradeScenarios);
+			callback(null, preparedUpgradeScenarios);
+		});
 	});
 };
 
