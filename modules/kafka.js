@@ -54,6 +54,8 @@ scope.totalSentFailed = 0;
 scope.metrics = {};
 scope.subscribableTopics = new Set();
 scope.topicsInitialized = false;
+scope.isResumeInProgress = false;
+scope.resumeRetryTimer = null;
 
 scope.afterModuleLoaded = () => {
 	logger = require('../logger');
@@ -1010,10 +1012,22 @@ scope.resumeConsumer = function() {
 	} catch (ex) {
 		new SystemMessage(systemMessages.KAFKA_CONSUMER_RESUME_FAILED).addInfo(Entities.Exception, ex).log();
 		onConsumerError(ex, consumer.customConsumerInstanceID);
+
+		scope.isResumeInProgress = false;
+
 		// we have to retry, in case this is the last messageInProcess.
-		if (scope.messagesInProcess < 2)
-			setTimeout(() => scope.resumeConsumerIfNeeded(), 5 * 1000);
+		if (scope.messagesInProcess < 2 && !scope.resumeRetryTimer)
+			scope.resumeRetryTimer = setTimeout(() => {
+				scope.resumeRetryTimer = null;
+				scope.resumeConsumerIfNeeded();
+			}, 5 * 1000);
 		return;
+	}
+
+	scope.isResumeInProgress = false;
+	if (scope.resumeRetryTimer) {
+		clearTimeout(scope.resumeRetryTimer);
+		scope.resumeRetryTimer = null;
 	}
 
 	scope.isConsumerPaused = false;
@@ -1038,8 +1052,10 @@ scope.pauseConsumerIfNeeded = function() {
 };
 
 scope.resumeConsumerIfNeeded = function() {
-	if (scope.isConsumerPaused && scope.messagesInProcess < consts.KAFKA_CONSUMER_MAX_IN_PROCESS_MESSAGES / 2)
+	if (!scope.isResumeInProgress && scope.isConsumerPaused && scope.messagesInProcess < consts.KAFKA_CONSUMER_MAX_IN_PROCESS_MESSAGES / 2) {
+		scope.isResumeInProgress = true;
 		scope.resumeConsumer();
+	}
 };
 
 scope.handleMessage = async function({ topic, partition, message }) {
