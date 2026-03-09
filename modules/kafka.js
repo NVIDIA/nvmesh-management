@@ -1232,8 +1232,14 @@ scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, reque
 
 	if (currentConsumerId) {
 		if (requestingConsumerId < currentConsumerId) {
-			logger.sysDEBUG(`Ignoring recycle consumer request, consumer already changed from request submission time, ${loggingInfo}`);
-			return callback();
+			if (utils.isEqualSet(currentConsumerSubscribedTopics, scope.subscribableTopics)) {
+				logger.sysDEBUG(`Ignoring recycle consumer request, consumer already changed from request submission time, ${loggingInfo}`);
+				return callback();
+			}
+
+			logger.sysWARNING('Consumer changed but subscribed topics mismatch, '
+				+ `re-requesting recycle with current consumer ID ${currentConsumerId}, ${loggingInfo}`);
+			return scope.requestConsumerRecycle(currentConsumerId, callback);
 		}
 
 		if (consumerIdOnRecycle && (consumerIdOnRecycle > requestingConsumerId || (!retrying && consumerIdOnRecycle === requestingConsumerId))
