@@ -394,7 +394,7 @@ scope.incClientAttachmentsVersion = function(dbClient, cb) {
 	// inc the client global attachmentsVersion
 	let incClientAttachmentsVersion = { attachmentsVersion: { $add: ['$attachmentsVersion', 1] } };
 
-	let query = { _id: clientID };
+	let query = { _id: clientID, attachmentsVersion: dbClient.attachmentsVersion };
 
 	clientCollection.findOneAndUpdate(
 		query,
@@ -403,13 +403,14 @@ scope.incClientAttachmentsVersion = function(dbClient, cb) {
 		],
 		{ returnDocument: 'after' },
 		(err, updatedClient) => {
-			if (err || !updatedClient) {
-				if (err)
-					err = addInfoToError(new MongoError(err)).log();
-				else
-					err = addInfoToError(new SystemMessage(systemMessages.CLIENT_NOT_FOUND));
-
+			if (err) {
+				err = addInfoToError(new MongoError(err)).log();
 				return cb(addInfoToError(new SystemMessage(systemMessages.INC_ATTACHMNETS_VERSION_FAILED, err)).log());
+			}
+
+			if (!updatedClient) {
+				logger.sysDEBUG(`incClientAttachmentsVersion: ${clientID} was not found or updated with a new attachmentsVersion`);
+				return cb();
 			}
 
 			logger.sysDEBUG(`incClientAttachmentsVersion: ${clientID} attachmentsVersion (dbAV) updated from `
@@ -490,13 +491,13 @@ scope.resendClientAttachDetachCommands = function(dbClient, cb) {
 			});
 		},
 		(callback) => {
-			if (!volumesToAttach.length)
+			if (!dbClient || !volumesToAttach.length)
 				return callback();
 
 			sendConfigurationToAttachVolumes(dbClient, volumesToAttach, originID, callback);
 		},
 		(callback) => {
-			if (!volumesToDetach.length)
+			if (!dbClient || !volumesToDetach.length)
 				return callback();
 
 			scope.processVolumesToDetach(volumesToDetach, err => {
