@@ -1129,10 +1129,13 @@ async function initKafkaAdmin(kafkaClient = app.get('kafkaClient')) {
 }
 
 async function initProducer(kafkaClient = app.get('kafkaClient')) {
+	const producerConfig = config.get('kafkaProducer');
+
 	try {
-		const kafkaProducer = kafkaClient.producer();
+		const kafkaProducer = kafkaClient.producer(producerConfig || {});
 		kafkaProducer.customProducerInstanceID = ++currentProducerIdCounter;
-		logger.sysDEBUG(`Initializing Kafka Producer with ID: ${kafkaProducer.customProducerInstanceID}`);
+		const configMsg = producerConfig ? `, config: ${JSON.stringify(producerConfig)}` : '';
+		logger.sysDEBUG(`Initializing Kafka Producer with ID: ${kafkaProducer.customProducerInstanceID}${configMsg}`);
 		await kafkaProducer.connect();
 
 		app.set('kafkaProducer', kafkaProducer);
