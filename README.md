@@ -27,6 +27,38 @@ TOMA is part of the storage target
 
 This repo contains the management server.
 
+## Build
+
+Install dependencies:
+```bash
+npm install
+```
+
+Build the project:
+```bash
+npm run build
+```
+
+To start the application after building:
+```bash
+npm start
+```
+
+## Useful Gulp Commands
+Run project-local gulp tasks with `npx`:
+
+```bash
+npx gulp <task-name>
+```
+
+Useful tasks:
+* `npx gulp dev` runs a build and then starts file watchers for development
+* `npx gulp watch` starts the watchers without running an initial build
+* `npx gulp compileSass` compiles Sass files in `public/stylesheets`
+* `npx gulp eslint` lints JavaScript and JSX files
+* `npx gulp buildComponents` rebuilds frontend components into `public/javascripts/components_js`
+* `npx gulp apidoc` regenerates API docs into `public/docs`
+
 ## NVMesh Open Source Repositories List
 * https://github.com/NVIDIA/nvmesh-documentation
 * https://github.com/NVIDIA/nvmesh-infra
