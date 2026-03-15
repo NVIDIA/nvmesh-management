@@ -93,9 +93,8 @@ echo "$versionRelease" > /opt/nvmesh/management/dbVersion
 
 if [ $isUpgrade -eq 1 ]; then
 	/opt/nvmesh/management/installation-scripts-%{version}-%{release}/install
+	systemctl enable nvmeshmgr > /dev/null 2>&1
 fi
-
-systemctl enable nvmeshmgr > /dev/null 2>&1
 
 [ -f /var/opt/NVMesh/management-upgrade.err ] && mv /var/opt/NVMesh/management-upgrade.err /var/opt/nvmesh/
 [ -f /var/opt/NVMesh/mgr/management_id ] && mv /var/opt/NVMesh/mgr/management_id /var/opt/nvmesh/mgr/
