@@ -14,7 +14,8 @@ const diskModule = require('../modules/disk.js');
 const lockUtils = require('./testUtils/lockUtils.js');
 const { setup, SetupOptions } = require('./testUtils/setup.js');
 const { generateTarget } = require('./testUtils/entityGenerators.js');
-const { VolumeConcatenated } = require('./models/volume.js');
+const { VolumeConcatenated, VolumeRAID1With2Mirrors } = require('./models/volume.js');
+const { reportAllSegmentsOnline } = require('./testUtils/volumeUtils.js');
 const systemMessages = require('../systemMessages.js');
 const { getOrCreateQueue } = require('./testUtils/mockKafkaModule.js');
 const { getIncrementalTargetUpdatesTopic } = require('../modules/kafka.js');
@@ -451,6 +452,72 @@ describe('Targets', function() {
 					});
 				});
 			});
+		});
+	});
+
+	describe('#Evict Drive - RAID1 with 2 mirrors', function() {
+		let volume;
+		let volumeCollection;
+		let evictTargets;
+
+		beforeEach(() => {
+			return setup.newSetup()
+				.then(() => Promise.all([
+					generateTarget('server1.acme.com').save(),
+					generateTarget('server2.acme.com').save(),
+					generateTarget('server3.acme.com').save(),
+				]))
+				.then(savedTargets => { evictTargets = savedTargets; })
+				.then(() => {
+					volumeCollection = app.get('db').collection('volume');
+					volume = new VolumeRAID1With2Mirrors('r1_2m_evict');
+					return volume.save();
+				})
+				.then(result => assert(result.success, 'Failed to create volume'))
+				.then(() => volumeCollection.findOne({ _id: volume.name }))
+				.then(dbVol => reportAllSegmentsOnline(dbVol, evictTargets[0]));
+		});
+
+		function setSegmentsDead(deadSegmentIndices) {
+			const $set = {};
+			deadSegmentIndices.forEach(i => {
+				$set[`chunks.0.pRaids.0.diskSegments.${i}.status`] = consts.diskSegmentStatuses.DEAD;
+				$set[`chunks.0.pRaids.0.diskSegments.${i}.isDead`] = true;
+			});
+			return volumeCollection.updateOne({ _id: volume.name }, { $set });
+		}
+
+		function evictFirstSegmentAndAssert(expectSuccess, message, done) {
+			volumeCollection.findOne({ _id: volume.name }, (err, dbVol) => {
+				assert(!err);
+				const segment = dbVol.chunks[0].pRaids[0].diskSegments[0];
+				const disk = { diskID: segment.diskID, uuid: segment.diskUUID };
+
+				diskModule.evictDiskByDiskIDsAndUUIDs([disk], consts.SYSTEM_USER, false, null, null, null, (logs) => {
+					const results = logs.map(l => l.createApiResponse());
+					assert.strictEqual(!!results[0].success, expectSuccess, message);
+					lockUtils.makeSureLockIsReleased(ZONE_1).then(() => done());
+				});
+			});
+		}
+
+		it('Should allow evict when all other segments are healthy', (done) => {
+			evictFirstSegmentAndAssert(true, 'Expected evict to succeed', done);
+		});
+
+		it('Should allow evict when 1 other segment is dead but 1 is still healthy', (done) => {
+			setSegmentsDead([1]).then(() =>
+				evictFirstSegmentAndAssert(true, 'Expected evict to succeed with 1 healthy copy remaining', done));
+		});
+
+		it('Should block evict when all other segments are dead', (done) => {
+			setSegmentsDead([1, 2]).then(() =>
+				evictFirstSegmentAndAssert(false, 'Expected evict to be blocked', done));
+		});
+
+		it('Should block evict when all segments including the evicted one are dead', (done) => {
+			setSegmentsDead([0, 1, 2]).then(() =>
+				evictFirstSegmentAndAssert(false, 'Expected evict to be blocked when all segments are dead', done));
 		});
 	});
 

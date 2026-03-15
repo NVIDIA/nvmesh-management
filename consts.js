@@ -331,6 +331,10 @@ consts.RAIDLevel = {
 
 consts.defaultMetadataRAIDLevel = consts.RAIDLevel.MIRRORED_RAID_1;
 
+consts.erasureCodedRaidLevels = [consts.RAIDLevel.ERASURE_CODING, consts.RAIDLevel.STRIPED_ERASURE_CODING];
+consts.mirroredRaidLevels = [consts.RAIDLevel.MIRRORED_RAID_1, consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10];
+consts.validNumberOfMirrors = [1, 2];
+
 consts.ecSeparationTypes = {
 	FULL: 'Full Separation',
 	MINIMAL: 'Minimal Separation',

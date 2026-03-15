@@ -140,10 +140,27 @@ class VolumeStripedEC extends VolumeRAID0 {
 	}
 }
 
+class VolumeRAID1With2Mirrors extends Volume {
+	constructor(name) {
+		super(name, consts.RAIDLevel.MIRRORED_RAID_1);
+		this.numberOfMirrors = 2;
+	}
+}
+
+class VolumeRAID10With2Mirrors extends VolumeRAID0 {
+	constructor(name) {
+		super(name);
+		this.RAIDLevel = consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10;
+		this.numberOfMirrors = 2;
+	}
+}
+
 exports.Volume = Volume;
 exports.VolumeRAID0 = VolumeRAID0;
 exports.VolumeRAID1 = VolumeRAID1;
 exports.VolumeRAID10 = VolumeRAID10;
+exports.VolumeRAID1With2Mirrors = VolumeRAID1With2Mirrors;
+exports.VolumeRAID10With2Mirrors = VolumeRAID10With2Mirrors;
 exports.VolumeConcatenated = VolumeConcatenated;
 exports.VolumeEC = VolumeEC;
 exports.VolumeStripedEC = VolumeStripedEC;

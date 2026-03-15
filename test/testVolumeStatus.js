@@ -12,7 +12,7 @@ const assert = require('assert');
 const consts = require('../consts.js');
 const errorUtils = require('./testUtils/errorUtils.js');
 const { generateTargets } = require('./testUtils/entityGenerators.js');
-const { VolumeRAID10, VolumeConcatenated, VolumeRAID1 } = require('./models/volume.js');
+const { VolumeRAID10, VolumeConcatenated, VolumeRAID1, VolumeRAID1With2Mirrors } = require('./models/volume.js');
 const volumeModule = require('../modules/volume.js');
 const { startVolumeRebuildByIdsAndUUIDs } = require('../utils.js');
 const { markVolumesForDeletion, calculateAndUpdateVolumeStatus } = require('../modules/volume.js');
@@ -807,5 +807,52 @@ describe('Volume Statuses and Actions', () => {
 				});
 		});
 
+	});
+
+	describe('#R1 with 2 Mirrors - Status with 3 segments', function() {
+		let volume = new VolumeRAID1With2Mirrors('r1_2m_status');
+		let targets;
+		let cachedDBVolume;
+
+		before(() => {
+			return setup.newSetup()
+				.then(() => targets = generateTargets(3))
+				.then(() => Promise.all(targets.map(t => t.save())))
+				.then(() => volume.save())
+				.then(result => assert(result.success, 'Failed to create volume'))
+				.then(() => volumeCollection.findOne({ _id: volume.name }))
+				.then(dbVol => {
+					cachedDBVolume = dbVol;
+					assert.strictEqual(dbVol.chunks[0].pRaids[0].diskSegments.length, 3, 'Expected 3 segments per pRaid');
+				});
+		});
+
+		async function assertStatusAfterSegmentReport(statuses, expectedStatus) {
+			const pRaid = cachedDBVolume.chunks[0].pRaids[0];
+			const pRaidReport = PRaidReport.fromPRaid(pRaid).setSegmentStatuses(statuses).incPRaidMajorVersion();
+			const msg = UpdatePRaidReportBuilder.fromTarget(targets[0]).addPRaidReport(pRaidReport).build();
+
+			await new Promise(resolve => volumeModule.handlePRaidStatusMessage(msg, resolve));
+			const dbVol = await volumeCollection.findOne({ _id: volume.name });
+			assert.strictEqual(dbVol.status, expectedStatus);
+		}
+
+		it('Should be DEGRADED with 1 dead and 2 online segments', () => {
+			return assertStatusAfterSegmentReport(
+				[consts.diskSegmentStatuses.DEAD, consts.diskSegmentStatuses.NORMAL, consts.diskSegmentStatuses.NORMAL],
+				consts.volumeStatuses.DEGRADED);
+		});
+
+		it('Should be DEGRADED with 2 dead and 1 online segment', () => {
+			return assertStatusAfterSegmentReport(
+				[consts.diskSegmentStatuses.DEAD, consts.diskSegmentStatuses.DEAD, consts.diskSegmentStatuses.NORMAL],
+				consts.volumeStatuses.DEGRADED);
+		});
+
+		it('Should be OFFLINE with all 3 segments dead', () => {
+			return assertStatusAfterSegmentReport(
+				[consts.diskSegmentStatuses.DEAD, consts.diskSegmentStatuses.DEAD, consts.diskSegmentStatuses.DEAD],
+				consts.volumeStatuses.OFFLINE);
+		});
 	});
 });

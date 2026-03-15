@@ -251,7 +251,7 @@ function checkDriveStatusTransition(oldDisk, newDisk, isReappearingDrive, events
 
 scope.handleDriveFormatProcessIfNeeded = function(oldDisk, newDisk, isReappearingDrive, eventsList, nodeID, bootTime, calcDelta, cb) {
 	var diskToUpdate = isReappearingDrive || !oldDisk ? newDisk : oldDisk;
-	// the next line purpose is to avoid passing the calcDelta to the callback function of 
+	// the next line purpose is to avoid passing the calcDelta to the callback function of
 	// checkDriveStatusTransition or isFormatFinished to be able to run updateDisk
 	var calcDeltaUpdateDisk = this.updateDisk;
 
@@ -279,7 +279,7 @@ scope.handleDriveFormatProcessIfNeeded = function(oldDisk, newDisk, isReappearin
 				calcDeltaUpdateDisk.bind(calcDelta)(diskToUpdate, diskToUpdate.uuid, 'isPendingFormat', false);
 
 				if (formatDetailsMet) {
-					// no change in drive status but got OK or Initializing again and format occurred					
+					// no change in drive status but got OK or Initializing again and format occurred
 					logger.sysDEBUG(`Drive SN ${newDisk.diskID} in target ${nodeID} initiator initiated format successful.`);
 					var event = scope.createDriveFinishedFormatEvent(diskToUpdate, nodeID);
 					eventsList.push(event);
@@ -791,7 +791,7 @@ scope.formatDiskByIDsAndUUIDs = function(disks, requestedFormatType, isAutoForma
 					logger.sysDEBUG('Formatting disk to ' + formatType);
 
 					events.emitEvent([events.getTargetID(server.node_id), events.getDiskID(diskID)], objectNotifier.events.formatDiskEvent, formatDetails);
-					
+
 					kafkaModule.sendMessages(server.topics[consts.topicSuffix.TOMA_COMMANDS], [new FormatDrive(formatDetails)]);
 
 					logAndAddResult();
@@ -1420,35 +1420,30 @@ scope.getAndValidateSegmentsForRemapOnEvict = function(disk, isAutoEvict, cb) {
 	});
 };
 
-scope.checkRedundancyViolationOnEvict = function(volume, segment, isAutoEvict) {
-	var err = null;
+scope.checkRedundancyViolationOnEvict = function(volume, segmentToEvict, isAutoEvict) {
+	if (isAutoEvict)
+		return;
 
-	if (!isAutoEvict) {
-		var otherSegmentsOnPRaid = volume.chunks.pRaids.diskSegments.filter(function(seg) {
-			// MARKED_FOR_REBUILD_OLD segments should not be counted as a segment in the pRaid
-			return seg._id !== segment._id && seg.type === consts.segmentTypes.DATA && seg.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD;
-		});
+	const isHealthySegment = seg => seg.status === consts.diskSegmentStatuses.NORMAL && !seg.isDead;
+	const isRelevantSegment = seg => seg._id !== segmentToEvict._id &&
+		seg.type === consts.segmentTypes.DATA &&
+		seg.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD; // MARKED_FOR_REBUILD_OLD segments should not be counted as a segment in the pRaid
+	const segmentByHealth = volume.chunks.pRaids.diskSegments.reduce((acc, segment) => {
+		if (!isRelevantSegment(segment))
+			return acc;
 
-		if (volume.RAIDLevel === consts.RAIDLevel.ERASURE_CODING ||
-			volume.RAIDLevel === consts.RAIDLevel.STRIPED_ERASURE_CODING) {
-			var unhealthyDataSegments = otherSegmentsOnPRaid.filter(function(seg) {
-				return seg.type === consts.segmentTypes.DATA &&	(seg.status !== consts.diskSegmentStatuses.NORMAL || seg.isDead);
-			});
+		if (isHealthySegment(segment))
+			acc.healthy.push(segment);
+		else
+			acc.unhealthy.push(segment);
 
-			if (unhealthyDataSegments.length >= volume.parityBlocks)
-				err = consts.evictFailureReasons.LAST_LIVE_COPY;
-		} else {
-			//for RAID 1 or 10
-			var areOtherSegmentsHealthy = otherSegmentsOnPRaid.every(function(seg) {
-				return seg.status === consts.diskSegmentStatuses.NORMAL && !seg.isDead;
-			});
+		return acc;
+	}, { unhealthy: [], healthy: [] });
+	const { unhealthy, healthy } = segmentByHealth;
 
-			if (!areOtherSegmentsHealthy)
-				err = consts.evictFailureReasons.LAST_LIVE_COPY;
-		}
-	}
-
-	return err;
+	if ((consts.erasureCodedRaidLevels.includes(volume.RAIDLevel) && unhealthy.length >= volume.parityBlocks) ||
+		(consts.mirroredRaidLevels.includes(volume.RAIDLevel) && !healthy.length))
+		return consts.evictFailureReasons.LAST_LIVE_COPY;
 };
 
 function autoEvictTimedoutMissingDrives(cb) {

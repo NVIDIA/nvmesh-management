@@ -480,7 +480,7 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 17.0.0
+* @apiVersion 17.2.1
 * @api {post} /volumes/save Save volumes
 * @apiName SaveVolumes
 * @apiGroup volumes
@@ -525,7 +525,8 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 * @apiBody (RAID) {integer} [stripeSize=32] Stripe size in 4k blocks (e.g., 32 for 128k).
 * <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
 * @apiBody (RAID) {integer} [stripeWidth=2] Number of disks for stripe. <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiBody (RAID) {integer} [numberOfMirrors=1] Number of mirrors. <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
+* @apiBody (RAID) {integer} [numberOfMirrors=1] Number of mirrors. Allowed values are 1 or 2.
+<br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
 * @apiBody (RAID) {integer} [dataBlocks=8] Number of data disks for Erasure Coding. <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
 * @apiBody (RAID) {integer} [parityBlocks=2] Number of parity disks for Erasure Coding.
 * <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>

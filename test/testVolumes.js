@@ -12,7 +12,8 @@ const { setup, SetupOptions } = require('./testUtils/setup.js');
 const assert = require('assert');
 
 const lockUtils = require('./testUtils/lockUtils.js');
-const { VolumeRAID1, VolumeConcatenated, VolumeRAID0, VolumeRAID10, VolumeEC, VolumeStripedEC } = require('./models/volume.js');
+const { VolumeRAID1, VolumeConcatenated, VolumeRAID0, VolumeRAID10, VolumeEC,
+	VolumeStripedEC, VolumeRAID1With2Mirrors, VolumeRAID10With2Mirrors } = require('./models/volume.js');
 const { generateTargets, generateTargetsByIds, generateTarget } = require('./testUtils/entityGenerators.js');
 
 const { TargetClass } = require('./models/targetClass.js');
@@ -180,6 +181,35 @@ class TestStripedEC extends TestableVolume {
 	}
 }
 
+class TestRAID1With2Mirrors extends TestRAID1 {
+	getName() { return 'RAID1 (2 Mirrors)'; }
+	getNewVolume() { return new VolumeRAID1With2Mirrors('raid1_2mirrors'); }
+	getMinimumNumOfTargets() { return 3; }
+	getVPG() { return null; }
+
+	validateLayout(dbDoc) {
+		assert(dbDoc.chunks);
+		assert.strictEqual(dbDoc.chunks.length, 1);
+		let pRaid = dbDoc.chunks[0].pRaids[0];
+		assert.strictEqual(pRaid.diskSegments.length, 3, 'Mirrored volume with 2 mirrors should have 3 diskSegments per pRaid');
+	}
+}
+
+class TestRAID10With2Mirrors extends TestRAID10 {
+	getName() { return 'RAID10 (2 Mirrors)'; }
+	getNewVolume() { return new VolumeRAID10With2Mirrors('raid10_2mirrors'); }
+	getMinimumNumOfTargets() { return 3; }
+	getVPG() { return null; }
+
+	validateLayout(dbDoc) {
+		assert(dbDoc.chunks);
+		assert.strictEqual(dbDoc.chunks.length, 1);
+		dbDoc.chunks[0].pRaids.forEach(pRaid => {
+			assert.strictEqual(pRaid.diskSegments.length, 3, 'Mirrored volume with 2 mirrors should have 3 diskSegments per pRaid');
+		});
+	}
+}
+
 describe('Volumes', () => {
 	before(() => {
 		return dbManager.connect().then(() => {
@@ -195,25 +225,33 @@ describe('Volumes', () => {
 		describe('#Concatenated', function() {
 			testVolumeType(new TestConcatenated());
 		});
-	
+
 		describe('#RAID 0', function() {
 			testVolumeType(new TestRAID0());
 		});
-	
+
 		describe('#RAID 1', function() {
 			testVolumeType(new TestRAID1());
 		});
-	
+
 		describe('#RAID 10', function() {
 			testVolumeType(new TestRAID10());
 		});
-	
+
 		describe('#Erasure Coding', function() {
 			testVolumeType(new TestEC());
 		});
-	
+
 		describe('#Striped Erasure Coding', () => {
 			testVolumeType(new TestStripedEC());
+		});
+
+		describe('#RAID 1 (2 Mirrors)', function() {
+			testVolumeType(new TestRAID1With2Mirrors());
+		});
+
+		describe('#RAID 10 (2 Mirrors)', function() {
+			testVolumeType(new TestRAID10With2Mirrors());
 		});
 
 		function testVolumeType(testableVolume) {
@@ -224,10 +262,10 @@ describe('Volumes', () => {
 					return setup.newSetup()
 						.then(() => generateAndSaveTargets(minTargets, minDisks));
 				});
-	
+
 				it('Volume should be created', () => {
 					let volume = testableVolume.getNewVolume();
-	
+
 					return volume.save()
 						.then(result => {
 							assert(result.success, 'error: ' + getErrorChainString(result.err));
@@ -237,21 +275,21 @@ describe('Volumes', () => {
 							testableVolume.validateLayout(dbDoc, volume);
 						});
 				});
-	
+
 				it('Lock should be released', () => {
 					return lockUtils.makeSureLockIsReleased(ZONE_1);
 				});
 			});
-	
+
 			describe('Duplicate Name', function() {
-	
+
 				before(() => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
 					let minTargets = testableVolume.getMinimumNumOfTargets();
 					return setup.newSetup()
 						.then(() => generateAndSaveTargets(minTargets, minDisks));
 				});
-	
+
 				it('Volume should be created', () => {
 					let volume = testableVolume.getNewVolume();
 					volume._id = 'duplicate-name';
@@ -265,19 +303,19 @@ describe('Volumes', () => {
 							testableVolume.validateLayout(dbDoc, volume);
 						});
 				});
-	
+
 				it('Volume creation should fail with appropriate error', () => {
 					let volume = testableVolume.getNewVolume();
 					volume._id = 'duplicate-name';
 					volume.name = 'duplicate-name';
-	
+
 					return volume.save()
 						.then(result => {
 							assert(!result.success, 'error: ' + getErrorChainString(result.err));
 						});
 				});
 			});
-	
+
 			describe('Not enough Targets', function() {
 				before(() => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
@@ -285,17 +323,17 @@ describe('Volumes', () => {
 					return setup.newSetup()
 						.then(() => generateAndSaveTargets(minTargets - 1, minDisks));
 				});
-	
+
 				it('Volume should fail to create', () => {
 					let volume = testableVolume.getNewVolume();
-	
+
 					return volume.save()
 						.then(result => {
 							assert(!result.success, 'should return success = false');
 							assert(result.error.innerMessage == failedToAllocateError);
 						});
 				});
-	
+
 				it('Lock should be released', () => {
 					if (testableVolume.getMinimumNumOfTargets() - 1 > 0)
 						return lockUtils.makeSureLockIsReleased(ZONE_1);
@@ -303,7 +341,7 @@ describe('Volumes', () => {
 						return Promise.resolve();
 				});
 			});
-	
+
 			describe('Not enough Drives', function() {
 				before(() => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
@@ -311,17 +349,17 @@ describe('Volumes', () => {
 					return setup.newSetup()
 						.then(() => generateAndSaveTargets(minTargets, minDisks - 1));
 				});
-	
+
 				it('Volume should fail to create', () => {
 					let volume = testableVolume.getNewVolume();
-	
+
 					return volume.save()
 						.then(result => {
 							assert(!result.success, 'should return success = false');
 							assert(result.error.innerMessage == failedToAllocateError);
 						});
 				});
-	
+
 				it('Lock should be released', () => {
 					if (testableVolume.getMinimumNumOfTargets() - 1 > 0)
 						return lockUtils.makeSureLockIsReleased(ZONE_1);
@@ -329,7 +367,7 @@ describe('Volumes', () => {
 						return Promise.resolve();
 				});
 			});
-	
+
 			describe('Create from VPG', function() {
 				let vpgName = testableVolume.getVPG();
 				before(() => {
@@ -338,7 +376,7 @@ describe('Volumes', () => {
 					return setup.newSetup()
 						.then(() => generateAndSaveTargets(minTargets, minDisks));
 				});
-	
+
 				it('Volume should be created', () => {
 					let volume = testableVolume.getNewVolume();
 					volume.VPG = vpgName;
@@ -351,12 +389,12 @@ describe('Volumes', () => {
 							testableVolume.validateLayout(dbDoc, volume);
 						});
 				});
-	
+
 				it('Lock should be released', () => {
 					return lockUtils.makeSureLockIsReleased(ZONE_1);
 				});
 			});
-	
+
 			describe('Create with TargetClass', function() {
 				let minTargets = testableVolume.getMinimumNumOfTargets();
 				// create double the amount of targets
@@ -364,17 +402,17 @@ describe('Volumes', () => {
 				let minRequiredTargetsIDs = targets.slice(0, minTargets).map(t => t.node_id);
 				// create target class with the min. required num of targets
 				let targetClass = new TargetClass('target_class_1', minRequiredTargetsIDs);
-	
+
 				before(() => {
 					return setup.newSetup()
 						.then(() => Promise.all(targets.map(t => t.save())))
 						.then(() => targetClass.save());
 				});
-	
+
 				it('Volume should be created from the given TargetClass', () => {
 					let volume = testableVolume.getNewVolume();
 					volume.serverClasses = [targetClass.name];
-	
+
 					return volume.save()
 						.then(result => {
 							assert(result.success, 'error: ' + getErrorChainString(result.err));
@@ -402,20 +440,20 @@ describe('Volumes', () => {
 					return lockUtils.makeSureLockIsReleased(ZONE_1);
 				});
 			});
-	
+
 			describe('Extend volume', function() {
 				let volume = testableVolume.getNewVolume();
 				let targets;
-	
+
 				before(() => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
 					let minTargets = testableVolume.getMinimumNumOfTargets();
-	
+
 					return setup.newSetup()
 						.then(() => targets = generateTargets(minTargets, minDisks))
 						.then(() => Promise.all(targets.map(t => t.save())));
 				});
-	
+
 				it('Volume should be created', () => {
 					return volume.save()
 						.then(result => {
@@ -426,52 +464,52 @@ describe('Volumes', () => {
 							testableVolume.validateLayout(dbDoc, volume);
 						});
 				});
-	
+
 				it('Extend Volume should fail if volume action is initializing', () => {
 					volume.capacity = volume.capacity * 2;
 					return volume.extend()
 						.then(res => assertIsCausedBy(res.error, systemMessages.CANT_EXTEND_INITALIZING_VOLUME));
 				});
-	
+
 				it('Report pRaids online', (done) => {
 					volumeCollection.findOne({ _id: volume._id }, (err, vol) => {
 						assert(!err);
-	
+
 						vol.chunks.forEach(c => c.pRaids.forEach(p => p.diskSegments.forEach(d => {
 							d.status = consts.diskSegmentStatuses.NORMAL;
 							d.vitality = consts.segmentVitality.UP;
 						})));
 						let msgBuilder = UpdatePRaidReportBuilder.fromVolume(vol, targets[0]);
-	
+
 						handlePRaidStatusMessage(msgBuilder.build(), () => {
 							done();
 						});
 					});
 				});
-	
+
 				it('Extend Volume should succeed', () => {
 					return volume.extend()
 						.then(res => assert(!res.error))
 						.then(() => volumeCollection.findOne({ _id: volume._id }))
 						.then(vol => assert(vol.capacity === volume.capacity));
 				});
-	
+
 			});
-	
-	
+
+
 			describe('Mark for Deletion', function() {
 				let volume = testableVolume.getNewVolume();
 				let targets;
-	
+
 				before(() => {
 					let minDisks = testableVolume.getMinimumNumOfDrivesPerTarget();
 					let minTargets = testableVolume.getMinimumNumOfTargets();
-	
+
 					return setup.newSetup()
 						.then(() => targets = generateTargets(minTargets, minDisks))
 						.then(() => Promise.all(targets.map(t => t.save())));
 				});
-	
+
 				it('Volume should be created', () => {
 					return volume.save()
 						.then(result => {
@@ -482,7 +520,7 @@ describe('Volumes', () => {
 							testableVolume.validateLayout(dbDoc, volume);
 						});
 				});
-	
+
 				it('Mark for Deletion should fail if volume action is initializing', (done) => {
 					markVolumesForDeletion([volume], (logs) => {
 						const results = logs.map(l => l.createApiResponse());
@@ -490,23 +528,23 @@ describe('Volumes', () => {
 						done();
 					});
 				});
-	
+
 				it('Report pRaids online', (done) => {
 					volumeCollection.findOne({ _id: volume._id }, (err, vol) => {
 						assert(!err);
-	
+
 						vol.chunks.forEach(c => c.pRaids.forEach(p => p.diskSegments.forEach(d => {
 							d.status = consts.diskSegmentStatuses.NORMAL;
 							d.vitality = consts.segmentVitality.UP;
 						})));
 						let msgBuilder = UpdatePRaidReportBuilder.fromVolume(vol, targets[0]);
-	
+
 						handlePRaidStatusMessage(msgBuilder.build(), () => {
 							done();
 						});
 					});
 				});
-	
+
 				it('Mark for Deletion should succeed', (done) => {
 					volumeCollection.findOne({ _id: volume._id }, { uuid: 1 }, (err, res) => {
 						if (err) assert(err);
@@ -520,7 +558,7 @@ describe('Volumes', () => {
 						});
 					});
 				});
-	
+
 				it('Mark for Deletion should fail if volume already removed', (done) => {
 					volumeCollection.deleteOne({ _id: volume._id })
 						.then(() => {
@@ -710,9 +748,9 @@ describe('Volumes', () => {
 
 			it('should bring down server3', async() => {
 				const target = targets[2];
-				
+
 				await target.timedOut();
-				
+
 				const dbTarget = await app.get('db').collection('server').findOne({ _id: target._id }, { health: 1 });
 				assert.strictEqual(dbTarget.health, consts.targetHealth.CRITICAL);
 			});
@@ -723,7 +761,7 @@ describe('Volumes', () => {
 
 				const result = await volume.save();
 				assert(result.success, JSON.stringify(result.error));
-				
+
 				const dbVolume = await app.get('db').collection('volume').findOne({ _id: volume._id }, { 'chunks.pRaids.zone': 1 });
 				assert.strictEqual('1', dbVolume.chunks[0].pRaids[0].zone);
 			});

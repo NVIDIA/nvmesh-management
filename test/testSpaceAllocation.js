@@ -11,7 +11,7 @@ const assert = require('assert');
 const { evictDiskByDiskIDsAndUUIDs } = require('../modules/disk.js');
 const { setup } = require('./testUtils/setup.js');
 const { generateTarget, generateTargets, generateDisk } = require('./testUtils/entityGenerators.js');
-const { VolumeRAID1, VolumeConcatenated, VolumeEC, VolumeRAID10 } = require('./models/volume.js');
+const { VolumeRAID1, VolumeConcatenated, VolumeEC, VolumeRAID10, VolumeRAID1With2Mirrors } = require('./models/volume.js');
 const consts = require('../consts.js');
 const { UpdatePRaidReportBuilder } = require('./kafkaMessages/fromTOMA/tomaMessageBuilders.js');
 const { handlePRaidStatusMessage, rebuildVolumes } = require('../modules/volume.js');
@@ -181,6 +181,43 @@ describe('Get Space Allocation', function() {
 				assert.strictEqual(results.data, DATA_SEGMENT_SIZE);
 				assert.strictEqual(results.fromReserved, 0);
 				assert.strictEqual(results.redundancy, DATA_SEGMENT_SIZE);
+				assert.strictEqual(results.reservedLeft, 0);
+				assert.strictEqual(results.totalCapacity, TOTAL_CAPACITY);
+				assert.strictEqual(results.totalReserved, 0);
+
+				done();
+			});
+		});
+	});
+
+	describe('#Volume exists - No limit - R1 with 2 mirrors', () => {
+		const DATA_SEGMENT_SIZE = 1;
+		const TOTAL_CAPACITY = 4791.62;
+		const REDUNDANCY = 2 * DATA_SEGMENT_SIZE;
+		const FREE_SPACE_LEFT = TOTAL_CAPACITY - 3 * DATA_SEGMENT_SIZE;
+		let volume;
+
+		before(() => {
+			let targets = generateTargets(3);
+			return setup.newSetup()
+				.then(() => Promise.all(targets.map(t => t.save())));
+		});
+
+		it('should create R1 volume with 2 mirrors', (done) => {
+			volume = new VolumeRAID1With2Mirrors('v1');
+			volume.save().then((result) => {
+				assert(result.success);
+				done();
+			});
+		});
+
+		it('should return correct available space with 3 copies', (done) => {
+			zoneModule.getSpaceAllocation({}, {}, false, (err, results) => {
+				assert(!err);
+				assert.strictEqual(results.availableSpace, FREE_SPACE_LEFT);
+				assert.strictEqual(results.data, DATA_SEGMENT_SIZE);
+				assert.strictEqual(results.redundancy, REDUNDANCY);
+				assert.strictEqual(results.fromReserved, 0);
 				assert.strictEqual(results.reservedLeft, 0);
 				assert.strictEqual(results.totalCapacity, TOTAL_CAPACITY);
 				assert.strictEqual(results.totalReserved, 0);

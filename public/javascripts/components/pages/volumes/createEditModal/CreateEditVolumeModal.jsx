@@ -189,8 +189,7 @@ const CreateEditVolume = ({
 
 	useEffect(() => {
 		if (formData.VPG) {
-			const numberOfMirrors = AllocationService.isMirrored(formData.VPG.RAIDLevel) ? 1 : 0;
-			checkMirrorsValidity(formData.VPG, numberOfMirrors);
+			checkMirrorsValidity(formData.VPG);
 		}
 	}, [availableMirrors]);
 
@@ -257,11 +256,10 @@ const CreateEditVolume = ({
 			return;
 		}
 
-		const numberOfMirrors = AllocationService.isMirrored(vpg.RAIDLevel) ? 1 : 0;
-		checkMirrorsValidity(vpg, numberOfMirrors);
+		checkMirrorsValidity(vpg);
 
 		const vpgRaidOptionsProps = ['RAIDLevel', 'stripeSize', 'stripeWidth', 'dataBlocks', 'parityBlocks',
-			'protectionLevel', 'enableCrcCheck', 'ignoreNodeSeparation'];
+			'protectionLevel', 'enableCrcCheck', 'ignoreNodeSeparation', 'numberOfMirrors'];
 		const vpgPRaidOptions = {};
 		vpgRaidOptionsProps.forEach(prop => {
 			if (vpg[prop] !== undefined) {
@@ -269,11 +267,11 @@ const CreateEditVolume = ({
 			}
 		});
 
-		setPRaidOptions({ ...vpgPRaidOptions, numberOfMirrors });
+		setPRaidOptions(vpgPRaidOptions);
 	};
 
-	const checkMirrorsValidity = (vpg, numberOfMirrors) => {
-		if (!AllocationService.calcHasEnoughMirrors({ ...vpg, numberOfMirrors }, availableMirrors)) {
+	const checkMirrorsValidity = (vpg) => {
+		if (!AllocationService.calcHasEnoughMirrors(vpg, availableMirrors)) {
 			setError('noMirrors', { type: 'custom', message: 'No mirrors available' });
 		} else {
 			clearErrors('noMirrors');

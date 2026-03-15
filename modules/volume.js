@@ -1742,10 +1742,9 @@ scope.getPRaidStatusAndAction = function(volume, pRaid) {
 				break;
 			case consts.RAIDLevel.MIRRORED_RAID_1:
 			case consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10:
-				if (numberOfOnlineSegments >= nonFunctionalSegments)
-					pRaidStatus = consts.volumeStatuses.DEGRADED;
-				else
-					pRaidStatus = consts.volumeStatuses.OFFLINE;
+				pRaidStatus = numberOfOnlineSegments > 0
+					? consts.volumeStatuses.DEGRADED
+					: consts.volumeStatuses.OFFLINE;
 
 				break;
 			case consts.RAIDLevel.ERASURE_CODING:

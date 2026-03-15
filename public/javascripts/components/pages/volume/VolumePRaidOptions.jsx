@@ -61,10 +61,6 @@ const VolumePRaidOptions = ({
 			data.ignoreNodeSeparation = formData.ignoreNodeSeparation === consts.nodeSeparation.IGNORE;
 		}
 
-		if (isMirrored) {
-			data.numberOfMirrors = 1;
-		}
-
 		if (isStriped || isEC) {
 			data.stripeSize = 32;
 		}
@@ -89,9 +85,8 @@ const VolumePRaidOptions = ({
 	}, [formData.RAIDLevel]);
 
 	useEffect(() => {
-		const numberOfMirrors = isMirrored ? 1 : 0;
 		const ignoreNodeSeparation = formData.ignoreNodeSeparation === consts.nodeSeparation.IGNORE;
-		if (!AllocationService.calcHasEnoughMirrors({ ...formData, numberOfMirrors, ignoreNodeSeparation }, availableMirrors)) {
+		if (!AllocationService.calcHasEnoughMirrors({ ...formData, ignoreNodeSeparation }, availableMirrors)) {
 			setError('noMirrors', { type: 'custom', message: 'No mirrors available' });
 		} else {
 			clearErrors('noMirrors');
@@ -99,7 +94,8 @@ const VolumePRaidOptions = ({
 		emitOnChange();
 
 	}, [formData.RAIDLevel, formData.protectionLevel, formData.ignoreNodeSeparation, formData.allowAllocationOnOfflineDrives,
-		formData.dataBlocks, formData.parityBlocks, formData.stripeWidth, formData.enableCrcCheck, availableMirrors, formState.isValid]);
+		formData.dataBlocks, formData.parityBlocks, formData.stripeWidth, formData.enableCrcCheck, formData.numberOfMirrors,
+		availableMirrors, formState.isValid]);
 
 	return (
 		<div style={style} className={`raid-options-container ${className}`}>
@@ -144,18 +140,16 @@ const VolumePRaidOptions = ({
 						        disabled={disabled}
 						        valueField="value"
 						        labelField="name"
-						        options={[
-							        {
-								        value: consts.nodeSeparation.ENFORCE,
-								        name: '1+1 Target Node Separation',
-								        description: 'Mirrored volume segments on different targets. Survive one target failure.'
-							        },
-							        {
-								        value: consts.nodeSeparation.IGNORE,
-								        name: 'No Target Redundancy',
-								        description: 'No restriction on volume segments per target. May not survive even one target failure.'
-							        },
-						        ]}
+						        options={[{
+							        value: consts.nodeSeparation.ENFORCE,
+							        name: `1+${formData.numberOfMirrors} Target Node Separation`,
+							        description: 'Mirrored volume segments on different targets.'
+								        + ` Survive up to ${formData.numberOfMirrors} target failure${formData.numberOfMirrors > 1 ? 's' : ''}.`
+						        }, {
+							        value: consts.nodeSeparation.IGNORE,
+							        name: 'No Target Redundancy',
+							        description: 'No restriction on volume segments per target. May not survive even one target failure.'
+						        }]}
 						        render={{
 							        option: function(item, escape) {
 								        return '<div>' +
@@ -167,6 +161,28 @@ const VolumePRaidOptions = ({
 						        }}
 						/>
 
+					)}
+				/>
+
+			</FormControl>}
+
+			{isMirrored && <FormControl name="numberOfMirrors"
+			                            label="Number of Mirrors"
+			                            errorMessage={formState.errors?.numberOfMirrors?.message}>
+				<Controller
+					control={control}
+					name="numberOfMirrors"
+					defaultValue={volume.numberOfMirrors || 1}
+					render={({ field: { onChange, value } }) => (
+						<Select id="numberOfMirrors"
+						        value={value}
+						        onChange={val => onChange(parseInt(val))}
+						        disabled={disabled}
+						        options={consts.validNumberOfMirrors.map(n => ({
+							        text: `${n} (${n + 1} copies)`,
+							        value: n
+						        }))}
+						/>
 					)}
 				/>
 

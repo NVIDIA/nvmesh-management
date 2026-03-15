@@ -4547,6 +4547,11 @@ var systemMessages = {
 		id: 16823,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	INVALID_NUMBER_OF_MIRRORS: {
+		message: `Unsupported number of mirrors for the selected RAID level. Supported: ${consts.validNumberOfMirrors.join(', ')}`,
+		id: 16824,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	UPGRADE_STEP_CANNOT_BE_EXECUTED_UNHEALTHY_PRAID: {
 		message: 'Executing this step will cause the volume to become offline',
 		id: 17000,

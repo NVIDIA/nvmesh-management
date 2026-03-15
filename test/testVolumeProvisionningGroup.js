@@ -285,6 +285,24 @@ class TestableRAID10VPG extends TestableVPG {
 	}
 }
 
+class TestableRAID1With2MirrorsVPG extends TestableRAID1VPG {
+	generateVPGName() { return `r1_2m${this.capacity ? '_reserved' : ''}`; }
+
+	addAttributesToVPGPayload(volume) {
+		super.addAttributesToVPGPayload(volume);
+		volume.numberOfMirrors = 2;
+	}
+}
+
+class TestableRAID10With2MirrorsVPG extends TestableRAID10VPG {
+	generateVPGName() { return `r10_2m${this.capacity ? '_reserved' : ''}`; }
+
+	addAttributesToVPGPayload(VPG) {
+		super.addAttributesToVPGPayload(VPG);
+		VPG.numberOfMirrors = 2;
+	}
+}
+
 class TestableECVPG extends TestableVPG {
 	constructor(capacity) {
 		super(capacity, consts.RAIDLevel.ERASURE_CODING);
@@ -309,6 +327,8 @@ function getTestableVPGsByCapacity(capacity) {
 	testableVPGs.push(new TestableRAID0VPG(capacity));
 	testableVPGs.push(new TestableRAID1VPG(capacity));
 	testableVPGs.push(new TestableRAID10VPG(capacity));
+	testableVPGs.push(new TestableRAID1With2MirrorsVPG(capacity));
+	testableVPGs.push(new TestableRAID10With2MirrorsVPG(capacity));
 	testableVPGs.push(new TestableECVPG(capacity));
 
 	return testableVPGs;

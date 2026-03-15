@@ -13,7 +13,7 @@ const pRaidOptionsProperties = {
 	protectionLevel: { enum: Object.values(consts.ecSeparationTypes), default: consts.ecSeparationTypes.FULL },
 	enableCrcCheck: { type: 'boolean', default: false },
 	ignoreNodeSeparation: { type: 'boolean', default: false },
-	numberOfMirrors: { type: 'integer', minimum: 1, default: 1 },
+	numberOfMirrors: { type: 'integer', minimum: Math.min(...consts.validNumberOfMirrors), maximum: Math.max(...consts.validNumberOfMirrors), default: 1 },
 };
 
 const pRaidOptionsPropertiesByRAIDLevel = {

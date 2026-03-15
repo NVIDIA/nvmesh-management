@@ -202,7 +202,7 @@ function subtituteDiskSegment(volume, chunk, pRaid, diskSegment, cb) {
 			pRaidTypeIndex: diskSegment.pRaidTypeIndex,
 			status: volume.isReserved ? consts.diskSegmentStatuses.NORMAL : consts.diskSegmentStatuses.MARKED_FOR_REBUILD,
 			zone: disk.disks.zone,
-			redundancyRatio: scope.getVolumeRedundancyRatio(volume)
+			redundancyRatio: scope.getRedundancyToTotalRatio(volume)
 		};
 
 		if (segment.fromReserved)
@@ -2060,11 +2060,8 @@ scope.saveVolume = function(volume, shouldUpdateConfiguration, user, mainCallbac
 		if (finishSaveVolume)
 			return allocationCallback(null, false, err);
 
-		if ((volume.RAIDLevel == consts.RAIDLevel.MIRRORED_RAID_1 || volume.RAIDLevel == consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10)
-			&& volume.numberOfMirrors != 1) {
-			err = `The number of mirrors is ${volume.numberOfMirrors} and differs from 1.`;
-			logger.sysDEBUG(err);
-
+		if (consts.mirroredRaidLevels.includes(volume.RAIDLevel) && !consts.validNumberOfMirrors.includes(volume.numberOfMirrors)) {
+			const err = new SystemMessage(systemMessages.INVALID_NUMBER_OF_MIRRORS).addInfo(Entities.Volume.numberOfMirrors, volume.numberOfMirrors);
 			return allocationCallback(null, false, err);
 		}
 
@@ -2490,27 +2487,9 @@ function receivedEnoughDataDisks(disks, threshold) {
 	return disks && disks.filter(function(e) { return e.disks.largestSegmentAvailable.blocks >= consts.BLOCK_SET_SIZE; }).length >= threshold;
 }
 
-scope.getVolumeRedundancyRatio = function(volume) {
-	var ratio;
-
-	switch (volume.RAIDLevel) {
-		case consts.RAIDLevel.MIRRORED_RAID_1:
-		case consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10:
-			ratio = 0.5;
-			break;
-
-		case consts.RAIDLevel.STRIPED_ERASURE_CODING:
-		case consts.RAIDLevel.ERASURE_CODING:
-			ratio = volume.parityBlocks / (volume.dataBlocks + volume.parityBlocks);
-			break;
-
-		case consts.RAIDLevel.CONCATENATED:
-		case consts.RAIDLevel.STRIPED_RAID_0:
-			ratio = 0;
-			break;
-	}
-
-	return ratio;
+scope.getRedundancyToTotalRatio = function(volume) {
+	const ratio = scope.getRedundancyRatio(volume);
+	return ratio / (1 + ratio);
 };
 
 scope.getRedundancyRatio = (volume) => {
@@ -2685,11 +2664,8 @@ scope.allocateBlocks = function(lockedZone, volume, blocks, zonesToIgnore, alloc
 							zone: disk.zone
 						};
 
-						if ((volume.RAIDLevel === consts.RAIDLevel.ERASURE_CODING ||
-							volume.RAIDLevel === consts.RAIDLevel.STRIPED_ERASURE_CODING) && allocationIndex % (volume.dataBlocks + volume.parityBlocks) != 0
-							|| ((volume.RAIDLevel === consts.RAIDLevel.MIRRORED_RAID_1
-								|| volume.RAIDLevel === consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10) &&
-								(allocationIndex % (2 * volume.numberOfMirrors) != 0))) {
+						if ((consts.erasureCodedRaidLevels.includes(volume.RAIDLevel) && (allocationIndex % (volume.dataBlocks + volume.parityBlocks) != 0)) ||
+							(consts.mirroredRaidLevels.includes(volume.RAIDLevel) && (allocationIndex % (1 + volume.numberOfMirrors) != 0))) {
 							// use same pRaid
 							pRaid = lastPRaid;
 						} else {
@@ -2717,7 +2693,7 @@ scope.allocateBlocks = function(lockedZone, volume, blocks, zonesToIgnore, alloc
 							allocationIndex: allocationIndex,
 							pRaidIndex: pRaidIndex,
 							zone: disk.zone,
-							redundancyRatio: scope.getVolumeRedundancyRatio(volume)
+							redundancyRatio: scope.getRedundancyToTotalRatio(volume)
 						};
 
 						diskSegment.lbs = disk.largestSegmentAvailable.lbs;
