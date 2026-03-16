@@ -1,0 +1,7 @@
+{
+    "timeout": "30000",
+    "color": true,
+    "diff": true,
+    "asyncOnly": true,
+    "exit": true
+}

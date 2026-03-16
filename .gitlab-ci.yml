@@ -1,0 +1,38 @@
+default:
+  image: gitlab-master.nvidia.com:5005/excelero/management/ci-runner:0.0.3
+  tags:
+    - nvmesh-management
+stages:
+  - lint
+  - unittests
+  - ci
+
+before_script:
+  - echo "Starting CI"
+  - whoami
+  - rm -rf ../interop-db && git clone https://gitlab-ci-token:$CI_JOB_TOKEN@gitlab-master.nvidia.com/excelero/interop-db.git ../interop-db
+  - npm install ---prefix ../interop-db/
+
+lint:
+  stage: lint
+  script:
+    - npm install
+    - npm run lint
+
+unittests:
+  stage: unittests
+  script:
+    - mkdir -p /etc/nvmesh/ && cp ./management.js.conf /etc/nvmesh/management.js.conf
+    - nohup /usr/bin/mongod > mongod.log 2>&1 &
+    # generate version file for unittests
+    - |
+      echo "version=\"${CI_COMMIT_TAG:-${CI_COMMIT_REF_NAME}}\"" > ./version
+      echo "commit=\"${CI_COMMIT_SHA}\"" >> ./version
+      echo "changeID=\"=$(git log -n1 --format=%b | awk '/^Change-Id: / {print $2}')\"" >> ./version
+      echo "branch=\"$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\"" >> ./version
+    - cat ./version
+    - npm install
+    - npm run test
+  artifacts:
+    paths:
+      - test/test.log
