@@ -1989,6 +1989,13 @@ var systemMessages = {
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	TARGETCLASS_DOMAIN_CONFLICT_ON_DRIVE_REAPPEARING: {
+		message: 'Drive reappearing caused a domain conflict with other Target Classs',
+		id: 162538,
+		header: 'Drive Reappearing Caused Domain Conflict',
+		logLevel: consts.loggingLevel.WARNING,
+		sysLogLevel: consts.loggingLevel.WARNING
+	},
 	TARGETCLASS_SAVE_FAILED_TARGET_WITH_DOMAIN_CONFLICT: {
 		message: 'Target Class not saved due to domain conflict of a target',
 		id: 320,

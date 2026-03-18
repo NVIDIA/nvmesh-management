@@ -33,6 +33,7 @@ var { ResendReport } = require('../models/kafkaMessages/ResendReport');
 var { FormatDrive } = require('../models/kafkaMessages/FormatDrive');
 const { AddVolume } = require('../models/kafkaMessages/AddVolume.js');
 var lastMessageLog = require('./lastMessageLog.js');
+const classesUtils = require('./classesUtils.js');
 
 var scope = {};
 
@@ -2334,6 +2335,7 @@ function portOldSegmentsOnReappearing(newServer, disk, eventsList, calcDelta, ca
 				disk.health = consts.targetHealth.CRITICAL;
 
 			alertOnMirrorViolation(newServer.node_id, disk.diskSegments);
+			classesUtils.checkAndAlertForDomainConflictOnDriveReappearing(disk, oldPresence.node_id);
 
 			callback(disk, oldPresence, false, shouldAutoEvict);
 		} else {

@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/* global app */
 
 const utils = require('../utils.js');
-
-let { MongoError } = require('./error.js');
+const systemMessages = require('../systemMessages.js');
+const lockModule = require('./lock.js');
+let { MongoError, SystemAdminMessage, Entities } = require('./error.js');
 
 const scope = {};
 
@@ -68,6 +70,66 @@ scope.checkForProtectionDomainViolations = (classID, entitiesInClass, domainsInC
 		}
 		
 		cb(err, entitiesWithDomainConflict);
+	});
+};
+
+scope.checkAndAlertForDomainConflictOnDriveReappearing = (drive, oldDriveTarget, cb) => {
+	const db = app.get('db');
+	const serverClassCollection = db.collection('serverClass');
+	let domainNodesMap = {};
+
+	function onCompleteFunction(err) {
+		lockModule.releaseGlobalLock();
+
+		if (cb)
+			cb(err);
+	}
+
+	function compareDomainsAndAlertOnConflicts(targetClasses) {
+		targetClasses.forEach((tClass) => {
+			(tClass.domains || []).forEach((domain) => {
+				if (!(domain.scope in domainNodesMap))
+					domainNodesMap[domain.scope] = { identifier: domain.identifier, targetNodes: tClass.targetNodes };
+
+				if (domainNodesMap[domain.scope].identifier != domain.identifier)
+					(new SystemAdminMessage(systemMessages.TARGETCLASS_DOMAIN_CONFLICT_ON_DRIVE_REAPPEARING))
+						.addInfo(Entities.Drive.ID, drive.diskID)
+						.addInfo(Entities.ServerClass.ID, tClass._id)
+						.addInfo(Entities.Domain.scope, domain.scope)
+						.addInfo(Entities.Target.ID, domainNodesMap[domain.scope].targetNodes).log();
+			});
+		});
+	}
+
+	lockModule.acquireGlobalLock(() => {
+		//get all the target classes that includes the old target of the drive
+		serverClassCollection.find({ targetNodes: oldDriveTarget }).project({ domains: 1, targetNodes: 1 }).toArray(function(err, oldTargetTargetClasses) {
+			if (err) {
+				err = new MongoError(err).log();
+				return onCompleteFunction(err);
+			}
+
+			// nothing to check - the reappeared drives old target was not part of any Target class with domains
+			if (!oldTargetTargetClasses || !oldTargetTargetClasses.length
+				|| oldTargetTargetClasses.every((tClass) => !tClass.domains || !tClass.domains.length))
+				return onCompleteFunction();
+
+			serverClassCollection.find({ targetNodes: drive.nodeID }).project({ domains: 1, targetNodes: 1 })
+				.toArray(function(err, newTargetTargetClasses) {
+					if (err) {
+						err = new MongoError(err).log();
+						return onCompleteFunction(err);
+					}
+
+					// nothing to check - the reappeared drives new target is not part of any Target class with domains
+					if (!newTargetTargetClasses || !newTargetTargetClasses.length
+						|| newTargetTargetClasses.every((tClass) => !tClass.domains || !tClass.domains.length))
+						return onCompleteFunction();
+
+					compareDomainsAndAlertOnConflicts([...oldTargetTargetClasses, ...newTargetTargetClasses]);
+					onCompleteFunction();
+				});
+		});
 	});
 };
 
