@@ -1315,6 +1315,11 @@ var systemMessages = {
 		id: 1524,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	UTILS_GET_DATA_DISKS_FOR_RAID1_FAILURE_DOMAIN_VIOLATION: {
+		message: 'Failed to get data Drives for RAID1 due to a domain violation - identical drives returned with different domain identifers',
+		id: 1525,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	UTILS_GET_DRIVES_FOR_RAID1_FAILURE: {
 		message: 'Failed to get Drives for RAID1',
 		id: 1526,

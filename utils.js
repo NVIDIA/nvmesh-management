@@ -3837,6 +3837,18 @@ function getDataDisksForRAID1(nodeMatch, diskMatch, volume, callback) {
 		var disks = [];
 
 		if (results && results.length >= numberOfSegments) {
+			if (volume.domain) {
+				// check whether there is a drive duplication in the results, which indicates a domain violation
+				// since that drive has 2 different domain identifiers for the same domain scope
+				const diskIDs = results.map((d) => d.disks.diskID);
+				const hasDuplicates = (new Set(diskIDs)).size !== diskIDs.length;
+
+				if (hasDuplicates) {
+					let domainErr = new SystemMessage(systemMessages.UTILS_GET_DATA_DISKS_FOR_RAID1_FAILURE_DOMAIN_VIOLATION);
+					return callback(null, disks, domainErr);
+				}
+			}
+
 			usedZone = nodeMatch.zone;
 			disks = results;
 		}
@@ -3855,9 +3867,12 @@ function getDisksForRAID1(nodeMatch, dataDiskMatch, volume, drivesWithDomains, c
 	async.series([
 		function(callback) {
 			var sdt1 = new Date();
-			getDataDisksForRAID1(nodeMatch, dataDiskMatch, volume, function(zone, disks) {
+			getDataDisksForRAID1(nodeMatch, dataDiskMatch, volume, function(zone, disks, domainErr) {
 				var edt1 = new Date();
 				logger.sysDEBUG('getDisksForRAID1::getDatadisksForRAID1 took: ' + (edt1 - sdt1) + ' milliseconds');
+
+				if (domainErr)
+					return callback(domainErr);
 
 				if ((!disks || !disks.length) && !ignoreSeparation)
 					return callback(notEnoughDrives);
