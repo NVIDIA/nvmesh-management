@@ -808,46 +808,42 @@ scope.deleteDisksFromVolumeLimiter = function(diskClass, diskClassDisks, disksGo
 	var db = app.get('db');
 	var volumeCollection = db.collection('volume');
 
-	lockModule.acquireGlobalLock(function() {
-		volumeCollection.find({ diskClasses: { $in: [diskClass._id] } }).toArray(function(err, volumes) {
-			if (err)
-				new MongoError(err).log();
+	volumeCollection.find({ diskClasses: { $in: [diskClass._id] } }).toArray(function(err, volumes) {
+		if (err)
+			new MongoError(err).log();
 
-			async.eachSeries(volumes, function(volume, callback) {
-				//Remove the current diskClass from the array.
-				//This is only needed when removing the whole diskclass
-				const classes = volume.diskClasses.filter(d => d !== diskClass._id).map(d => ({ _id: d }));
-				scope.getDisksByDiskClass(classes, null, null, function(err, results) {
-					if (err) {
-						logger.sysDEBUG(err);
-						return callback(err);
-					}
+		async.eachSeries(volumes, function(volume, callback) {
+			//Remove the current diskClass from the array.
+			//This is only needed when removing the whole diskclass
+			const classes = volume.diskClasses.filter(d => d !== diskClass._id).map(d => ({ _id: d }));
+			scope.getDisksByDiskClass(classes, null, null, function(err, results) {
+				if (err) {
+					logger.sysDEBUG(err);
+					return callback(err);
+				}
 
-					//Get all the diskClass disk that aren't going to be removed.
-					volume.limitByDisks = results.map(function(e) { return e._id; });
-					//Add all the other disks this diskClass has.
-					volume.limitByDisks = scope.uniqueUnion([
-						volume.limitByDisks,
-						diskClassDisks.filter(function(e) { return disksGoingToBeRemoved.indexOf(e) === -1; })
-					]);
+				//Get all the diskClass disk that aren't going to be removed.
+				volume.limitByDisks = results.map(function(e) { return e._id; });
+				//Add all the other disks this diskClass has.
+				volume.limitByDisks = scope.uniqueUnion([
+					volume.limitByDisks,
+					diskClassDisks.filter(function(e) { return disksGoingToBeRemoved.indexOf(e) === -1; })
+				]);
 
-					volumeCollection.updateOne(
-						{ _id: volume._id },
-						{ $set: { diskClasses: volume.diskClasses, limitByDisks: volume.limitByDisks } },
-						function(err) {
-							if (err)
-								err = new MongoError(err).log();
+				volumeCollection.updateOne(
+					{ _id: volume._id },
+					{ $set: { diskClasses: volume.diskClasses, limitByDisks: volume.limitByDisks } },
+					function(err) {
+						if (err)
+							err = new MongoError(err).log();
 
-							callback(err);
-						});
+						callback(err);
+					});
 
-				});
-			}, function(err) {
-				lockModule.releaseGlobalLock();
-
-				if (cb)
-					cb(err);
 			});
+		}, function(err) {
+			if (cb)
+				cb(err);
 		});
 	});
 };
@@ -856,52 +852,46 @@ scope.deleteServersFromVolumeLimiter = function(serverClass, serverClassServers,
 	var db = app.get('db');
 	var volumeCollection = db.collection('volume');
 
-	lockModule.acquireGlobalLock(function() {
-		volumeCollection.find({ serverClasses: { $in: [serverClass._id] } }).toArray(function(err, volumes) {
-			if (err)
-				new MongoError(err).log();
+	volumeCollection.find({ serverClasses: { $in: [serverClass._id] } }).toArray(function(err, volumes) {
+		if (err)
+			new MongoError(err).log();
 
-			if (volumes && volumes.length)
-				logger.sysDEBUG('Affected Volumes', volumes);
+		if (volumes && volumes.length)
+			logger.sysDEBUG('Affected Volumes', volumes);
 
-			async.eachSeries(volumes, function(volume, callback) {
-				//Remove the current diskClass from the array.
-				//This is only needed when removing the whole diskclass
-				const classes = volume.serverClasses.filter(s => s !== serverClass._id).map(s => ({ _id: s }));
-				scope.getServersByServerClass(classes, null, null, function(err, results) {
-					if (err) {
-						logger.sysDEBUG(err);
-						return callback(err);
+		async.eachSeries(volumes, function(volume, callback) {
+			//Remove the current diskClass from the array.
+			//This is only needed when removing the whole diskclass
+			const classes = volume.serverClasses.filter(s => s !== serverClass._id).map(s => ({ _id: s }));
+			scope.getServersByServerClass(classes, null, null, function(err, results) {
+				if (err) {
+					logger.sysDEBUG(err);
+					return callback(err);
+				}
+
+				//Get all the serverClass server that aren't going to be removed.
+				volume.limitByNodes = results.map(function(e) { return e.serverID; });
+				//Add all the other servers this serverClass has.
+				volume.limitByNodes = scope.uniqueUnion([
+					volume.limitByNodes,
+					serverClassServers.filter(function(e) {
+						return serversGoingToBeRemoved.indexOf(e) === -1;
+					})
+				]);
+
+				volumeCollection.updateOne(
+					{ _id: volume._id },
+					{ $set: { serverClasses: volume.serverClasses, limitByNodes: volume.limitByNodes } },
+					function(err) {
+						if (err)
+							err = new MongoError(err).log();
+
+						callback(err);
 					}
+				);
 
-					//Get all the serverClass server that aren't going to be removed.
-					volume.limitByNodes = results.map(function(e) { return e.serverID; });
-					//Add all the other servers this serverClass has.
-					volume.limitByNodes = scope.uniqueUnion([
-						volume.limitByNodes,
-						serverClassServers.filter(function(e) {
-							return serversGoingToBeRemoved.indexOf(e) === -1;
-						})
-					]);
-
-					volumeCollection.updateOne(
-						{ _id: volume._id },
-						{ $set: { serverClasses: volume.serverClasses, limitByNodes: volume.limitByNodes } },
-						function(err) {
-							if (err)
-								err = new MongoError(err).log();
-
-							callback(err);
-						}
-					);
-
-				});
-			}, function(err) {
-				lockModule.releaseGlobalLock();
-
-				return cb(err);
 			});
-		});
+		}, cb);
 	});
 };
 

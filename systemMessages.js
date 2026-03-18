@@ -1977,6 +1977,20 @@ var systemMessages = {
 		id: 162536,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	DRIVECLASS_SAVE_FAILED_DRIVE_WITH_DOMAIN_CONFLICT: {
+		message: 'Drive Class not saved due to domain conflict of a disk',
+		id: 162537,
+		header: 'Drive Class Save Failed',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	TARGETCLASS_SAVE_FAILED_TARGET_WITH_DOMAIN_CONFLICT: {
+		message: 'Target Class not saved due to domain conflict of a target',
+		id: 320,
+		header: 'Target Class Save Failed',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	TARGETCLASS_FAILED_TARGET_NOT_FOUND: {
 		message: 'Target Class not found',
 		id: 321,

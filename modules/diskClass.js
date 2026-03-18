@@ -10,7 +10,9 @@ const uuid = require('uuid');
 
 const utils = require('../utils.js');
 const consts = require('../consts.js');
+const lockModule = require('./lock.js');
 const systemMessages = require('../systemMessages.js');
+const classesUtils = require('./classesUtils.js');
 let { MongoError, SystemAdminMessage, Entities, SystemMessage, getDriveID } = require('./error.js');
 
 const scope = {};
@@ -18,6 +20,57 @@ const scope = {};
 scope.afterModuleLoaded = () => {
 	({ MongoError, SystemAdminMessage, Entities, SystemMessage } = require('./error.js'));
 };
+
+function checkForDriveClassProtectionDomainViolations(driveClass, messages, cb) {
+	function handleConflictResponses(err, entitiesWithDomainConflict, isTargetClassConflict) {
+		if (err) {
+			messages.push(new SystemAdminMessage(systemMessages.DRIVECLASS_SAVE_FAILED)
+				.addInfo(Entities.Error, err)
+				.addInfo(Entities.DriveClass.ID, driveClass._id));
+			return err;
+		} else if (entitiesWithDomainConflict.length) {
+			const message = new SystemAdminMessage(systemMessages.DRIVECLASS_SAVE_FAILED_DRIVE_WITH_DOMAIN_CONFLICT);
+			entitiesWithDomainConflict.forEach(e => {
+				message.addInfo(isTargetClassConflict ? Entities.Target.ID : Entities.Drive.ID, e.entityIDs).addInfo(Entities.Domain.scope, e.domainScope);
+				if (isTargetClassConflict)
+					message.addInfo(Entities.Drive.ID, (driveClass.disks).filter((d) => e.entityIDs.includes(d.node_id)).map((d) => d.diskID));
+			});
+			messages.push(message.addInfo(Entities.DriveClass.ID, driveClass._id));
+			return message;
+		}
+
+		return;
+	}
+
+	classesUtils.checkForProtectionDomainViolations(
+		driveClass._id,
+		classesUtils.getDiskIDsOfDriveClassFunc(driveClass),
+		driveClass.domains,
+		'disks.diskID',
+		consts.dbCollections.DRIVE_CLASS,
+		classesUtils.getDiskIDsOfDriveClassFunc,
+		(err, drivesWithDomainConflict) => {
+			let errorOrConflictMessage = handleConflictResponses(err, drivesWithDomainConflict, false);
+			if (errorOrConflictMessage)
+				return cb(errorOrConflictMessage);
+
+			// make sure that the targets that owns the drives in the class does not have a conflict with their Target Classes domains
+			classesUtils.checkForProtectionDomainViolations(
+				null,
+				(driveClass.disks || []).map((d) => d.node_id), // fetch the target IDs by the drives of the Drive Class
+				driveClass.domains,
+				'targetNodes',
+				consts.dbCollections.TARGET_CLASS,
+				(tClass) => tClass.targetNodes,
+				(err, targetsWithDomainConflict) => {
+					let errorOrConflictMessage = handleConflictResponses(err, targetsWithDomainConflict, true);
+					if (errorOrConflictMessage)
+						return cb(errorOrConflictMessage);
+
+					return cb();
+				});
+		});
+}
 
 function validateDrives(driveClasses, executeForEachClassFn, callback) {
 	const db = app.get('db');
@@ -90,26 +143,34 @@ scope.saveDriveClasses = function(driveClasses, user, cb) {
 			return callback();
 		}
 
-		driveClass.createdBy = driveClass.modifiedBy = user.email;
-		driveClass.dateCreated = driveClass.dateModified = new Date();
-		driveClass.uuid = uuid.v1();
-
-		utils.insertToCollection(driveClass, 'diskClass', err => {
+		checkForDriveClassProtectionDomainViolations(driveClass, messages, (err) => {
 			if (err)
-				messages.push(addInfoToMessage(new SystemAdminMessage(systemMessages.DRIVECLASS_SAVE_FAILED)
-					.addInfo(Entities.Error, err.isDuplicateKeyError ? new SystemMessage(systemMessages.DRIVECLASS_SAVE_NAME_ALREADY_EXISTS) : err)));
-			else 
-				messages.push(addInfoToMessage(new SystemAdminMessage(systemMessages.DRIVECLASS_SAVED).addInfo(Entities.DriveClass.UUID, driveClass.uuid)));
-			
-			callback();
+				return callback();
+
+			driveClass.createdBy = driveClass.modifiedBy = user.email;
+			driveClass.dateCreated = driveClass.dateModified = new Date();
+			driveClass.uuid = uuid.v1();
+
+			utils.insertToCollection(driveClass, 'diskClass', err => {
+				if (err)
+					messages.push(addInfoToMessage(new SystemAdminMessage(systemMessages.DRIVECLASS_SAVE_FAILED)
+						.addInfo(Entities.Error, err.isDuplicateKeyError ? new SystemMessage(systemMessages.DRIVECLASS_SAVE_NAME_ALREADY_EXISTS) : err)));
+				else 
+					messages.push(addInfoToMessage(new SystemAdminMessage(systemMessages.DRIVECLASS_SAVED).addInfo(Entities.DriveClass.UUID, driveClass.uuid)));
+				
+				callback();
+			});
 		});
 	};
 
-	validateDrives(driveClasses, executeForEachDriveClassFn, err => { 
-		if (err) 
-			messages.push(new SystemAdminMessage(systemMessages.DRIVECLASS_SAVE_FAILED).addInfo(Entities.Error, err));
-			
-		cb(messages);
+	lockModule.acquireGlobalLock(() => {
+		validateDrives(driveClasses, executeForEachDriveClassFn, err => { 
+			if (err) 
+				messages.push(new SystemAdminMessage(systemMessages.DRIVECLASS_SAVE_FAILED).addInfo(Entities.Error, err));
+
+			lockModule.releaseGlobalLock();
+			cb(messages);
+		});
 	});
 };
 
@@ -117,6 +178,12 @@ scope.updateDriveClasses = (driveClasses, user, callback) => {
 	const messages = [];
 	const driveClassesToUpdate = [];
 	const diskClassesGettingLarger = [];
+
+	function onCompleteFunction() {
+		lockModule.releaseGlobalLock();
+		callback(messages);
+	}
+
 	const executeForEachDriveClassFn = (driveClass, driveErrors, callback) => {
 		const addInfoToMessage = message => message.addInfo(Entities.DriveClass.ID, driveClass._id).addInfo(Entities.DriveClass.UUID, driveClass.uuid);
 
@@ -127,101 +194,108 @@ scope.updateDriveClasses = (driveClasses, user, callback) => {
 			return callback();
 		}
 
-		utils.getDisksByDiskClass([{ _id: driveClass._id, uuid: driveClass.uuid }], null, null, (err, results) => {
-			if (err) {
-				messages.push(addInfoToMessage(
-					new SystemAdminMessage(systemMessages.DRIVECLASS_UPDATE_FAILED).addInfo(Entities.Error, new MongoError(err).log())));
+		checkForDriveClassProtectionDomainViolations(driveClass, messages, (err) => {
+			if (err)
 				return callback();
-			}
 
-			if (!results?.length) {
-				messages.push(addInfoToMessage(new SystemAdminMessage(systemMessages.DRIVECLASS_UPDATE_NOT_FOUND)));
-				return callback();
-			}
-
-			const existingDiskIDs = results.map(e => e._id);
-			const diskIDsToUpdate = driveClass.disks.map(drive => drive.diskID);
-			const newDiskIDs = diskIDsToUpdate.filter(diskID => !existingDiskIDs.includes(diskID));
-			const deleteDiskIDs = existingDiskIDs.filter(diskID => !diskIDsToUpdate.includes(diskID));
-
-			async.series([
-				cb => {
-					if (!deleteDiskIDs.length)
-						return cb();
-
-					utils.getVolumesAffectedDiskClass(driveClass, deleteDiskIDs, (err, results) => {
-						let systemMessage;
-
-						if (err)
-							systemMessage = err;
-						else if (results.length) {
-							systemMessage = new SystemMessage(systemMessages.DRIVECLASS_UPDATE_VOLUME_IN_USE);
-							results.forEach(r => systemMessage.addInfo(Entities.Volume.ID, r._id));
-						}
-
-						if (systemMessage) {
-							messages.push(addInfoToMessage(new SystemAdminMessage(systemMessages.DRIVECLASS_UPDATE_FAILED)));
-							return cb(true);
-						}
-						
-						//No volumes were allocated with this diskClass it's safe to remove it.
-						utils.deleteDisksFromVolumeLimiter(driveClass, existingDiskIDs, deleteDiskIDs, cb);
-					});
-				},
-				cb => {
-					if (newDiskIDs.length) {
-						utils.addObjectsToVolumeLimiter('diskClasses', driveClass._id, newDiskIDs, 'limitByDisks');
-						diskClassesGettingLarger.push(driveClass);
-					}
-
-					driveClass.modifiedBy = user.email;
-					driveClass.dateModified = new Date();
-
-					cb();
+			utils.getDisksByDiskClass([{ _id: driveClass._id, uuid: driveClass.uuid }], null, null, (err, results) => {
+				if (err) {
+					messages.push(addInfoToMessage(
+						new SystemAdminMessage(systemMessages.DRIVECLASS_UPDATE_FAILED).addInfo(Entities.Error, new MongoError(err).log())));
+					return callback();
 				}
-			], err => { 
-				if (!err)
-					driveClassesToUpdate.push(driveClass);
-				
-				callback();
+
+				if (!results?.length) {
+					messages.push(addInfoToMessage(new SystemAdminMessage(systemMessages.DRIVECLASS_UPDATE_NOT_FOUND)));
+					return callback();
+				}
+
+				const existingDiskIDs = results.map(e => e._id);
+				const diskIDsToUpdate = driveClass.disks.map(drive => drive.diskID);
+				const newDiskIDs = diskIDsToUpdate.filter(diskID => !existingDiskIDs.includes(diskID));
+				const deleteDiskIDs = existingDiskIDs.filter(diskID => !diskIDsToUpdate.includes(diskID));
+
+				async.series([
+					cb => {
+						if (!deleteDiskIDs.length)
+							return cb();
+
+						utils.getVolumesAffectedDiskClass(driveClass, deleteDiskIDs, (err, results) => {
+							let systemMessage;
+
+							if (err)
+								systemMessage = err;
+							else if (results.length) {
+								systemMessage = new SystemMessage(systemMessages.DRIVECLASS_UPDATE_VOLUME_IN_USE);
+								results.forEach(r => systemMessage.addInfo(Entities.Volume.ID, r._id));
+							}
+
+							if (systemMessage) {
+								messages.push(addInfoToMessage(new SystemAdminMessage(systemMessages.DRIVECLASS_UPDATE_FAILED)));
+								return cb(true);
+							}
+							
+							//No volumes were allocated with this diskClass it's safe to remove it.
+							utils.deleteDisksFromVolumeLimiter(driveClass, existingDiskIDs, deleteDiskIDs, cb);
+						});
+					},
+					cb => {
+						if (newDiskIDs.length) {
+							utils.addObjectsToVolumeLimiter('diskClasses', driveClass._id, newDiskIDs, 'limitByDisks');
+							diskClassesGettingLarger.push(driveClass);
+						}
+
+						driveClass.modifiedBy = user.email;
+						driveClass.dateModified = new Date();
+
+						cb();
+					}
+				], err => { 
+					if (!err)
+						driveClassesToUpdate.push(driveClass);
+					
+					callback();
+				});
 			});
 		});
 	};
 
-	validateDrives(driveClasses, executeForEachDriveClassFn, err => { 
-		if (err) 
-			messages.push(new SystemAdminMessage(systemMessages.DRIVECLASS_UPDATE_FAILED).addInfo(Entities.Error, err));
+	lockModule.acquireGlobalLock(() => {
+		validateDrives(driveClasses, executeForEachDriveClassFn, err => { 
+			if (err) 
+				messages.push(new SystemAdminMessage(systemMessages.DRIVECLASS_UPDATE_FAILED).addInfo(Entities.Error, err));
 
-		if (!driveClassesToUpdate.length) 
-			return callback(messages);
+			if (!driveClassesToUpdate.length) 
+				return onCompleteFunction();
 
-		utils.updateCollection(driveClassesToUpdate, 'diskClass', false, (err, results) => {
-			if (err)
-				new MongoError(err).log();
-			else
-				utils.startVolumeRebuildByDiskClasses(diskClassesGettingLarger, user.email);
-
-
-			driveClassesToUpdate.forEach(driveClass => {
-				let error;
-				const driveClassResult = results[driveClass._id];
-				
-				if (driveClassResult.matchedCount == 0)
-					error = new SystemMessage(systemMessages.DRIVECLASS_UPDATED_NOT_FOUND);	
+			utils.updateCollection(driveClassesToUpdate, 'diskClass', false, (err, results) => {
+				if (err)
+					new MongoError(err).log();
 				else
-					error = driveClassResult.err;
+					utils.startVolumeRebuildByDiskClasses(diskClassesGettingLarger, user.email);
 
-				const systemAdminMessage = new SystemAdminMessage(error ? systemMessages.DRIVECLASS_UPDATE_FAILED : systemMessages.DRIVECLASS_UPDATED)
-					.addInfo(Entities.DriveClass.ID, driveClass._id)
-					.addInfo(Entities.DriveClass.UUID, driveClass.uuid); 
 
-				if (error)
-					systemAdminMessage.addInfo(Entities.Error, error);
+				driveClassesToUpdate.forEach(driveClass => {
+					let error;
+					const driveClassResult = results[driveClass._id];
+					
+					if (driveClassResult.matchedCount == 0)
+						error = new SystemMessage(systemMessages.DRIVECLASS_UPDATED_NOT_FOUND);	
+					else
+						error = driveClassResult.err;
 
-				messages.push(systemAdminMessage);
+					const systemAdminMessage = new SystemAdminMessage(error ? systemMessages.DRIVECLASS_UPDATE_FAILED : systemMessages.DRIVECLASS_UPDATED)
+						.addInfo(Entities.DriveClass.ID, driveClass._id)
+						.addInfo(Entities.DriveClass.UUID, driveClass.uuid); 
+
+					if (error)
+						systemAdminMessage.addInfo(Entities.Error, error);
+
+					messages.push(systemAdminMessage);
+				});
+				
+				onCompleteFunction();
 			});
-			
-			callback(messages);
 		});
 	});
 };
