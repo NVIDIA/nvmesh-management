@@ -16,15 +16,6 @@ const Login = () => {
 				{currentPath === '/login' && <LoginForm />}
 				{currentPath === '/login/changePassword' && <ChangePasswordForm />}
 			</div>
-
-			<div className="nvmesh-bar">
-				<div>
-					<span>With joint innovation from</span>
-					<span>
-						<img src="../images/excelero-logo.png" alt="NVMesh"/>
-					</span>
-				</div>
-			</div>
 		</div>
 	);
 };
