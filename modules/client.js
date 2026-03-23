@@ -44,6 +44,7 @@ scope.afterModuleLoaded = function() {
 	objectNotifier = require('../objectNotifier.js');
 	lastMessageLog = require('./lastMessageLog.js');
 	eventsModule = require('../events.js');
+	volumeModule = require('./volume.js');
 	({ MongoError, SystemMessage, Entities, SystemAdminMessage } = require('../modules/error.js'));
 };
 

@@ -42,6 +42,8 @@ scope.afterModuleLoaded = function() {
 	clientModule = require('./client.js');
 	events = require('../events.js');
 	logger = require('../logger.js');
+	diskModule = require('./disk.js');
+	volumeModule = require('./volume.js');
 	({ Entities, SystemMessage, MongoError, SystemAdminMessage, Differentiators, getNICID, getDriveID } = require('./error.js'));
 };
 
@@ -1596,7 +1598,6 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 	var savedToDB = false;
 	var shouldStartVolumeRebuild = false;
 	var updateConfiguration;
-	var diskOldPresence = [];
 	var nicOldPresence = [];
 	var eventsToEmitOnInsert = [];
 	var logsToEmitOnInsert = [];
@@ -1608,8 +1609,8 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 	var affectedZones = {};
 	var targetZoneChanged = false;
 	var outdatedReappearingDrives = [];
-	var reappearingDiskSegments = [];
 	var shouldIncreaseNicsVersion = false;
+	const reappearingDisks = [];
 
 	var node = message.payload.node;
 
@@ -1676,9 +1677,6 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 						var dbDisk = null;
 
 						if (oldPresence && oldPresence.disks) {
-							if (newDisk.diskSegments && newDisk.diskSegments.length)
-								reappearingDiskSegments = reappearingDiskSegments.concat(newDisk.diskSegments);
-
 							dbDisk = oldPresence.disks;
 							isReappear = true;
 							newDisk.version++;
@@ -1689,7 +1687,7 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 								payload: newDisk
 							});
 
-							diskOldPresence.push({ diskID: newDisk.diskID, reappearingCounter: newDisk.reappearingCounter });
+							reappearingDisks.push({ oldNodeId: oldPresence.node_id, disk: newDisk });
 							affectedZones[oldPresence.zone] = 1;
 							affectedZones[lastServer.zone] = 1;
 
@@ -2111,7 +2109,8 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 					callback();
 			},
 			function(callback) {
-				removeDisksOldPresence(diskOldPresence, node.node_id, function() {
+				const disksOldPresence = reappearingDisks.map(({ disk }) => ({ diskID: disk.diskID, reappearingCounter: disk.reappearingCounter }));
+				removeDisksOldPresence(disksOldPresence, node.node_id, function() {
 					callback();
 				});
 			},
@@ -2121,16 +2120,23 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 				});
 			},
 			function(callback) {
-				// update volume segments of reappearing drives with new node id and sending update volume messages to the relevant Toma's & clients
-				if (savedToDB && reappearingDiskSegments.length)
-					scope.updateVolumeSegmentsNewNodeId(node, reappearingDiskSegments, (err) => {
-						if (err)
-							new SystemMessage(systemMessages.TARGET_SAVE_NEW_NODE_ID_ON_VOLUMES_FAILED).addInfo(Entities.Error, err).log();
+				if (!savedToDB || !reappearingDisks.length)
+					return callback();
 
-						callback();
-					});
-				else
+				reappearingDisks.forEach(({ disk, oldNodeId }) => classesUtils.checkAndAlertForDomainConflictOnDriveReappearing(disk, oldNodeId));
+
+				const reappearingSegments = reappearingDisks.flatMap(d => d.disk.diskSegments || []);
+				if (!reappearingSegments.length)
+					return callback();
+
+				// update volume segments of reappearing drives with new node id and sending update volume messages to the relevant Toma's & clients
+				scope.updateVolumeSegmentsNewNodeId(node, reappearingSegments, (err) => {
+					if (err)
+						new SystemMessage(systemMessages.TARGET_SAVE_NEW_NODE_ID_ON_VOLUMES_FAILED).addInfo(Entities.Error, err).log();
+
+					alertOnSeparationViolation(node.node_id, reappearingSegments);
 					callback();
+				});
 			},
 			function(callback) {
 				if (savedToDB && updateConfiguration) {
@@ -2334,9 +2340,6 @@ function portOldSegmentsOnReappearing(newServer, disk, eventsList, calcDelta, ca
 			if (disk.automaticallyEvicted)
 				disk.health = consts.targetHealth.CRITICAL;
 
-			alertOnMirrorViolation(newServer.node_id, disk.diskSegments);
-			classesUtils.checkAndAlertForDomainConflictOnDriveReappearing(disk, oldPresence.node_id);
-
 			callback(disk, oldPresence, false, shouldAutoEvict);
 		} else {
 			eventsList.push({
@@ -2407,65 +2410,292 @@ scope.updateVolumeSegmentsNewNodeId = (newServer, diskSegments, callback) => {
 		});
 };
 
-// TODO: When supporting more than 1 mirror change this logic
-function alertOnMirrorViolation(newServerID, diskSegments) {
-	var db = app.get('db');
-	var volumeCollection = db.collection('volume');
+function alertOnSeparationViolation(newServerID, diskSegments) {
+	const isVolumeDiskSegment = (seg) => !seg.owner || (seg.owner === consts.segmentOwners.NVMESH && seg.type !== consts.segmentTypes.EXCELERO_METADATA);
+	const volumeDiskSegments = diskSegments?.filter(isVolumeDiskSegment);
+	if (!volumeDiskSegments?.length)
+		return;
 
-	if (!diskSegments) return;
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
 
-	var volumeDiskSegments = diskSegments.filter(function(seg) {
-		return !seg.owner || (seg.owner === consts.segmentOwners.NVMESH && seg.type !== consts.segmentTypes.EXCELERO_METADATA);
+	const segmentIDs = volumeDiskSegments.map(seg => seg._id);
+	const volumeNames = [...new Set(volumeDiskSegments.map(seg => seg.volumeName))];
+	const pipeline = buildSeparationViolationPipeline(segmentIDs, volumeNames, newServerID);
+
+	lockModule.acquireGlobalLock(() => {
+		volumeCollection.aggregate(pipeline).toArray((err, results) => {
+			lockModule.releaseGlobalLock(() => {});
+
+			if (err)
+				return new MongoError(err).log();
+
+			processSeparationViolationResults(results);
+		});
 	});
+}
 
-	volumeDiskSegments.forEach(function(segment) {
-		volumeCollection.aggregate([
-			{ $match: { _id: segment.volumeName, RAIDLevel: { $in: [consts.RAIDLevel.MIRRORED_RAID_1, consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10] } } },
-			{ $unwind: '$chunks' },
-			{ $unwind: '$chunks.pRaids' },
-			{ $match: { 'chunks.pRaids.diskSegments': { $elemMatch: { _id: segment._id } } } }])
-			.toArray(function(err, volumeChunks) {
-				if (err) {
-					new MongoError(err).log();
-					return;
-				}
+function buildSeparationViolationPipeline(segmentIDs, volumeNames, newServerID) {
+	const isViolated = (totalField) => (
+		{ $switch: { branches: [
+			{ case: { $eq: ['$effectiveProtectionLevel', consts.separationTypes.IGNORE] }, then: false },
+			{ case: { $eq: ['$effectiveProtectionLevel', consts.separationTypes.FULL] }, then: { $gt: [totalField, 1] } },
+			{ case: { $eq: ['$effectiveProtectionLevel', consts.separationTypes.MINIMAL] }, then: { $gt: [totalField, '$effectiveRedundancy'] } },
+		],
+		default: false } });
 
-				if (!volumeChunks.length)
-					return;
-
-				var volumeChunk = volumeChunks[0];
-				var mirrorViolationDetected = false;
-
-				var dataMirroredDiskSegments = volumeChunk.chunks.pRaids.diskSegments.filter(function(seg) {
-					return seg.type === consts.segmentTypes.DATA && seg._id !== segment._id;
-				});
-
-				if (dataMirroredDiskSegments.length) {
-
-					dataMirroredDiskSegments.forEach(function(mirroredSeg) {
-						if (mirroredSeg.node_id === newServerID) {
-							new SystemAdminMessage(systemMessages.TARGET_DRIVE_RELOCATION_CAUSED_MIRROR_VIOLATION)
-								.addInfo(Entities.Volume.ID, volumeChunk._id).addInfo(Entities.DiskSegment.UUID, segment._id).log();
-
-							mirrorViolationDetected = true;
-						}
-					});
-				}
-
-				if (!mirrorViolationDetected) {
-					acknowledgeByQuery({
-						'meta.id': segment._id,
-						'meta.header': 'Mirror violation detected'
-					}, consts.SYSTEM_USER, function(result) {
-						if (result.success) {
-							new SystemAdminMessage(systemMessages.TARGET_DRIVE_RELOCATION_RESOLVED_MIRROR_VIOLATION)
-								.addInfo(Entities.Volume.ID, volumeChunk._id).addInfo(Entities.DiskSegment.UUID, segment._id).log();
-						}
-					});
-				}
-
+	const domainLookupPipeline = [
+		{ $match: { $expr: { $in: ['$_id', '$$nodeIDs'] } } },
+		{ $unwind: '$disks' },
+		{ $match: { $expr: { $in: ['$disks.diskID', '$$diskIDs'] } } },
+		{ $project: { diskID: '$disks.diskID', nodeID: '$node_id' } },
+		{
+			$lookup: {
+				from: 'serverClass',
+				let: { serverID: '$nodeID' },
+				pipeline: [
+					{ $match: { $expr: { $and: [{ $in: ['$$domainScope', '$domains.scope'] }, { $in: ['$$serverID', '$targetNodes'] }] } } }
+				],
+				as: 'serverClasses'
 			}
-			);
+		},
+		{
+			$lookup: {
+				from: 'diskClass',
+				let: { diskID: '$diskID' },
+				pipeline: [
+					{ $match: { $expr: { $and: [{ $in: ['$$domainScope', '$domains.scope'] }, { $in: ['$$diskID', '$disks.diskID'] }] } } }
+				],
+				as: 'diskClasses'
+			}
+		},
+		{
+			$project: {
+				diskID: 1,
+				domains: {
+					$reduce: {
+						input: { $concatArrays: ['$serverClasses.domains', '$diskClasses.domains'] },
+						initialValue: [],
+						in: { $concatArrays: ['$$value', '$$this'] }
+					}
+				}
+			}
+		},
+		{ $unwind: '$domains' },
+		{ $match: { $expr: { $eq: ['$domains.scope', '$$domainScope'] } } },
+		{ $project: { diskID: 1, identifier: '$domains.identifier' } }
+	];
+
+	return [
+		{ $match: { _id: { $in: volumeNames }, RAIDLevel: { $in: [...consts.mirroredRaidLevels, ...consts.erasureCodedRaidLevels] } } },
+		{
+			$project: {
+				RAIDLevel: 1,
+				ignoreNodeSeparation: 1,
+				protectionLevel: 1,
+				numberOfMirrors: 1,
+				domain: 1,
+				parityBlocks: 1,
+				relevantPRaids: {
+					$reduce: {
+						input: '$chunks',
+						initialValue: [],
+						in: {
+							$concatArrays: ['$$value', {
+								$map: {
+									input: {
+										$filter: {
+											input: '$$this.pRaids',
+											as: 'pRaid',
+											cond: {
+												$gt: [{
+													$size: {
+														$filter: {
+															input: '$$pRaid.diskSegments',
+															as: 'ds',
+															cond: { $in: ['$$ds._id', segmentIDs] }
+														}
+													}
+												}, 0]
+											}
+										}
+									},
+									as: 'pRaid',
+									in: {
+										uuid: '$$pRaid.uuid',
+										diskSegments: {
+											$map: {
+												input: {
+													$filter: {
+														input: '$$pRaid.diskSegments',
+														as: 'ds',
+														cond: { $eq: ['$$ds.type', consts.segmentTypes.DATA] }
+													}
+												},
+												as: 'ds',
+												in: {
+													_id: '$$ds._id',
+													node_id: '$$ds.node_id',
+													diskID: '$$ds.diskID'
+												}
+											}
+										}
+									}
+								}
+							}]
+						}
+					}
+				}
+			}
+		},
+		{
+			$addFields: {
+				effectiveProtectionLevel: { $switch: {
+					branches: [
+						{ case: { $ne: ['$protectionLevel', null] }, then: '$protectionLevel' },
+						{
+							case: { $and: [{ $eq: ['$ignoreNodeSeparation', true] }, { $in: ['$RAIDLevel', consts.mirroredRaidLevels] }] },
+							then: consts.separationTypes.IGNORE
+						},
+					],
+					default: consts.separationTypes.FULL
+				} },
+				effectiveRedundancy: { $switch: {
+					branches: [
+						{ case: { $in: ['$RAIDLevel', consts.erasureCodedRaidLevels] }, then: '$parityBlocks' },
+						{ case: { $in: ['$RAIDLevel', consts.mirroredRaidLevels] }, then: '$numberOfMirrors' },
+					],
+					default: 1
+				} }
+			}
+		},
+		{ $match: { $expr: { $gt: [{ $size: '$relevantPRaids' }, 0] } } },
+		{ $unwind: '$relevantPRaids' },
+		{
+			$addFields: {
+				relocatedSegments: {
+					$filter: {
+						input: '$relevantPRaids.diskSegments',
+						as: 'seg',
+						cond: { $in: ['$$seg._id', segmentIDs] }
+					}
+				},
+				totalOnNewNode: {
+					$add: [
+						{
+							$size: {
+								$filter: {
+									input: '$relevantPRaids.diskSegments',
+									as: 'seg',
+									cond: { $eq: ['$$seg.node_id', newServerID] }
+								}
+							}
+						},
+						{
+							$size: {
+								$filter: {
+									input: '$relevantPRaids.diskSegments',
+									as: 'seg',
+									cond: { $and: [
+										{ $in: ['$$seg._id', segmentIDs] },
+										{ $ne: ['$$seg.node_id', newServerID] }
+									] }
+								}
+							}
+						}
+					]
+				}
+			}
+		},
+		{
+			$addFields: {
+				relocatedDiskIDs: '$relocatedSegments.diskID',
+				diskIDsForDomainLookup: { $cond: { if: '$domain', then: '$relevantPRaids.diskSegments.diskID', else: [] } },
+				nodeIDsForDomainLookup: { $cond: { if: '$domain', then: '$relevantPRaids.diskSegments.node_id', else: [] } }
+			}
+		},
+		{
+			$lookup: {
+				from: 'server',
+				let: { diskIDs: '$diskIDsForDomainLookup', nodeIDs: '$nodeIDsForDomainLookup', domainScope: '$domain' },
+				pipeline: domainLookupPipeline,
+				as: 'diskDomains'
+			}
+		},
+		{
+			$addFields: {
+				relocatedDomainIDs: {
+					$map: {
+						input: { $filter: { input: '$diskDomains', as: 'd', cond: { $in: ['$$d.diskID', '$relocatedDiskIDs'] } } },
+						as: 'd',
+						in: '$$d.identifier'
+					}
+				}
+			}
+		},
+		{
+			$addFields: {
+				totalInRelocatedDomain: {
+					$size: {
+						$filter: {
+							input: '$diskDomains',
+							as: 'd',
+							cond: { $in: ['$$d.identifier', '$relocatedDomainIDs'] }
+						}
+					}
+				}
+			}
+		},
+		{
+			$addFields: {
+				hasNodeViolation: isViolated('$totalOnNewNode'),
+				hasDomainViolation: isViolated('$totalInRelocatedDomain')
+			}
+		},
+		{
+			$project: {
+				volumeID: '$_id',
+				RAIDLevel: 1,
+				hasNodeViolation: 1,
+				hasDomainViolation: 1,
+				pRaidUUID: '$relevantPRaids.uuid',
+				relocatedSegmentIDs: '$relocatedSegments._id'
+			}
+		}
+	];
+}
+
+function processSeparationViolationResults(results) {
+	const violationMessage = systemMessages.TARGET_DRIVE_RELOCATION_CAUSED_SEPARATION_VIOLATION;
+	const resolutionMessage = systemMessages.TARGET_DRIVE_RELOCATION_RESOLVED_SEPARATION_VIOLATION;
+	const logSeparationViolation = (segmentID, volumeID, separationLevel) => {
+		new SystemAdminMessage(violationMessage)
+			.setID(segmentID)
+			.addInfo(Entities.Volume.ID, volumeID)
+			.addInfo(Entities.DiskSegment.UUID, segmentID)
+			.addInfo(Entities.Volume.separationLevel, separationLevel)
+			.log();
+	};
+
+	results.forEach((result) => {
+		const relocatedSegmentIDs = result.relocatedSegmentIDs || [];
+
+		relocatedSegmentIDs.forEach((segmentID) => {
+			if (result.hasNodeViolation)
+				logSeparationViolation(segmentID, result.volumeID, consts.volumeSeparationLevels.NODE);
+
+			if (result.hasDomainViolation)
+				logSeparationViolation(segmentID, result.volumeID, consts.volumeSeparationLevels.DOMAIN);
+
+			if (!result.hasNodeViolation && !result.hasDomainViolation)
+				acknowledgeByQuery({ 'meta.id': segmentID, 'meta.header': violationMessage.header }, consts.SYSTEM_USER, (ackResult) => {
+					if (ackResult.success && ackResult.count)
+						new SystemAdminMessage(resolutionMessage)
+							.addInfo(Entities.Volume.ID, result.volumeID)
+							.addInfo(Entities.DiskSegment.UUID, segmentID)
+							.log();
+				});
+		});
 	});
 }
 

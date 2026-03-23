@@ -860,17 +860,17 @@ var systemMessages = {
 		id: 1336,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
-	TARGET_DRIVE_RELOCATION_CAUSED_MIRROR_VIOLATION: {
-		message: 'Drive relocation caused a mirror violation on volume',
+	TARGET_DRIVE_RELOCATION_CAUSED_SEPARATION_VIOLATION: {
+		message: 'Drive relocation caused a separation violation on volume',
 		id: 1337,
-		header: 'Mirror Violation',
+		header: 'Separation Violation',
 		logLevel: consts.loggingLevel.WARNING,
 		sysLogLevel: consts.loggingLevel.DEBUG
 	},
-	TARGET_DRIVE_RELOCATION_RESOLVED_MIRROR_VIOLATION: {
-		message: 'Drive relocation resolved mirror violation on volume',
+	TARGET_DRIVE_RELOCATION_RESOLVED_SEPARATION_VIOLATION: {
+		message: 'Drive relocation resolved separation violation on volume',
 		id: 1338,
-		header: 'Mirror Violation Resolved',
+		header: 'Separation Violation Resolved',
 		logLevel: consts.loggingLevel.INFO,
 		sysLogLevel: consts.loggingLevel.INFO
 	},

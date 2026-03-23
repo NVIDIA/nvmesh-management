@@ -121,6 +121,11 @@ consts.systemLimitation = {
 	MIN_DISK_SIZE_GB: 2
 };
 
+consts.volumeSeparationLevels = {
+	NODE: 'node',
+	DOMAIN: 'domain'
+};
+
 consts.lastMessageLogStatuses = {
 	LIVE: 'live',
 	TIMED_OUT: 'timedOut',

@@ -55,6 +55,32 @@ exports.Target = class Target extends Entity {
 		this.disks.push(disk);
 	}
 
+	async addDiskAndReport(disk) {
+		const server = await app.get('db').collection('server').findOne({ _id: disk.nodeID }, { 'disks.reappearingCounter': 1 });
+		if (server) {
+			const reappearingCounter = server.disks.find(d => d.diskID === disk.diskID)?.reappearingCounter;
+			if (reappearingCounter && reappearingCounter !== disk.reappearingCounter)
+				disk.reappearingCounter = reappearingCounter;
+		}
+
+		this.disks.push(disk);
+		this.messageSequence++;
+		this.reportID++;
+		await this.sendReport();
+	}
+
+	async removeDiskAndReport(diskID) {
+		const index = this.disks.findIndex(d => d.diskID === diskID);
+		if (index === -1)
+			throw new Error(`Disk ${diskID} not found on target ${this.node_id}`);
+
+		const [disk] = this.disks.splice(index, 1);
+		this.messageSequence++;
+		this.reportID++;
+		await this.sendReport();
+		return disk;
+	}
+
 	addNIC(nic) {
 		this.nics.push(nic);
 	}

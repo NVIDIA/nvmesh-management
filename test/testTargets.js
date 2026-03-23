@@ -14,8 +14,9 @@ const diskModule = require('../modules/disk.js');
 const lockUtils = require('./testUtils/lockUtils.js');
 const { setup, SetupOptions } = require('./testUtils/setup.js');
 const { generateTarget } = require('./testUtils/entityGenerators.js');
-const { VolumeConcatenated, VolumeRAID1With2Mirrors } = require('./models/volume.js');
 const { reportAllSegmentsOnline } = require('./testUtils/volumeUtils.js');
+const { VolumeConcatenated, VolumeRAID1, VolumeEC, VolumeRAID1With2Mirrors, VolumeRAID1With2MirrorsMinimal } = require('./models/volume.js');
+const { TargetClass } = require('./models/targetClass.js');
 const systemMessages = require('../systemMessages.js');
 const { getOrCreateQueue } = require('./testUtils/mockKafkaModule.js');
 const { getIncrementalTargetUpdatesTopic } = require('../modules/kafka.js');
@@ -654,6 +655,287 @@ describe('Targets', function() {
 				assert.notEqual(lastMsgPerTarget[targetB.node_id].targetUpdatesSequence, lastMsgPerTarget[targetC.node_id].targetUpdatesSequence);
 				assert.notEqual(lastMsgPerTarget[targetB.node_id].targetsInZone, lastMsgPerTarget[targetC.node_id].targetsInZone);
 				console.log('finished');
+			});
+		});
+	});
+
+	describe('Drive Relocation Violation Alerts', function() {
+		let logCollection;
+
+		const violationHeader = systemMessages.TARGET_DRIVE_RELOCATION_CAUSED_SEPARATION_VIOLATION.header;
+		const resolutionHeader = systemMessages.TARGET_DRIVE_RELOCATION_RESOLVED_SEPARATION_VIOLATION.header;
+		const NO_LOG_EXPECTED_WAIT_MS = 2000;
+		const MAX_LOG_POLL_RETRIES = 20;
+		const LOG_POLL_INTERVAL_MS = 100;
+
+		async function setupRelocationEnvironment(numTargets) {
+			await setup.newSetup(new SetupOptions().setEnableMongoLog(true));
+			targets = [];
+			for (let i = 0; i < numTargets; i++)
+				targets.push(await generateTarget(`reloc-server${i + 1}.acme.com`, 1).save());
+			serverCollection = app.get('db').collection('server');
+			logCollection = app.get('db').collection('log');
+		}
+
+		async function setupWithVolume(numTargets, volume) {
+			await setupRelocationEnvironment(numTargets);
+			const result = await volume.save();
+			assert(result.success, 'Volume creation failed: ' + JSON.stringify(result.err));
+		}
+
+		async function setupDomainEnvironment(numTargets, domainScope, volume) {
+			await setupRelocationEnvironment(numTargets);
+			for (let i = 0; i < targets.length; i++) {
+				const targetClass = new TargetClass(`${domainScope.toLowerCase()}-${i}`, [targets[i].node_id]);
+				targetClass.domains = [{ scope: domainScope, identifier: `${domainScope}-${i}` }];
+				await targetClass.save();
+			}
+			const vol = volume();
+			vol.domain = domainScope;
+			const result = await vol.save();
+			assert(result.success, 'Volume creation failed: ' + JSON.stringify(result.err));
+		}
+
+		async function findDiskWithSegments(nodeID) {
+			const server = await serverCollection.findOne({ _id: nodeID });
+			return server.disks.find(d => d.diskSegments && d.diskSegments.length > 0);
+		}
+
+		async function relocateDisk(sourceTarget, destTarget, diskID, { expectLog = true } = {}) {
+			const countBefore = await logCollection.countDocuments({ 'meta.header': { $in: [violationHeader, resolutionHeader] } });
+			const disk = await sourceTarget.removeDiskAndReport(diskID);
+			await destTarget.addDiskAndReport(disk);
+
+			if (expectLog)
+				await waitForNewLogEntry(countBefore);
+			else
+				await new Promise(resolve => setTimeout(resolve, NO_LOG_EXPECTED_WAIT_MS));
+		}
+
+		async function waitForNewLogEntry(countBefore) {
+			for (let i = 0; i < MAX_LOG_POLL_RETRIES; i++) {
+				const count = await logCollection.countDocuments({
+					'meta.header': { $in: [violationHeader, resolutionHeader] }
+				});
+				if (count > countBefore) return;
+				await new Promise(resolve => setTimeout(resolve, LOG_POLL_INTERVAL_MS));
+			}
+			const totalWaitMs = MAX_LOG_POLL_RETRIES * LOG_POLL_INTERVAL_MS;
+			throw new Error(`waitForNewLogEntry: no new log entry after ${MAX_LOG_POLL_RETRIES} retries (${totalWaitMs}ms)`);
+		}
+
+		async function findViolationLogs(header, separationLevel) {
+			const query = { 'meta.header': header };
+			if (separationLevel)
+				query.message = { $regex: `volumeSeparationLevel: ${separationLevel}` };
+			return logCollection.find(query).toArray();
+		}
+
+		async function relocateAndExpectViolation(sourceIdx, destIdx, separationLevel) {
+			const diskWithSegments = await findDiskWithSegments(targets[sourceIdx].node_id);
+			assert(diskWithSegments, `Expected disk with segments on target ${sourceIdx}`);
+
+			const diskID = diskWithSegments.diskID;
+			await relocateDisk(targets[sourceIdx], targets[destIdx], diskID);
+
+			const logs = await findViolationLogs(violationHeader, separationLevel);
+			assert(logs.length > 0, `Expected ${separationLevel} separation violation`);
+			return diskID;
+		}
+
+		async function relocateAndExpectResolution(sourceIdx, destIdx, diskID) {
+			await relocateDisk(targets[sourceIdx], targets[destIdx], diskID);
+
+			const logs = await findViolationLogs(resolutionHeader);
+			assert(logs.length > 0, 'Expected violation resolution');
+		}
+
+		async function relocateAndExpectNoViolation(sourceIdx, destIdx, separationLevel) {
+			const diskWithSegments = await findDiskWithSegments(targets[sourceIdx].node_id);
+			assert(diskWithSegments, `Expected disk with segments on target ${sourceIdx}`);
+
+			await relocateDisk(targets[sourceIdx], targets[destIdx], diskWithSegments.diskID, { expectLog: false });
+
+			const logs = await findViolationLogs(violationHeader, separationLevel);
+			assert.strictEqual(logs.length, 0, 'No violation expected');
+		}
+
+		describe('Node separation -- Mirrored RAID-1', function() {
+			let relocatedDiskID;
+			before(() => setupWithVolume(2, new VolumeRAID1('r1-node-test')));
+
+			it('should detect violation when mirror relocated to same node', async function() {
+				relocatedDiskID = await relocateAndExpectViolation(0, 1, consts.volumeSeparationLevels.NODE);
+			});
+
+			it('should resolve violation when disk relocated back', async function() {
+				await relocateAndExpectResolution(1, 0, relocatedDiskID);
+			});
+		});
+
+		describe('Node separation -- Mirrored RAID-1 with ignoreNodeSeparation', function() {
+			before(() => {
+				const vol = new VolumeRAID1('r1-ignore-sep-test');
+				vol.ignoreNodeSeparation = true;
+				return setupWithVolume(2, vol);
+			});
+
+			it('should not alert when ignoreNodeSeparation is true', async function() {
+				await relocateAndExpectNoViolation(0, 1);
+			});
+		});
+
+		describe('Node separation -- Mirrored RAID-1 with protectionLevel Full', function() {
+			let relocatedDiskID;
+			before(() => setupWithVolume(3, new VolumeRAID1With2Mirrors('r1-pl-full-test')));
+
+			it('should detect violation when mirror relocated to same node', async function() {
+				relocatedDiskID = await relocateAndExpectViolation(0, 1, consts.volumeSeparationLevels.NODE);
+			});
+
+			it('should resolve violation when disk relocated back', async function() {
+				await relocateAndExpectResolution(1, 0, relocatedDiskID);
+			});
+		});
+
+		describe('Node separation -- Mirrored RAID-1 with protectionLevel Ignore', function() {
+			before(() => {
+				const vol = new VolumeRAID1With2Mirrors('r1-pl-ignore-test');
+				vol.protectionLevel = consts.separationTypes.IGNORE;
+				return setupWithVolume(3, vol);
+			});
+
+			it('should not alert when protectionLevel is Ignore', async function() {
+				await relocateAndExpectNoViolation(0, 1);
+			});
+		});
+
+		describe('Node separation -- Mirrored RAID-1 with protectionLevel Minimal (numberOfMirrors=2)', function() {
+			let secondRelocatedDiskID;
+			before(() => setupWithVolume(3, new VolumeRAID1With2MirrorsMinimal('r1-pl-minimal-test')));
+
+			it('should not alert when segments on same node <= numberOfMirrors', async function() {
+				await relocateAndExpectNoViolation(1, 0, consts.volumeSeparationLevels.NODE);
+			});
+
+			it('should alert when segments on same node > numberOfMirrors', async function() {
+				secondRelocatedDiskID = await relocateAndExpectViolation(2, 0, consts.volumeSeparationLevels.NODE);
+			});
+
+			it('should resolve when disk relocated back', async function() {
+				await relocateAndExpectResolution(0, 2, secondRelocatedDiskID);
+			});
+		});
+
+		describe('Node separation -- EC Full', function() {
+			let relocatedDiskID;
+			before(() => setupWithVolume(10, new VolumeEC('ec-full-node-test')));
+
+			it('should detect violation when EC segment relocated to same node', async function() {
+				relocatedDiskID = await relocateAndExpectViolation(0, 1, consts.volumeSeparationLevels.NODE);
+			});
+
+			it('should resolve violation when disk relocated back', async function() {
+				await relocateAndExpectResolution(1, 0, relocatedDiskID);
+			});
+		});
+
+		describe('Node separation -- EC Ignore', function() {
+			before(() => {
+				const vol = new VolumeEC('ec-ignore-test');
+				vol.protectionLevel = consts.separationTypes.IGNORE;
+				return setupWithVolume(10, vol);
+			});
+
+			it('should not alert when protectionLevel is Ignore', async function() {
+				await relocateAndExpectNoViolation(0, 1);
+			});
+		});
+
+		describe('Node separation -- EC Minimal', function() {
+			let secondRelocatedDiskID;
+			before(() => {
+				const vol = new VolumeEC('ec-minimal-test');
+				vol.protectionLevel = consts.separationTypes.MINIMAL;
+				vol.parityBlocks = 2;
+				vol.dataBlocks = 4;
+				return setupWithVolume(6, vol);
+			});
+
+			it('should not alert when segments on same node <= parityBlocks', async function() {
+				await relocateAndExpectNoViolation(1, 0, consts.volumeSeparationLevels.NODE);
+			});
+
+			it('should alert when segments on same node > parityBlocks', async function() {
+				secondRelocatedDiskID = await relocateAndExpectViolation(2, 0, consts.volumeSeparationLevels.NODE);
+			});
+
+			it('should resolve when disk relocated back', async function() {
+				await relocateAndExpectResolution(0, 2, secondRelocatedDiskID);
+			});
+		});
+
+		describe('Domain separation -- Mirrored RAID-1', function() {
+			before(() => setupDomainEnvironment(2, 'Rack', () => new VolumeRAID1('r1-domain-test')));
+
+			let relocatedDiskID;
+
+			it('should detect domain violation when mirror relocated to same domain', async function() {
+				relocatedDiskID = await relocateAndExpectViolation(0, 1, consts.volumeSeparationLevels.DOMAIN);
+			});
+
+			it('should resolve domain violation when disk relocated back', async function() {
+				await relocateAndExpectResolution(1, 0, relocatedDiskID);
+			});
+		});
+
+		describe('Domain separation -- Mirrored RAID-1 to different domain', function() {
+			before(() => setupDomainEnvironment(3, 'Rack', () => new VolumeRAID1('r1-dom-diff-test')));
+
+			it('should not alert when mirror relocated to a different (unused) domain', async function() {
+				let sourceIdx = -1;
+				let destIdx = -1;
+				for (let i = 0; i < targets.length; i++) {
+					const disk = await findDiskWithSegments(targets[i].node_id);
+					if (disk && sourceIdx < 0)
+						sourceIdx = i;
+					else if (!disk && destIdx < 0)
+						destIdx = i;
+				}
+				assert(sourceIdx >= 0 && destIdx >= 0, 'Expected one used and one unused target');
+
+				await relocateAndExpectNoViolation(sourceIdx, destIdx);
+			});
+		});
+
+		describe('Domain separation -- EC Full', function() {
+			before(() => setupDomainEnvironment(10, 'Rack', () => {
+				const vol = new VolumeEC('ec-full-domain-test');
+				vol.protectionLevel = consts.separationTypes.FULL;
+				return vol;
+			}));
+
+			let relocatedDiskID;
+
+
+			it('should detect domain violation when EC segment relocated to same domain', async function() {
+				relocatedDiskID = await relocateAndExpectViolation(0, 1, consts.volumeSeparationLevels.DOMAIN);
+			});
+
+			it('should resolve domain violation when disk relocated back', async function() {
+				await relocateAndExpectResolution(1, 0, relocatedDiskID);
+			});
+		});
+
+		describe('Domain separation -- EC Ignore', function() {
+			before(() => setupDomainEnvironment(10, 'Rack', () => {
+				const vol = new VolumeEC('ec-ignore-domain-test');
+				vol.protectionLevel = consts.separationTypes.IGNORE;
+				return vol;
+			}));
+
+			it('should not alert when protectionLevel is Ignore', async function() {
+				await relocateAndExpectNoViolation(0, 1);
 			});
 		});
 	});

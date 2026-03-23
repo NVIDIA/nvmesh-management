@@ -29,10 +29,16 @@ exports.setup = scope;
 exports.SetupOptions = class SetupOptions{
 	constructor(enableZones) {
 		this.enableZones = enableZones == undefined ? false : enableZones;
+		this.enableMongoLog = false;
 	}
 
 	setEnableZones(enableZones) {
 		this.enableZones = enableZones;
+		return this;
+	}
+
+	setEnableMongoLog(enableMongoLog) {
+		this.enableMongoLog = enableMongoLog;
 		return this;
 	}
 };
@@ -45,7 +51,7 @@ scope.newSetup = async function(options) {
 	if (!options)
 		options = new exports.SetupOptions();
 	await scope.resetDB();
-	await scope.initApp();
+	await scope.initApp(options);
 	await setEnableZones(options.enableZones);
 	await mockKafkaModule();
 };
@@ -58,11 +64,16 @@ scope.afterModulesLoaded = function() {
 	});
 };
 
-scope.initApp = async function() {
+scope.initApp = async function(options) {
 	// variables that only need to be instantiated once, even if db is cleared during it's life time.
 	app.set('projectRoot', __dirname);
 	app.set('eventEmitter', new EventEmitter());
 	app.set('managementLogger', log);
+
+	if (options && options.enableMongoLog)
+		testLogModule.enableMongoLog();
+	else
+		testLogModule.disableMongoLog();
 
 	app.set('authorizedConnections', {});
 	app.set('timedIntervals', { intervals: {} });

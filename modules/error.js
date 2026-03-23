@@ -143,7 +143,8 @@ scope.Entities = {
 		metadataVolumeID: 'metadataVolumeID',
 		sourceVolumeID: 'sourceVolumeID',
 		emulation: 'volumeEmulation',
-		referenceID: 'attachmentReferenceID'
+		referenceID: 'attachmentReferenceID',
+		separationLevel: 'volumeSeparationLevel'
 	},
 	Attachment: {
 		status: 'status'

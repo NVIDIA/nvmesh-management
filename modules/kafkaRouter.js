@@ -27,6 +27,7 @@ const volumeEncryptionModule = require('./volumeEncryption');
 
 exports.afterModuleLoaded = () => {
 	logger = require('../logger');
+	targetModule = require('./target.js');
 };
 
 exports.routeMessage = function(kafkaMessage, topic, partition, offset, callback) {
