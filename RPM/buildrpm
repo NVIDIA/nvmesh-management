@@ -329,8 +329,8 @@ for rpm in "${rpmsToCreate[@]}"; do
         cd RPM
     elif [ $rpm == $mgmt ]; then
         cd ..
-        requires="systemd, nodejs >= 1:17.0.0-0, nodejs < 2:19.0.0-0, mongodb-mongosh <= 2.7.0, mongodb-org-tools >= 5.0, mongodb-org-tools < 8.3, nvmesh-utils >= 2.0.0"
-        requiresUbuntu="systemd, nodejs (>= 17.0.0), nodejs (<< 19.0.0), mongodb-mongosh (<= 2.7.0), mongodb-org-tools (>= 5.0), mongodb-org-tools (<< 8.3), nvmesh-utils (>= 2.0.0)"
+        requires="systemd, nodejs >= 1:17.0.0-0, nodejs < 2:19.0.0-0, mongodb-mongosh < 2.9.0, mongodb-org-tools >= 5.0, mongodb-org-tools < 9.0, nvmesh-utils >= 2.0.0"
+        requiresUbuntu="systemd, nodejs (>= 17.0.0), nodejs (<< 19.0.0), mongodb-mongosh (< 2.9.0), mongodb-org-tools (>= 5.0), mongodb-org-tools (<< 9.0), nvmesh-utils (>= 2.0.0)"
 
         rsync -av --exclude='.git/' ../interop-db/ ./interop-db
         rsync -aRPq --exclude=*~ $management_transfer_list ~/"rpmbuild/SOURCES/$packagePrefix"
