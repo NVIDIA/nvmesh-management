@@ -1386,7 +1386,7 @@ scope.GCTomaTopics = (versionDocument, callback) => {
 
 	let maximumHardwareOffset = -1;
 
-	targetCollection.find({ zone: versionDocument.zone }, { projection: { topics: 1 } }).toArray((err, targets) => {
+	targetCollection.find({ zone: versionDocument._id }, { projection: { topics: 1 } }).toArray((err, targets) => {
 		if (err)
 			return callback(new MongoError(err).log());
 
