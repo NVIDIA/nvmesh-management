@@ -2337,9 +2337,8 @@ function validateVolumeLimitationsAndVPGExists(volume, db, cb) {
 	});
 }
 
-function isSegmentOverlaps(disk, diskSegment, cb) {
+function isSegmentOverlaps(disk, diskSegment) {
 	var overlapSegment = null;
-	var overlapError = null;
 
 	if (disk.diskSegments && disk.diskSegments.length && diskSegment)
 		disk.diskSegments.forEach(function(seg) {
@@ -2361,13 +2360,11 @@ function isSegmentOverlaps(disk, diskSegment, cb) {
 			&& overlapSegment.uuid != overlapSegment.uuid)
 			innerMessage = new SystemMessage(systemMessages.UTILS_SEGMENTS_OVERLAP_METADATA_SEGMENT_UUID_CHANGED);
 
-		overlapError = new SystemMessage(systemMessages.UTILS_ADD_SEGMENT_TO_DISK_OVERLAP).addInfo(Entities.Error, innerMessage)
+		return new SystemMessage(systemMessages.UTILS_ADD_SEGMENT_TO_DISK_OVERLAP).addInfo(Entities.Error, innerMessage)
 			.addInfo(Entities.Drive.UUID, disk.uuid)
 			.addInfo(Entities.DiskSegment.NAME, overlapSegment, Differentiators.Old)
 			.addInfo(Entities.DiskSegment.NAME, diskSegment, Differentiators.New);
 	}
-
-	return cb(overlapError);
 }
 
 
@@ -2419,14 +2416,13 @@ scope.addSegmentToDisk = function(disk, diskSegment, isMetadataSegment, calcDelt
 	var err = null;
 	var calcDeltaUpdateDisk = this.updateDisk;
 	// check if new segment overlaps the exist ones and evict disk if true
-	isSegmentOverlaps(disk, diskSegment, function(overlapError) {
-		if (overlapError) {
-			calcDeltaUpdateDisk.bind(calcDelta)(disk, disk.uuid, 'autoEvictReason', consts.autoEvictReason.SEGMENTS_OVERLAPS);
+	const overlapError = isSegmentOverlaps(disk, diskSegment);
+	if (overlapError) {
+		calcDeltaUpdateDisk.bind(calcDelta)(disk, disk.uuid, 'autoEvictReason', consts.autoEvictReason.SEGMENTS_OVERLAPS);
 
-			overlapError.log();
-			return cb(disk, null, overlapError);
-		}
-	});
+		overlapError.log();
+		return cb(disk, null, overlapError);
+	}
 
 	err = scope.isSegmentOutOfBound(disk, diskSegment);
 	if (err) {
@@ -2484,7 +2480,7 @@ function addAndSaveSegmentOnDisk(disk, diskSegment, cb) {
 
 	scope.addSegmentToDisk.bind(calcDelta)(disk, diskSegment, false, calcDelta, function(updatedDisk, updateObj, err) {
 		if (err)
-			return cb(err, diskSegment);
+			return cb(err, null);
 
 		serverCollection.updateOne({ 'disks.diskID': disk.diskID }, updateObj, function(err) {
 			if (err)
