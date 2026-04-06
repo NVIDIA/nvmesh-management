@@ -1401,7 +1401,9 @@ scope.getAndValidateSegmentsForRemapOnEvict = function(disk, isAutoEvict, cb) {
 						case consts.RAIDLevel.STRIPED_ERASURE_CODING:
 							err = scope.checkRedundancyViolationOnEvict(volume, segment, isAutoEvict);
 							if (!err) {
-								if (segment.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD)
+								if (segment.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD ||
+									!volume.chunks.pRaids.diskSegments.filter(
+										(s) => s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD && s.pRaidIndex === segment.pRaidIndex).length)
 									raidSegmentsIdsToRemap.push(segment._id);
 								else if (!isAutoEvict)
 									err = consts.evictFailureReasons.MARKED_FOR_REBUILD_SEG_FOUND;
