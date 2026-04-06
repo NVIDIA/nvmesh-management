@@ -33,6 +33,32 @@ scope.afterModuleLoaded = () => {
 	({ MongoError, SystemMessage, Entities } = require('./error.js'));
 };
 
+scope.resendMissingZonesHardwareConfiguration = (callback) => {
+	const db = app.get('db');
+	const confCollection = db.collection('configurationVersion');
+	let zonesToDispatch = [];
+
+	confCollection.find({ _id: { $ne: 'CLUSTER' } }).toArray((err, zones) => {
+		if (err) {
+			new MongoError(err).log();
+			return callback(err);
+		}
+
+		zones.forEach(zone => {
+			if (!zone.lastSentConfigurationVersion || zone.lastSentConfigurationVersion < zone.configurationVersion) {
+				zonesToDispatch.push(zone._id);
+			}
+		});
+
+		if (zonesToDispatch.length) {
+			logger.sysDEBUG(`Resending hardware configuration for zones: ${zonesToDispatch.join(', ')}`);
+			scope.dispatchZonesHardwareConfigurationByZones(zonesToDispatch, callback);
+		} else {
+			callback();
+		}
+	});
+};
+
 scope.dispatchAllZonesHardwareConfiguration = (callback) => {
 	let db = app.get('db');
 	let confCollection = db.collection('configurationVersion');
@@ -56,10 +82,29 @@ scope.dispatchZonesHardwareConfigurationByZones = (zones, callback) => {
 					.addInfo(Entities.Error, err)
 					.log());
 
-			if (hardwareConf.targets.length)
-				topics.forEach(topic => kafkaModule.sendMessages(topic, [new HardwareConfiguration(hardwareConf)]));
+			if (!hardwareConf.targets.length) {
+				return callback();
+			}
 
-			callback();
+			topics.forEach(topic => kafkaModule.sendMessages(topic, [new HardwareConfiguration(hardwareConf)], (err) => {
+				if (err)
+					return callback(err);
+
+				const db = app.get('db');
+				const confCollection = db.collection('configurationVersion');
+
+				// update the lastSentConfigurationVersion to the current configuration version if the message was sent successfully
+				confCollection.updateOne(
+					{ _id: zone },
+					{ $set: { lastSentConfigurationVersion: hardwareConf.managementConfiguration.configurationVersion } },
+					(err) => {
+						if (err)
+							new MongoError(err).log();
+
+						callback(err);
+					});
+			}));
+
 		});
 	}, () => {
 		if (callback)

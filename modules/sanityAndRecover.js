@@ -662,7 +662,10 @@ scope.resendKafkaMessages = function(cb) {
 		},
 		function checkForStaleEncryptionCommands(callback) {
 			encryptionModule.resendStaleEncryptionCommands(callback);
-		}
+		},
+		function checkForMissingZonesHardwareConfiguration(callback) {
+			zoneModule.resendMissingZonesHardwareConfiguration(callback);
+		},
 	], cb);
 };
 
