@@ -2278,10 +2278,15 @@ function emitDirtyBitsChangeEvent(volume) {
 		});
 	});
 
+	const payload = {
+		totalDirtyBits: totalDirtyBits,
+		lastDirtyBitsChangeEventEmit: volume.lastDirtyBitsChangeEventEmit
+	};
+
 	events.emitEvent(
 		[events.getVolumeID(volume._id)],
 		objectNotifier.events.dirtyBitsChangeEvent,
-		totalDirtyBits
+		payload
 	);
 }
 

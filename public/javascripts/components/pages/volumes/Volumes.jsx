@@ -263,6 +263,15 @@ const Volumes = () => {
 			rowClassName: 'fixed-size-column',
 		},
 		{
+			name: 'Last Rebuild Progress Date',
+			field: 'lastDirtyBitsChangeEventEmit',
+			placeholder: 'Search by Rebuild Progress Date',
+			type: 'dateRange',
+			className: 'md-column',
+			rowClassName: 'fixed-size-column',
+			hiddenByDefault: true,
+		},
+		{
 			name: 'Encrypted',
 			field: 'isEncrypted',
 			placeholder: 'Search by Encryption Status',
@@ -352,9 +361,15 @@ const Volumes = () => {
 
 			SocketService.addHandler((SocketService.getVolumeID(volume._id) + events.dirtyBitsChangeEvent.name),
 				({ payload }) => {
-					if ((payload || !payload && payload === 0) && payload > -1 && volume.capacity > 0) {
-						const dirtyBitsPercentage = calculateDirtyBitsPercentage(volume, payload);
-						tableRef.current?.updateRow(payload._id, Object.assign(volume, { dirtyBitsPercentage }));
+					if (!payload)
+						return;
+
+					const totalDirtyBits = payload.totalDirtyBits;
+					const lastDirtyBitsChangeEventEmit = payload.lastDirtyBitsChangeEventEmit;
+
+					if ((totalDirtyBits || !totalDirtyBits && totalDirtyBits === 0) && totalDirtyBits > -1 && volume.capacity > 0) {
+						const dirtyBitsPercentage = calculateDirtyBitsPercentage(volume, totalDirtyBits);
+						tableRef.current?.updateRow(payload._id, Object.assign(volume, { dirtyBitsPercentage, lastDirtyBitsChangeEventEmit }));
 					}
 				});
 
