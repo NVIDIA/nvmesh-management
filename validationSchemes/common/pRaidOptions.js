@@ -10,9 +10,8 @@ const pRaidOptionsProperties = {
 	stripeWidth: { type: 'integer', minimum: 2, default: 2 },
 	dataBlocks: { type: 'integer', minimum: 1, maximum: 10, default: 8 },
 	parityBlocks: { type: 'integer', minimum: 1, maximum: 2, default: 2 },
-	protectionLevel: { enum: Object.values(consts.ecSeparationTypes), default: consts.ecSeparationTypes.FULL },
+	protectionLevel: { enum: Object.values(consts.separationTypes), default: consts.separationTypes.FULL },
 	enableCrcCheck: { type: 'boolean', default: false },
-	ignoreNodeSeparation: { type: 'boolean', default: false },
 	numberOfMirrors: { type: 'integer', minimum: Math.min(...consts.validNumberOfMirrors), maximum: Math.max(...consts.validNumberOfMirrors), default: 1 },
 };
 
@@ -37,7 +36,7 @@ const pRaidOptionsPropertiesByRAIDLevel = {
 		stripeSize: pRaidOptionsProperties.stripeSize,
 		stripeWidth: pRaidOptionsProperties.stripeWidth,
 		numberOfMirrors: pRaidOptionsProperties.numberOfMirrors,
-		ignoreNodeSeparation: pRaidOptionsProperties.ignoreNodeSeparation,
+		protectionLevel: pRaidOptionsProperties.protectionLevel,
 		enableCrcCheck: pRaidOptionsProperties.enableCrcCheck,
 	},
 	[consts.RAIDLevel.STRIPED_RAID_0]: {
@@ -46,7 +45,7 @@ const pRaidOptionsPropertiesByRAIDLevel = {
 	},
 	[consts.RAIDLevel.MIRRORED_RAID_1]: {
 		numberOfMirrors: pRaidOptionsProperties.numberOfMirrors,
-		ignoreNodeSeparation: pRaidOptionsProperties.ignoreNodeSeparation,
+		protectionLevel: pRaidOptionsProperties.protectionLevel,
 		enableCrcCheck: pRaidOptionsProperties.enableCrcCheck,
 	},
 	[consts.RAIDLevel.CONCATENATED]: {},

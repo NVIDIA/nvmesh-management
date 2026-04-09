@@ -352,7 +352,7 @@ describe('Get Space Allocation', function() {
 				'test-server-6', 'test-server-7', 'test-server-8', 'test-server-9'];
 			volume.limitByDisks = ['TEST-SERVER-0.1', 'TEST-SERVER-1.1', 'TEST-SERVER-2.1', 'TEST-SERVER-3.1', 'TEST-SERVER-4.1',
 				'TEST-SERVER-5.1', 'TEST-SERVER-6.1', 'TEST-SERVER-7.1', 'TEST-SERVER-8.1', 'TEST-SERVER-9.1'];
-			volume.protectionLevel = consts.ecSeparationTypes.FULL;
+			volume.protectionLevel = consts.separationTypes.FULL;
 			volume.capacity = 10;
 			volume.save().then((result) => {
 				assert(result.success);

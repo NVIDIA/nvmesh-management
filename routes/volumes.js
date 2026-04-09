@@ -534,8 +534,6 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 * <small><i>Options: `Full Separation`, `Minimal Separation`,
 * `Ignore Separation`</i></small>
 * <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
-* @apiBody (RAID) {boolean} [ignoreNodeSeparation=false] Disable node separation for mirrored volumes.
-* <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
 * @apiBody (RAID) {boolean} [enableCrcCheck=false] Enable CRC check for the `volume`. Defaults to true for `Erasure Coding` and `Striped Erasure Coding`.
 <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
 * @apiExample {string} Payload example

@@ -179,7 +179,6 @@ This will force `RAIDLevel` to `Mirrored RAID-1`.
 * @apiBody (RAID) {integer} [parityBlocks=2] Number of parity disks for Erasure Coding. <br/><strong>Depends on `RAIDLevel`.</strong>
 * @apiBody (RAID) {string} [protectionLevel='Full Separation'] Protection level. <small><i>Options: `Full Separation`, `Minimal Separation`,
 `Ignore Separation`.</i></small> <br/><strong>Depends on `RAIDLevel`.</strong>
-* @apiBody (RAID) {boolean} [ignoreNodeSeparation=false] Disable node separation for mirrored volumes. <br/><strong>Depends on `RAIDLevel`.</strong>
 * @apiBody (RAID) {boolean} [enableCrcCheck=false] `enableCrcCheck` Enables CRC check for the derived volumes.
 Defaults to true for Erasure Coding and Striped Erasure Coding.
 * @apiExample {object[]} Payload example

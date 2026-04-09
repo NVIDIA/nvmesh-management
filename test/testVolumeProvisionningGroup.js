@@ -316,7 +316,7 @@ class TestableECVPG extends TestableVPG {
 		VPG.stripeWidth = 1;
 		VPG.stripeSize = 32;
 		VPG.enableCrcCheck = true;
-		VPG.protectionLevel = consts.ecSeparationTypes.FULL;
+		VPG.protectionLevel = consts.separationTypes.FULL;
 	}
 }
 

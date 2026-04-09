@@ -125,7 +125,7 @@ class VolumeEC extends VolumeRAID0 {
 		this.stripeWidth = 1;
 		this.parityBlocks = 2;
 		this.dataBlocks = 8;
-		this.protectionLevel = consts.ecSeparationTypes.FULL;
+		this.protectionLevel = consts.separationTypes.FULL;
 	}
 }
 
@@ -136,7 +136,7 @@ class VolumeStripedEC extends VolumeRAID0 {
 		this.stripeWidth = 2;
 		this.parityBlocks = 2;
 		this.dataBlocks = 8;
-		this.protectionLevel = consts.ecSeparationTypes.FULL;
+		this.protectionLevel = consts.separationTypes.FULL;
 	}
 }
 
@@ -144,6 +144,7 @@ class VolumeRAID1With2Mirrors extends Volume {
 	constructor(name) {
 		super(name, consts.RAIDLevel.MIRRORED_RAID_1);
 		this.numberOfMirrors = 2;
+		this.protectionLevel = consts.separationTypes.FULL;
 	}
 }
 
@@ -152,6 +153,15 @@ class VolumeRAID10With2Mirrors extends VolumeRAID0 {
 		super(name);
 		this.RAIDLevel = consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10;
 		this.numberOfMirrors = 2;
+		this.protectionLevel = consts.separationTypes.FULL;
+	}
+}
+
+class VolumeRAID1With2MirrorsMinimal extends Volume {
+	constructor(name) {
+		super(name, consts.RAIDLevel.MIRRORED_RAID_1);
+		this.numberOfMirrors = 2;
+		this.protectionLevel = consts.separationTypes.MINIMAL;
 	}
 }
 
@@ -161,6 +171,7 @@ exports.VolumeRAID1 = VolumeRAID1;
 exports.VolumeRAID10 = VolumeRAID10;
 exports.VolumeRAID1With2Mirrors = VolumeRAID1With2Mirrors;
 exports.VolumeRAID10With2Mirrors = VolumeRAID10With2Mirrors;
+exports.VolumeRAID1With2MirrorsMinimal = VolumeRAID1With2MirrorsMinimal;
 exports.VolumeConcatenated = VolumeConcatenated;
 exports.VolumeEC = VolumeEC;
 exports.VolumeStripedEC = VolumeStripedEC;

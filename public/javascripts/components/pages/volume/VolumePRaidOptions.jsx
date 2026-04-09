@@ -34,10 +34,11 @@ const VolumePRaidOptions = ({
 			stripeWidth: 2,
 			dataBlocks: 8,
 			parityBlocks: 2,
-			protectionLevel: consts.ecSeparationTypes.FULL,
+			protectionLevel: consts.separationTypes.FULL,
 			enableCrcCheck: false,
 			...volume,
-			ignoreNodeSeparation: volume.ignoreNodeSeparation ? consts.nodeSeparation.IGNORE : consts.nodeSeparation.ENFORCE,
+			// case where we edit a volume created with ignoreNodeSeparation = true (backwards compatibility)
+			...(!volume?.protectionLevel && volume?.ignoreNodeSeparation && { protectionLevel: consts.separationTypes.IGNORE }),
 		},
 		shouldUnregister: true
 	});
@@ -56,10 +57,6 @@ const VolumePRaidOptions = ({
 
 	const emitOnChange = () => {
 		const data = { ...formData };
-
-		if (data.ignoreNodeSeparation !== undefined) {
-			data.ignoreNodeSeparation = formData.ignoreNodeSeparation === consts.nodeSeparation.IGNORE;
-		}
 
 		if (isStriped || isEC) {
 			data.stripeSize = 32;
@@ -85,15 +82,25 @@ const VolumePRaidOptions = ({
 	}, [formData.RAIDLevel]);
 
 	useEffect(() => {
-		const ignoreNodeSeparation = formData.ignoreNodeSeparation === consts.nodeSeparation.IGNORE;
-		if (!AllocationService.calcHasEnoughMirrors({ ...formData, ignoreNodeSeparation }, availableMirrors)) {
+		if (isMirrored || isEC) {
+			const redundancy = isEC ? formData.parityBlocks : formData.numberOfMirrors;
+			if (!redundancy)
+				return;
+
+			if (!formData.protectionLevel || (formData.protectionLevel === consts.separationTypes.FULL && redundancy <= 1))
+				setValue('protectionLevel', redundancy > 1 ? consts.separationTypes.FULL : consts.separationTypes.MINIMAL);
+		}
+	}, [formData.RAIDLevel, formData.numberOfMirrors, formData.parityBlocks]);
+
+	useEffect(() => {
+		if (!AllocationService.calcHasEnoughMirrors(formData, availableMirrors)) {
 			setError('noMirrors', { type: 'custom', message: 'No mirrors available' });
 		} else {
 			clearErrors('noMirrors');
 		}
 		emitOnChange();
 
-	}, [formData.RAIDLevel, formData.protectionLevel, formData.ignoreNodeSeparation, formData.allowAllocationOnOfflineDrives,
+	}, [formData.RAIDLevel, formData.protectionLevel, formData.allowAllocationOnOfflineDrives,
 		formData.dataBlocks, formData.parityBlocks, formData.stripeWidth, formData.enableCrcCheck, formData.numberOfMirrors,
 		availableMirrors, formState.isValid]);
 
@@ -123,48 +130,6 @@ const VolumePRaidOptions = ({
 
 			</FormControl>
 
-			{isMirrored && <FormControl name="ignoreNodeSeparation"
-			                            label="Target Node Redundancy"
-			                            errorMessage={formState.errors?.ignoreNodeSeparation?.message}>
-				<Controller
-					control={control}
-					name="ignoreNodeSeparation"
-					value={volume.ignoreNodeSeparation}
-					rules={{
-						required: 'Target Node Redundancy is required'
-					}}
-					render={({ field: { onChange, value } }) => (
-						<Select id="ignoreNodeSeparation"
-						        value={value}
-						        onChange={onChange}
-						        disabled={disabled}
-						        valueField="value"
-						        labelField="name"
-						        options={[{
-							        value: consts.nodeSeparation.ENFORCE,
-							        name: `1+${formData.numberOfMirrors} Target Node Separation`,
-							        description: 'Mirrored volume segments on different targets.'
-								        + ` Survive up to ${formData.numberOfMirrors} target failure${formData.numberOfMirrors > 1 ? 's' : ''}.`
-						        }, {
-							        value: consts.nodeSeparation.IGNORE,
-							        name: 'No Target Redundancy',
-							        description: 'No restriction on volume segments per target. May not survive even one target failure.'
-						        }]}
-						        render={{
-							        option: function(item, escape) {
-								        return '<div>' +
-									        '<strong>' + item.name + '</strong>' +
-									        '<br/>' +
-									        '<small>' + escape(item.description) + '</small>' +
-									        '</div>';
-							        }
-						        }}
-						/>
-
-					)}
-				/>
-
-			</FormControl>}
 
 			{isMirrored && <FormControl name="numberOfMirrors"
 			                            label="Number of Mirrors"
@@ -188,7 +153,7 @@ const VolumePRaidOptions = ({
 
 			</FormControl>}
 
-			{isEC && <FormControl name="protectionLevel"
+			{(isMirrored || isEC) && <FormControl name="protectionLevel"
 			                      label="Target Node Redundancy"
 			                      errorMessage={formState.errors?.protectionLevel?.message}>
 				<Controller
@@ -199,38 +164,39 @@ const VolumePRaidOptions = ({
 						required: 'Target Node Redundancy is required'
 					}}
 					render={({ field: { onChange, value } }) => {
-						const requiredMirrorsMinimal = AllocationService.calcRequiredMirrorsByECSeparation(
-							consts.ecSeparationTypes.MINIMAL,
-							formData.dataBlocks,
-							formData.parityBlocks);
+						const redundancy = isEC ? formData.parityBlocks : formData.numberOfMirrors;
+						const totalSegments = isEC ? formData.dataBlocks + formData.parityBlocks : formData.numberOfMirrors + 1;
+						const requiredMirrorsMinimal = AllocationService.calcRequiredMirrorsBySeparation(
+							consts.separationTypes.MINIMAL, totalSegments, redundancy);
 
 						const options = [
 							{
-								value: consts.ecSeparationTypes.MINIMAL,
-								name: 'N+1 Target Redundancy',
-								description: `Up to two volume segments per target. Survive one target failure (min. ${requiredMirrorsMinimal} targets).`,
+								value: consts.separationTypes.MINIMAL,
+								name: 'Minimal Target Node Separation',
+								description: `Survive one target failure (min. ${requiredMirrorsMinimal} targets).`,
 								order: 2
 							},
 							{
-								value: consts.ecSeparationTypes.IGNORE,
+								value: consts.separationTypes.IGNORE,
 								name: 'No Target Redundancy',
-								description: 'No restriction on volume segments per target. May not survive even one target failure',
+								description: 'No restriction on volume segments per target. May not survive even one target failure.',
 								order: 3
 							},
 						];
-						if (formData.parityBlocks > 1) {
-							const requiredMirrorsFull = AllocationService.calcRequiredMirrorsByECSeparation(
-								consts.ecSeparationTypes.FULL,
-								formData.dataBlocks,
-								formData.parityBlocks);
+
+						if (redundancy > 1) {
+							const requiredMirrorsFull = AllocationService.calcRequiredMirrorsBySeparation(
+								consts.separationTypes.FULL, totalSegments, redundancy);
 
 							options.unshift({
-								value: consts.ecSeparationTypes.FULL,
-								name: 'N+2 Target Redundancy',
-								description: `Only one volume segment per target. Survive up to two target failures (min. ${requiredMirrorsFull} targets).`,
+								value: consts.separationTypes.FULL,
+								name: 'Full Target Node Separation',
+								description: `Only one segment per target. Survive up to ${redundancy} ` +
+									`target failures (min. ${requiredMirrorsFull} targets).`,
 								order: 1
 							});
 						}
+
 						return (
 							<Select id="protectionLevel"
 							        value={value}
@@ -256,22 +222,22 @@ const VolumePRaidOptions = ({
 					}}
 				/>
 
-				<div>
-					{formData.protectionLevel && formData.protectionLevel !== consts.ecSeparationTypes.FULL && formData.parityBlocks === 2 &&
+				{isEC && <div>
+					{formData.protectionLevel && formData.protectionLevel !== consts.separationTypes.FULL && formData.parityBlocks === 2 &&
 						<i className="ion ion-alert-circled yellow"></i>
 					}
 
-					{formData.protectionLevel === consts.ecSeparationTypes.MINIMAL && formData.parityBlocks === 2 &&
+					{formData.protectionLevel === consts.separationTypes.MINIMAL && formData.parityBlocks === 2 &&
 						<i><small className="red">
 							You are attempting to create a MeshProtect EC volume with dual drive failure redundancy but only 1
 							target host failure redundancy</small></i>
 					}
-					{formData.protectionLevel === consts.ecSeparationTypes.IGNORE && formData.parityBlocks === 2 &&
+					{formData.protectionLevel === consts.separationTypes.IGNORE && formData.parityBlocks === 2 &&
 						<i><small className="red">
 							You are attempting to create a MeshProtect EC volume with drive failure redundancy, but with no
 							protection against a target host failure</small></i>
 					}
-				</div>
+				</div>}
 			</FormControl>}
 
 			{isStriped && <FormControl name="stripeWidth"

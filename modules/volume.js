@@ -1717,8 +1717,8 @@ scope.getPRaidStatusAndAction = function(volume, pRaid) {
 		return s;
 	});
 
-	var nonFunctionalSegments = effectiveSegments.filter((seg) => {
-		var nonFunctionalStatuses = [
+	const nonFunctionalSegmentsCount = effectiveSegments.filter((seg) => {
+		const nonFunctionalStatuses = [
 			consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA,
 			consts.diskSegmentStatuses.BOOTING,
 			consts.diskSegmentStatuses.DEAD,
@@ -1728,38 +1728,7 @@ scope.getPRaidStatusAndAction = function(volume, pRaid) {
 		return seg.isDead || nonFunctionalStatuses.indexOf(seg.status) !== -1;
 	}).length;
 
-	var numberOfOnlineSegments = effectiveSegments.length - nonFunctionalSegments;
-
-	if (!nonFunctionalSegments)
-		pRaidStatus = consts.volumeStatuses.ONLINE;
-	else {
-		switch (volume.RAIDLevel) {
-			case consts.RAIDLevel.CONCATENATED:
-			case consts.RAIDLevel.JBOD:
-			case consts.RAIDLevel.STRIPED_RAID_0:
-				pRaidStatus = consts.volumeStatuses.OFFLINE;
-
-				break;
-			case consts.RAIDLevel.MIRRORED_RAID_1:
-			case consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10:
-				pRaidStatus = numberOfOnlineSegments > 0
-					? consts.volumeStatuses.DEGRADED
-					: consts.volumeStatuses.OFFLINE;
-
-				break;
-			case consts.RAIDLevel.ERASURE_CODING:
-			case consts.RAIDLevel.STRIPED_ERASURE_CODING:
-				// check if Degraded or Offline
-				pRaidStatus = volume.parityBlocks >= nonFunctionalSegments
-					? consts.volumeStatuses.DEGRADED
-					: consts.volumeStatuses.OFFLINE;
-
-				break;
-			default:
-				break;
-		}
-	}
-
+	pRaidStatus = utils.getPRaidStatus(volume, nonFunctionalSegmentsCount);
 	pRaidAction = getPraidAction(effectiveSegments);
 
 	if (pRaidAction == consts.volumeActions.INITIALIZING)

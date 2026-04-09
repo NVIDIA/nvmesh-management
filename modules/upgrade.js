@@ -1027,7 +1027,7 @@ scope.verifyVolumesAvailability = (upgrade, step, cb) => {
 	volumeCollection.aggregate([{
 		$match: {
 			RAIDLevel: {
-				$in: ['Mirrored RAID-1', 'Striped & Mirrored RAID-10', 'Erasure Coding', 'Striped Erasure Coding']
+				$in: [...consts.mirroredRaidLevels, ...consts.erasureCodedRaidLevels]
 			},
 			'chunks.pRaids.diskSegments.node_id': step.hostname
 		}
@@ -1059,7 +1059,7 @@ scope.verifyVolumesAvailability = (upgrade, step, cb) => {
 			numberOfMirrors: { $first: '$numberOfMirrors' },
 			status: { $first: '$status' },
 			action: { $first: '$action' },
-			numOfDeadSegments: {
+			numOfOtherDeadSegments: {
 				$sum: {
 					$cond: [
 						{
@@ -1078,22 +1078,25 @@ scope.verifyVolumesAvailability = (upgrade, step, cb) => {
 					]
 				}
 			},
-			numOfOwnHealthySegments: {
+			numOfOwnSegments: {
 				$sum: {
 					$cond: [
-						{
-							$and: [
-								{ $eq: ['$chunks.pRaids.diskSegments.node_id', step.hostname] },
-								{ $eq: ['$chunks.pRaids.diskSegments.status', consts.diskSegmentStatuses.NORMAL] },
-								{ $ne: ['$chunks.pRaids.diskSegments.isDead', true] },
-							]
-						},
+						{ $eq: ['$chunks.pRaids.diskSegments.node_id', step.hostname] },
 						1,
 						0
 					]
 				}
 			}
 		},
+	},
+	{
+		// filter out pRaids unaffected by this host going offline
+		$match: {
+			$or: [
+				{ numOfOtherDeadSegments: { $gt: 0 } },
+				{ numOfOwnSegments: { $gt: 0 } }
+			]
+		}
 	}]).toArray((err, pRaidsWithDeadSegments) => {
 		if (err)
 			return cb(new MongoError(err).log());
@@ -1106,16 +1109,12 @@ scope.verifyVolumesAvailability = (upgrade, step, cb) => {
 			if (pRaid.status === consts.volumeStatuses.OFFLINE && pRaid.action === consts.volumeActions.BOOTING)
 				return;
 
-			if (consts.erasureCodedRaidLevels.includes(pRaid.RAIDLevel)) {
-				if (pRaid.numOfDeadSegments && upgrade.minRedundancyLevel === consts.upgradeRedundancyLevels.MAX)
-					error = new SystemMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_REDUNDANCY_WILL_BE_VIOLATED);
-				else if (pRaid.numOfDeadSegments + pRaid.numOfOwnHealthySegments > pRaid.parityBlocks)
-					error = new SystemMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_UNHEALTHY_PRAID);
-			} else if (consts.mirroredRaidLevels.includes(pRaid.RAIDLevel)) {
-				// allow upgrade if at least 2 copies survive after this node goes offline - for numberOfMirrors=1, allow at least 1 copy
-				if (pRaid.numOfDeadSegments > Math.max(pRaid.numberOfMirrors - 2, 0))
-					error = new SystemMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_UNHEALTHY_PRAID);
-			}
+			const faultsAfterUpgrade = pRaid.numOfOtherDeadSegments + pRaid.numOfOwnSegments;
+
+			if (pRaid.numOfOtherDeadSegments && upgrade.minRedundancyLevel === consts.upgradeRedundancyLevels.MAX)
+				error = new SystemMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_REDUNDANCY_WILL_BE_VIOLATED);
+			else if (faultsAfterUpgrade > utils.getMaxTolerableFaults(pRaid) && upgrade.minRedundancyLevel === consts.upgradeRedundancyLevels.MINIMAL)
+				error = new SystemMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_UNHEALTHY_PRAID);
 
 			if (error)
 				error

@@ -32,7 +32,7 @@ class Client extends Entity {
 		this.configProfile = { version: 0, id: 'No-Profile', name: 'No Profile' };
 		this.reportID = 1;
 		this.version = '3.1.0-1269';
-		this.featureCompatibilityVersion = 1;
+		this.featureCompatibilityVersion = 2;
 		this.snapshotsStatus = [];
 		this.attachments = {}; // wishful state as recieved from management
 		this.clientToken = -1;

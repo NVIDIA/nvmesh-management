@@ -259,13 +259,17 @@ const CreateEditVolume = ({
 		checkMirrorsValidity(vpg);
 
 		const vpgRaidOptionsProps = ['RAIDLevel', 'stripeSize', 'stripeWidth', 'dataBlocks', 'parityBlocks',
-			'protectionLevel', 'enableCrcCheck', 'ignoreNodeSeparation', 'numberOfMirrors'];
+			'enableCrcCheck', 'numberOfMirrors'];
 		const vpgPRaidOptions = {};
 		vpgRaidOptionsProps.forEach(prop => {
 			if (vpg[prop] !== undefined) {
 				vpgPRaidOptions[prop] = vpg[prop];
 			}
 		});
+
+		const vpgProtectionLevel = AllocationService.getEffectiveProtectionLevel(vpg);
+		if (vpgProtectionLevel !== undefined)
+			vpgPRaidOptions.protectionLevel = vpgProtectionLevel;
 
 		setPRaidOptions(vpgPRaidOptions);
 	};

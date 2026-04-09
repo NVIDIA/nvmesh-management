@@ -642,12 +642,14 @@ scope.getOwnClusterManagement = () => {
 function updateOrInsertManagementToCluster(managementId, cb) {
 	const db = app.get('db');
 	const managementClusterCollection = db.collection('managementCluster');
+	const { featureCompatibilityVersion, ...ownClusterManagement } = scope.getOwnClusterManagement();
 
 	managementClusterCollection.findOneAndUpdate(
 		{ _id: managementId },
 		{
 			$currentDate: { dateModified: true }, //using mongo server clock to prevent time drift errors
-			$setOnInsert: scope.getOwnClusterManagement()
+			$set: { featureCompatibilityVersion },
+			$setOnInsert: ownClusterManagement
 		},
 		{ upsert: true },
 		(err, dbMgmt) => {

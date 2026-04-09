@@ -253,30 +253,36 @@ function subtituteDiskSegment(volume, chunk, pRaid, diskSegment, cb) {
 					scope.appendPropertyOrObject(diskMatch, 'disks.largestSegmentAvailable.blocks', '$gte', diskSegmentBlocks);
 
 					function getNodesThatWeShouldNotUseForReplacement(pRaid) {
-						if (volume.ignoreNodeSeparation)
+						const protectionLevel = scope.getEffectiveProtectionLevel(volume);
+
+						if (protectionLevel === consts.separationTypes.IGNORE)
 							return [];
 
-						var nodesWeShouldNotUse = [];
-						var nodeIDs = pRaid.diskSegments
-							.filter(function(segment) { return segment._id !== diskSegment._id; })
-							.map(function(segment) { return segment.node_id; });
+						const nodeIDs = pRaid.diskSegments
+							.filter(segment => segment._id !== diskSegment._id)
+							.map(segment => segment.node_id);
 
-						var nodesReferenceCount = {};
+						if (protectionLevel === consts.separationTypes.FULL)
+							return nodeIDs;
 
-						for (var id of nodeIDs) {
+						const nodesWeShouldNotUse = [];
+						const nodesReferenceCount = {};
+
+						for (const id of nodeIDs) {
 							if (!nodesReferenceCount[id])
 								nodesReferenceCount[id] = 0;
 
 							nodesReferenceCount[id]++;
 						}
 
-						if (volume.protectionLevel === consts.ecSeparationTypes.MINIMAL)
-							for (var key in nodesReferenceCount) {
-								if (nodesReferenceCount[key] >= volume.parityBlocks)
-									nodesWeShouldNotUse.push(key);
-							}
-						else
-							nodesWeShouldNotUse = nodeIDs;
+						const maxPerNode = consts.erasureCodedRaidLevels.includes(volume.RAIDLevel)
+							? volume.parityBlocks
+							: volume.numberOfMirrors;
+
+						for (const key in nodesReferenceCount) {
+							if (nodesReferenceCount[key] >= maxPerNode)
+								nodesWeShouldNotUse.push(key);
+						}
 
 						return nodesWeShouldNotUse;
 					}
@@ -330,7 +336,7 @@ function subtituteDiskSegment(volume, chunk, pRaid, diskSegment, cb) {
 							$ninDisks = getDisksAlreadyInUseByTheChunk(chunk, consts.segmentTypes.DATA, 'diskID');
 							scope.appendPropertyOrObject(diskMatch, 'disks.diskID', '$nin', $ninDisks);
 
-							if (volume.protectionLevel === consts.ecSeparationTypes.FULL || volume.protectionLevel === consts.ecSeparationTypes.MINIMAL) {
+							if (volume.protectionLevel === consts.separationTypes.FULL || volume.protectionLevel === consts.separationTypes.MINIMAL) {
 								$ninNodes = getNodesThatWeShouldNotUseForReplacement(pRaid);
 								scope.appendPropertyOrObject(nodeMatch, 'node_id', '$nin', $ninNodes);
 							}
@@ -2065,19 +2071,24 @@ scope.saveVolume = function(volume, shouldUpdateConfiguration, user, mainCallbac
 			return allocationCallback(null, false, err);
 		}
 
-		volume.health = consts.targetHealth.HEALTHY;
-		volume.lockServer = scope.getLockServerForVolume(volume);
-		volume.selectedClientsForNvmf = volume.selectedClientsForNvmf || [];
+		scope.validateMultiMirrorFeatureCompatibility(volume.numberOfMirrors, (err) => {
+			if (err)
+				return allocationCallback(null, false, err);
 
-		// working only on the cloned volume in order to keep the original for retrying the allocating with another zone
-		clonedVolume = scope.extend(true, {}, volume);
+			volume.health = consts.targetHealth.HEALTHY;
+			volume.lockServer = scope.getLockServerForVolume(volume);
+			volume.selectedClientsForNvmf = volume.selectedClientsForNvmf || [];
 
-		if (volume.isExtension)
-			lockModule.acquireLockByVolume(volume, (err, zones) => {
-				createVolumeByRAIDLevel(Array.from(zones)[0], volume, zonesFailedAllocation, allocationCallback);
-			});
-		else
-			createVolumeByRAIDLevel(null, volume, zonesFailedAllocation, allocationCallback);
+			// working only on the cloned volume in order to keep the original for retrying the allocating with another zone
+			clonedVolume = scope.extend(true, {}, volume);
+
+			if (volume.isExtension)
+				lockModule.acquireLockByVolume(volume, (err, zones) => {
+					createVolumeByRAIDLevel(Array.from(zones)[0], volume, zonesFailedAllocation, allocationCallback);
+				});
+			else
+				createVolumeByRAIDLevel(null, volume, zonesFailedAllocation, allocationCallback);
+		});
 	});
 
 	function saveVolumeCallback(error) {
@@ -3147,26 +3158,100 @@ function getUsedDisksIdsByVolume(volume) {
 
 	return disks;
 }
-function calcRequiredMirrorsByECSeparation(separation, dataBlocks, parityBlocks) {
-	if (separation === consts.ecSeparationTypes.FULL) {
-		return dataBlocks + parityBlocks;
-	} else if (separation === consts.ecSeparationTypes.MINIMAL) {
-		return Math.ceil((dataBlocks + parityBlocks) / parityBlocks);
-	}
+function calcRequiredMirrorsBySeparation(separation, totalSegments, redundancy) {
+	if (separation === consts.separationTypes.FULL)
+		return totalSegments;
+
+	if (separation === consts.separationTypes.MINIMAL)
+		return Math.ceil(totalSegments / redundancy);
 
 	return 1;
 }
 
+scope.getMaxTolerableFaults = (volume) => {
+	if (consts.erasureCodedRaidLevels.includes(volume.RAIDLevel))
+		return volume.parityBlocks;
+
+	if (consts.mirroredRaidLevels.includes(volume.RAIDLevel))
+		return volume.numberOfMirrors;
+
+	return 0;
+};
+
+scope.getPRaidStatus = (volume, nonFunctionalSegmentsCount) => {
+	if (nonFunctionalSegmentsCount === 0)
+		return consts.volumeStatuses.ONLINE;
+
+	return nonFunctionalSegmentsCount <= scope.getMaxTolerableFaults(volume)
+		? consts.volumeStatuses.DEGRADED
+		: consts.volumeStatuses.OFFLINE;
+};
+
+scope.getEffectiveProtectionLevel = (volume) => {
+	if (volume.protectionLevel)
+		return volume.protectionLevel;
+
+	if (volume.ignoreNodeSeparation && consts.mirroredRaidLevels.includes(volume.RAIDLevel))
+		return consts.separationTypes.IGNORE;
+
+	return consts.separationTypes.MINIMAL;
+};
+
 scope.calcHasEnoughMirrors = (volume, availableMirrors) => {
-	if (volume.RAIDLevel === consts.RAIDLevel.ERASURE_CODING || volume.RAIDLevel === consts.RAIDLevel.STRIPED_ERASURE_CODING) {
-		const requiredTargets = calcRequiredMirrorsByECSeparation(volume.protectionLevel, volume.dataBlocks, volume.parityBlocks);
+	const protectionLevel = scope.getEffectiveProtectionLevel(volume);
+	let requiredTargets;
 
-		return availableMirrors >= requiredTargets - 1;
-	} else if (volume.RAIDLevel === consts.RAIDLevel.MIRRORED_RAID_1 || volume.RAIDLevel === consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10) {
-		return volume.ignoreNodeSeparation || (availableMirrors >= volume.numberOfMirrors);
-	}
+	if (consts.erasureCodedRaidLevels.includes(volume.RAIDLevel))
+		requiredTargets = calcRequiredMirrorsBySeparation(protectionLevel, volume.dataBlocks + volume.parityBlocks, volume.parityBlocks);
 
-	return true;
+	else if (consts.mirroredRaidLevels.includes(volume.RAIDLevel))
+		requiredTargets = calcRequiredMirrorsBySeparation(protectionLevel, volume.numberOfMirrors + 1, volume.numberOfMirrors);
+
+	else
+		return true;
+
+	return availableMirrors >= requiredTargets - 1;
+};
+
+scope.validateFeatureCompatibility = (featureRequirements, callback) => {
+	const db = app.get('db');
+	const { displayName, ...componentRequirements } = featureRequirements;
+
+	async.each(Object.entries(componentRequirements), ([componentType, minVersion], eachCb) => {
+		const mapping = consts.FCV_COLLECTION_MAP[componentType];
+		if (!mapping)
+			return eachCb();
+
+		const minVersionInt = parseInt(minVersion);
+		const collection = db.collection(mapping.collection);
+		const query = { $expr: { $lt: [{ $toInt: `$${mapping.field}` }, minVersionInt] } };
+
+		if (collection === consts.dbCollections.CONFIGURATION_VERSION)
+			query._id = { $ne: 'CLUSTER' };
+
+		collection.countDocuments(query, (err, count) => {
+			if (err)
+				return eachCb(new MongoError(err).log());
+
+			if (count) {
+				const error = new SystemMessage(systemMessages.FEATURE_COMPATIBILITY_VERSION_NOT_MET)
+					.addInfo(Entities.Component.name, componentType)
+					.addInfo(Entities.Component.version, minVersion)
+					.addInfo(Entities.Feature.name, displayName);
+
+				return eachCb(error);
+			}
+
+			eachCb();
+		});
+	}, callback);
+};
+
+scope.validateMultiMirrorFeatureCompatibility = (numberOfMirrors, callback) => {
+	if (numberOfMirrors === 2)
+		return scope.validateFeatureCompatibility(consts.FEATURE_REQUIREMENTS.NUMBER_OF_MIRRORS_2, callback);
+
+	callback();
 };
 
 scope.validateAllocationOnOfflineDrives = function(entity, updateObj, callback) {
@@ -3460,12 +3545,12 @@ function chooseDrivesForAllocation(cursor, volume, disksWithDomain, callback) {
 			}
 		});
 	}, function(err) {
-		if (results.length < drivesNeeded && volume.protectionLevel !== consts.ecSeparationTypes.FULL) {
+		if (results.length < drivesNeeded && volume.protectionLevel !== consts.separationTypes.FULL) {
 			store.forEach(function(e) {
 				if (results.length === drivesNeeded) return;
 
-				if (volume.protectionLevel === consts.ecSeparationTypes.IGNORE ||
-					volume.protectionLevel === consts.ecSeparationTypes.MINIMAL && nodesInUse[e.node_id] < volume.parityBlocks) {
+				if (volume.protectionLevel === consts.separationTypes.IGNORE ||
+					volume.protectionLevel === consts.separationTypes.MINIMAL && nodesInUse[e.node_id] < volume.parityBlocks) {
 
 					if (!e.disks.largestSegmentAvailable.blocks && results.length < drivesNeeded)
 						return;
@@ -3836,38 +3921,57 @@ function getDataDisksForRAID1(nodeMatch, diskMatch, volume, callback) {
 }
 
 function getDisksForRAID1(nodeMatch, dataDiskMatch, volume, drivesWithDomains, callback) {
-	var disksForAllocation = [];
-	var ignoreSeparation = volume.ignoreNodeSeparation;
-	var notEnoughDrives = new SystemMessage(systemMessages.UTILS_GET_DATA_DISKS_FOR_RAID1_FAILURE_NOT_ENOUGH_DRIVES);
+	let disksForAllocation = [];
+	const notEnoughDrives = new SystemMessage(systemMessages.UTILS_GET_DATA_DISKS_FOR_RAID1_FAILURE_NOT_ENOUGH_DRIVES);
+	const protectionLevel = scope.getEffectiveProtectionLevel(volume);
 
 	async.series([
-		function(callback) {
-			var sdt1 = new Date();
+		function tryFullSeparation(callback) {
+			const sdt1 = new Date();
 			getDataDisksForRAID1(nodeMatch, dataDiskMatch, volume, function(zone, disks, domainErr) {
-				var edt1 = new Date();
+				const edt1 = new Date();
 				logger.sysDEBUG('getDisksForRAID1::getDatadisksForRAID1 took: ' + (edt1 - sdt1) + ' milliseconds');
 
-				if (domainErr)
-					return callback(domainErr);
+				const cantFallback = (protectionLevel === consts.separationTypes.FULL ||
+					(protectionLevel === consts.separationTypes.MINIMAL && volume.numberOfMirrors === 1));
 
-				if ((!disks || !disks.length) && !ignoreSeparation)
-					return callback(notEnoughDrives);
+				if ((!disks?.length || domainErr) && cantFallback)
+					return callback(domainErr || notEnoughDrives);
 
-				disksForAllocation = disks;
-
+				disksForAllocation = domainErr ? [] : disks;
 				callback();
 			});
 		},
-		function(callback) {
+		function tryMinimalSeparation(callback) {
 			if (disksForAllocation && disksForAllocation.length)
 				return callback();
 
-			var numberOfDataSegments = getNumberOfRequiredDisksByVolume(volume) / (volume.stripeWidth || 1);
-			getDisksForRAID0(nodeMatch, dataDiskMatch, numberOfDataSegments, true, function(err, disks) {
-				if (err || disks.length < numberOfDataSegments)
+			const minSeparationVolume = scope.extend(true, {}, volume, { numberOfMirrors: 1 });
+			getDataDisksForRAID1(nodeMatch, dataDiskMatch, minSeparationVolume, function(zone, distributedDisks, domainErr) {
+				const cantFallback = protectionLevel === consts.separationTypes.MINIMAL;
+
+				if ((!distributedDisks?.length || domainErr) && cantFallback)
+					return callback(domainErr || notEnoughDrives);
+
+				disksForAllocation = domainErr ? [] : distributedDisks;
+				callback();
+			});
+		},
+		function tryFillRemainingSegments(callback) {
+			const numberOfDataSegments = getNumberOfRequiredDisksByVolume(volume) / (volume.stripeWidth || 1);
+			const remaining = numberOfDataSegments - (disksForAllocation ? disksForAllocation.length : 0);
+			if (remaining <= 0)
+				return callback();
+
+			const diskMatch = scope.extend(true, {}, dataDiskMatch);
+			if (protectionLevel === consts.separationTypes.MINIMAL && disksForAllocation && disksForAllocation.length)
+				scope.appendPropertyOrObject(diskMatch, 'disks.diskID', '$nin', disksForAllocation.map(d => d.disks.diskID));
+
+			getDisksForRAID0(nodeMatch, diskMatch, remaining, true, function(err, disks) {
+				if (err || !disks || disks.length < remaining)
 					return callback(notEnoughDrives);
 
-				disksForAllocation = disks;
+				disksForAllocation = (disksForAllocation || []).concat(disks);
 				callback();
 			});
 		}
@@ -5298,7 +5402,7 @@ scope.cloneVPGProperties = function(volume, cb) {
 
 			case consts.RAIDLevel.MIRRORED_RAID_1:
 				volume.numberOfMirrors = vpg.numberOfMirrors;
-				volume.ignoreNodeSeparation = vpg.ignoreNodeSeparation;
+				volume.protectionLevel = scope.getEffectiveProtectionLevel(vpg);
 				volume.enableCrcCheck = vpg.enableCrcCheck;
 
 				break;
@@ -5306,7 +5410,7 @@ scope.cloneVPGProperties = function(volume, cb) {
 				volume.numberOfMirrors = vpg.numberOfMirrors;
 				volume.stripeSize = vpg.stripeSize;
 				volume.stripeWidth = vpg.stripeWidth;
-				volume.ignoreNodeSeparation = vpg.ignoreNodeSeparation;
+				volume.protectionLevel = scope.getEffectiveProtectionLevel(vpg);
 				volume.enableCrcCheck = vpg.enableCrcCheck;
 
 				break;

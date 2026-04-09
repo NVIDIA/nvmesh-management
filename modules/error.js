@@ -338,6 +338,9 @@ scope.Entities = {
 		health: 'componentHealth',
 		requirement: 'componentRequirement'
 	},
+	Feature: {
+		name: 'featureName'
+	},
 	Upgrade: {
 		ID: 'upgradeID',
 		UUID: 'upgradeUUID',

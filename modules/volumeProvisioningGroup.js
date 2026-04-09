@@ -44,58 +44,64 @@ scope.saveVPGs = (vpgs, user, mainCallback) => {
 	let messages = [];
 	let vpgsToRemove = [];
 
-	vpgCollection.insertMany(vpgs, function(error) {
-		if (error) {
-			var err = new MongoError(error);
+	const isAnyVpgUsingTwoMirrors = vpgs.some(vpg => consts.mirroredRaidLevels.includes(vpg.RAIDLevel) && vpg.numberOfMirrors === 2);
+	utils.validateMultiMirrorFeatureCompatibility(isAnyVpgUsingTwoMirrors ? 2 : null, (err) => {
+		if (err)
+			return mainCallback([new SystemAdminMessage(systemMessages.VPG_SAVE_FAILURE).addInfo(Entities.Error, err)]);
 
-			if (err.isDuplicateKeyError) {
-				err = new SystemAdminMessage(systemMessages.VPG_SAVE_FAILURE_DUP_KEY);
-			} else {
-				err = new SystemAdminMessage(systemMessages.VPG_SAVE_FAILURE).addInfo(Entities.Error, err);
+		vpgCollection.insertMany(vpgs, function(error) {
+			if (error) {
+				var err = new MongoError(error);
+
+				if (err.isDuplicateKeyError) {
+					err = new SystemAdminMessage(systemMessages.VPG_SAVE_FAILURE_DUP_KEY);
+				} else {
+					err = new SystemAdminMessage(systemMessages.VPG_SAVE_FAILURE).addInfo(Entities.Error, err);
+				}
+
+				return mainCallback([err]);
 			}
 
-			return mainCallback([err]);
-		}
+			var vpgWithReserve = vpgs.filter(function(e) { return e.capacity && e.capacity > 0; });
+			var vpgWithoutReserve = vpgs.filter(function(e) { return !e.capacity || e.capacity <= 0; });
 
-		var vpgWithReserve = vpgs.filter(function(e) { return e.capacity && e.capacity > 0; });
-		var vpgWithoutReserve = vpgs.filter(function(e) { return !e.capacity || e.capacity <= 0; });
+			async.series([
+				function(callback) {
+					scope.createReservedSpaceVolume(vpgWithReserve, user, (newLogs) => {
+						vpgsToRemove = newLogs
+							.filter(l => l.systemMessage.id !== systemMessages.VPG_RESERVATION_MADE.id)
+							.map(l => ({ _id: l.getAdditionalInfoByKey(Entities.VPG.ID) }));
 
-		async.series([
-			function(callback) {
-				scope.createReservedSpaceVolume(vpgWithReserve, user, (newLogs) => {
-					vpgsToRemove = newLogs
-						.filter(l => l.systemMessage.id !== systemMessages.VPG_RESERVATION_MADE.id)
-						.map(l => ({ _id: l.getAdditionalInfoByKey(Entities.VPG.ID) }));
+						messages = messages.concat(newLogs);
 
-					messages = messages.concat(newLogs);
+						callback();
+					});
+				},
+				function(callback) {
+					vpgWithoutReserve.forEach(function(e) {
+						messages.push(new SystemAdminMessage(systemMessages.VPG_SAVED).addInfo(Entities.VPG.ID, e._id).addInfo(Entities.VPG.UUID, e.uuid));
+					});
 
 					callback();
+				}
+			], function() {
+				//Removing unsuccessfull VPG.
+				utils.deleteFromCollection(vpgsToRemove, 'volumeProvisioningGroup', false, function(err) {
+					if (err)
+						new MongoError(err).log();
+
+					const isMessageFromVpgsToRemove = message => vpgsToRemove
+						.map(vpg => vpg._id)
+						.includes(message.getAdditionalInfoByKey(Entities.VPG.ID));
+
+					const finalLogs = messages
+						.map(message => (isMessageFromVpgsToRemove(message)
+							? new SystemAdminMessage(systemMessages.VPG_SAVE_FAILED).addInfo(Entities.Error, message)
+							: new SystemAdminMessage(systemMessages.VPG_SAVED).addInfo(Entities.VPG.UUID, message.getAdditionalInfoByKey(Entities.VPG.UUID)))
+							.addInfo(Entities.VPG.ID, message.getAdditionalInfoByKey(Entities.VPG.ID)));
+
+					mainCallback(finalLogs);
 				});
-			},
-			function(callback) {
-				vpgWithoutReserve.forEach(function(e) {
-					messages.push(new SystemAdminMessage(systemMessages.VPG_SAVED).addInfo(Entities.VPG.ID, e._id).addInfo(Entities.VPG.UUID, e.uuid));
-				});
-
-				callback();
-			}
-		], function() {
-			//Removing unsuccessfull VPG.
-			utils.deleteFromCollection(vpgsToRemove, 'volumeProvisioningGroup', false, function(err) {
-				if (err)
-					new MongoError(err).log();
-
-				const isMessageFromVpgsToRemove = message => vpgsToRemove
-					.map(vpg => vpg._id)
-					.includes(message.getAdditionalInfoByKey(Entities.VPG.ID));
-
-				const finalLogs = messages
-					.map(message => (isMessageFromVpgsToRemove(message)
-						? new SystemAdminMessage(systemMessages.VPG_SAVE_FAILED).addInfo(Entities.Error, message)
-						: new SystemAdminMessage(systemMessages.VPG_SAVED).addInfo(Entities.VPG.UUID, message.getAdditionalInfoByKey(Entities.VPG.UUID)))
-						.addInfo(Entities.VPG.ID, message.getAdditionalInfoByKey(Entities.VPG.ID)));
-
-				mainCallback(finalLogs);
 			});
 		});
 	});

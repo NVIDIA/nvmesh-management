@@ -1296,7 +1296,7 @@ function handleTargetFeatureCompatibilityVersionChanged(message, target, callbac
 						if (toCreate.length)
 							return kafkaModule.createZoneTopics(zone, newFeatureCompatibilityVersion, false, cb);
 
-						scope.setTopicsCreated('lock', zone, 'lastKafkaTopicsVersionCreated', newFeatureCompatibilityVersion, cb);
+						kafkaModule.setTopicsCreated('lock', zone, 'lastKafkaTopicsVersionCreated', newFeatureCompatibilityVersion, cb);
 					});
 			});
 		},

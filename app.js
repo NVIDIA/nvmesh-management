@@ -826,7 +826,7 @@ mongoDBModule.initDBsConnections(() => {
 		app.set('rpmVersion', rpmVersion);
 		app.set('managementVersion', rpmVersion);
 		app.set('versionsFromFile', versions.versionsFromFile);
-		app.set('managementCompatibilityVersion', '1');
+		app.set('managementCompatibilityVersion', '2');
 
 		interopDB.getSupportedMongoCollections(rpmVersion.split('-')[0], (results) => {
 			const allDBsCollectionNames = Object.values(consts.dbCollections).concat(Object.values(consts.metadataDBCollections));

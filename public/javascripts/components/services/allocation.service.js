@@ -6,26 +6,43 @@
 /* global consts */
 
 export const AllocationService = {
-	calcRequiredMirrorsByECSeparation(separation, dataBlocks, parityBlocks) {
-		if (separation === consts.ecSeparationTypes.FULL) {
-			return dataBlocks + parityBlocks;
-		} else if (separation === consts.ecSeparationTypes.MINIMAL) {
-			return Math.ceil((dataBlocks + parityBlocks) / parityBlocks);
-		}
+	// exact copy from backend utils.js
+	getEffectiveProtectionLevel(volume) {
+		if (volume.protectionLevel)
+			return volume.protectionLevel;
+
+		if (volume.ignoreNodeSeparation && consts.mirroredRaidLevels.includes(volume.RAIDLevel))
+			return consts.separationTypes.IGNORE;
+
+		return consts.separationTypes.MINIMAL;
+	},
+
+	// exact copy from backend utils.js
+	calcRequiredMirrorsBySeparation(separation, totalSegments, redundancy) {
+		if (separation === consts.separationTypes.FULL)
+			return totalSegments;
+
+		if (separation === consts.separationTypes.MINIMAL)
+			return Math.ceil(totalSegments / redundancy);
 
 		return 1;
 	},
 
+	// exact copy from backend utils.js
 	calcHasEnoughMirrors(volume, availableMirrors) {
-		if (volume.RAIDLevel === consts.RAIDLevel.ERASURE_CODING || volume.RAIDLevel === consts.RAIDLevel.STRIPED_ERASURE_CODING) {
-			const requiredTargets = AllocationService.calcRequiredMirrorsByECSeparation(volume.protectionLevel, volume.dataBlocks, volume.parityBlocks);
+		const protectionLevel = AllocationService.getEffectiveProtectionLevel(volume);
+		let requiredTargets;
 
-			return availableMirrors >= requiredTargets - 1;
-		} else if (volume.RAIDLevel === consts.RAIDLevel.MIRRORED_RAID_1 || volume.RAIDLevel === consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10) {
-			return volume.ignoreNodeSeparation || (availableMirrors >= volume.numberOfMirrors);
-		}
+		if (AllocationService.isEC(volume.RAIDLevel))
+			requiredTargets = AllocationService.calcRequiredMirrorsBySeparation(protectionLevel, volume.dataBlocks + volume.parityBlocks, volume.parityBlocks);
 
-		return true;
+		else if (AllocationService.isMirrored(volume.RAIDLevel))
+			requiredTargets = AllocationService.calcRequiredMirrorsBySeparation(protectionLevel, volume.numberOfMirrors + 1, volume.numberOfMirrors);
+
+		else
+			return true;
+
+		return availableMirrors >= requiredTargets - 1;
 	},
 
 	isMirrored: (RAIDLevel) => [

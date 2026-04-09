@@ -335,7 +335,7 @@ consts.erasureCodedRaidLevels = [consts.RAIDLevel.ERASURE_CODING, consts.RAIDLev
 consts.mirroredRaidLevels = [consts.RAIDLevel.MIRRORED_RAID_1, consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10];
 consts.validNumberOfMirrors = [1, 2];
 
-consts.ecSeparationTypes = {
+consts.separationTypes = {
 	FULL: 'Full Separation',
 	MINIMAL: 'Minimal Separation',
 	IGNORE: 'Ignore Separation'
@@ -1118,19 +1118,13 @@ consts.updatableVpgProperties = ['description', 'VSGs', 'allowAllocationOnOfflin
 consts.pRaidOptionsPropertiesByRaidLevel = {
 	[consts.RAIDLevel.ERASURE_CODING]: ['RAIDLevel', 'stripeSize', 'stripeWidth', 'dataBlocks', 'parityBlocks', 'protectionLevel', 'enableCrcCheck'],
 	[consts.RAIDLevel.STRIPED_ERASURE_CODING]: ['RAIDLevel', 'stripeSize', 'stripeWidth', 'dataBlocks', 'parityBlocks', 'protectionLevel', 'enableCrcCheck'],
-	[consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10]: ['RAIDLevel', 'stripeSize', 'stripeWidth', 'numberOfMirrors', 'ignoreNodeSeparation', 'enableCrcCheck'],
-	[consts.RAIDLevel.MIRRORED_RAID_1]: ['RAIDLevel', 'numberOfMirrors', 'ignoreNodeSeparation', 'enableCrcCheck'],
+	[consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10]: ['RAIDLevel', 'stripeSize', 'stripeWidth', 'numberOfMirrors', 'protectionLevel', 'enableCrcCheck'],
+	[consts.RAIDLevel.MIRRORED_RAID_1]: ['RAIDLevel', 'numberOfMirrors', 'protectionLevel', 'enableCrcCheck'],
 	[consts.RAIDLevel.STRIPED_RAID_0]: ['RAIDLevel', 'stripeSize', 'stripeWidth'],
 	[consts.RAIDLevel.CONCATENATED]: ['RAIDLevel'],
 };
 
 consts.updateExcludedPropertiesForVPGVolumes = ['limitByNodes', 'limitByDisks', 'VSGs', 'diskClasses', 'serverClasses', 'enableCrcCheck'];
-
-consts.nodeSeparation = {
-	IGNORE: 'ignore',
-	ENFORCE: 'enforce',
-};
-
 
 consts.capacityAllocationTypes = {
 	CUSTOM: 'custom',
@@ -1242,6 +1236,25 @@ consts.FEATURE_COMPATIBILITY_TYPES = {
 	LEADER: 'leaderFeatureCompatibility',
 	MANAGEMENT: 'managementFeatureCompatibility',
 	UPGRADE_AGENT: 'upgradeAgentFeatureCompatibility'
+};
+
+consts.FEATURE_REQUIREMENTS = {
+	NUMBER_OF_MIRRORS_2: {
+		displayName: 'numberOfMirrors = 2',
+		[consts.FEATURE_COMPATIBILITY_TYPES.MANAGEMENT]: '2',
+		[consts.FEATURE_COMPATIBILITY_TYPES.LEADER]: '1',
+		[consts.FEATURE_COMPATIBILITY_TYPES.TARGET]: '1',
+		[consts.FEATURE_COMPATIBILITY_TYPES.CLIENT]: '2',
+	},
+};
+
+const fcvField = 'featureCompatibilityVersion';
+consts.FCV_COLLECTION_MAP = {
+	[consts.FEATURE_COMPATIBILITY_TYPES.CLIENT]: { collection: consts.dbCollections.CLIENT, field: fcvField },
+	[consts.FEATURE_COMPATIBILITY_TYPES.TARGET]: { collection: consts.dbCollections.TARGET, field: fcvField },
+	[consts.FEATURE_COMPATIBILITY_TYPES.LEADER]: { collection: consts.dbCollections.CONFIGURATION_VERSION, field: fcvField },
+	[consts.FEATURE_COMPATIBILITY_TYPES.MANAGEMENT]: { collection: consts.dbCollections.MANAGEMENT_CLUSTER, field: fcvField },
+	[consts.FEATURE_COMPATIBILITY_TYPES.UPGRADE_AGENT]: { collection: consts.dbCollections.UPGRADE_AGENT, field: `upgradeAgentData.${fcvField}` },
 };
 
 consts.TOPIC_NAME_PLACEHOLDERS = {

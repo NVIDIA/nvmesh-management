@@ -4552,6 +4552,11 @@ var systemMessages = {
 		id: 16824,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	FEATURE_COMPATIBILITY_VERSION_NOT_MET: {
+		message: 'Some cluster components do not meet the minimum feature compatibility version required for this feature',
+		id: 16825,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	UPGRADE_STEP_CANNOT_BE_EXECUTED_UNHEALTHY_PRAID: {
 		message: 'Executing this step will cause the volume to become offline',
 		id: 17000,

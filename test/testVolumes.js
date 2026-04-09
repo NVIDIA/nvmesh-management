@@ -13,7 +13,7 @@ const assert = require('assert');
 
 const lockUtils = require('./testUtils/lockUtils.js');
 const { VolumeRAID1, VolumeConcatenated, VolumeRAID0, VolumeRAID10, VolumeEC,
-	VolumeStripedEC, VolumeRAID1With2Mirrors, VolumeRAID10With2Mirrors } = require('./models/volume.js');
+	VolumeStripedEC, VolumeRAID1With2Mirrors, VolumeRAID10With2Mirrors, VolumeRAID1With2MirrorsMinimal } = require('./models/volume.js');
 const { generateTargets, generateTargetsByIds, generateTarget } = require('./testUtils/entityGenerators.js');
 
 const { TargetClass } = require('./models/targetClass.js');
@@ -194,6 +194,10 @@ class TestRAID1With2Mirrors extends TestRAID1 {
 		assert.strictEqual(pRaid.diskSegments.length, 3, 'Mirrored volume with 2 mirrors should have 3 diskSegments per pRaid');
 	}
 }
+class TestRAID1With2MirrorsMinimal extends TestRAID1With2Mirrors {
+	getName() { return 'RAID1 (2 Mirrors) Minimal Separation'; }
+	getNewVolume() { return new VolumeRAID1With2MirrorsMinimal('raid1_2mirrors_minimal'); }
+}
 
 class TestRAID10With2Mirrors extends TestRAID10 {
 	getName() { return 'RAID10 (2 Mirrors)'; }
@@ -248,6 +252,10 @@ describe('Volumes', () => {
 
 		describe('#RAID 1 (2 Mirrors)', function() {
 			testVolumeType(new TestRAID1With2Mirrors());
+		});
+
+		describe('#RAID 1 (2 Mirrors) Minimal Separation', function() {
+			testVolumeType(new TestRAID1With2MirrorsMinimal());
 		});
 
 		describe('#RAID 10 (2 Mirrors)', function() {

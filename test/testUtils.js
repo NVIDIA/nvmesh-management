@@ -26,11 +26,11 @@ describe('Test Utils', function() {
 			return dbManager.connect()
 				.then(() => setup.newSetup());
 		});
-	
+
 		after(() => {
 			return dbManager.closeConnection();
 		});
-	
+
 		it('Should call the callback once', (done) => {
 			function callback(err, payload) {
 				assert(!err);
@@ -38,20 +38,20 @@ describe('Test Utils', function() {
 				assert.strictEqual(payload.hello, 'test');
 				done(err);
 			}
-	
+
 			waitForEventOrTimeout('my-event', 20, callback);
-	
+
 			let emitter = app.get('eventEmitter');
 			emitter.emit('my-event', { hello: 'test' });
 		});
-	
+
 		it('Should send an error timeout', (done) => {
 			function callback(err, payload) {
 				assert(err);
 				assert(!payload);
 				done();
 			}
-	
+
 			waitForEventOrTimeout('my-event', 20, callback);
 		});
 	});
@@ -69,9 +69,9 @@ describe('Test Utils', function() {
 			// if not finished in time fail
 			failTimeout = setTimeout(() => { assert(false); }, 0);
 
-			let sendMsgFunc = () => { 
+			let sendMsgFunc = () => {
 				clearTimeout(failTimeout);
-				done(); 
+				done();
 			};
 
 			let minWait = 5000;
@@ -85,7 +85,7 @@ describe('Test Utils', function() {
 			// if not finished in time fail
 			failTimeout = setTimeout(() => { done(new Error('Function never called again')); }, 40);
 
-			let sendMsgFunc = () => { 
+			let sendMsgFunc = () => {
 				finished++;
 
 				if (finished == 2) {
@@ -98,12 +98,12 @@ describe('Test Utils', function() {
 			callFunctionWithDebouncer(sendMsgFunc, id, minWait);
 		});
 
-		it('Function should only be called once', (done) => {			
+		it('Function should only be called once', (done) => {
 			let minWait = 5000;
 			let finished = 0;
 
 			// verify only one finished !
-			failTimeout = setTimeout(() => { 
+			failTimeout = setTimeout(() => {
 				if (finished > 1)
 					done(new Error('Too many calls: ' + finished));
 				else
