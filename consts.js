@@ -1059,6 +1059,7 @@ consts.componentsPages = {
 	techniciansScreen: 'techniciansScreen',
 	pageNotFound: 'pageNotFound',
 	configurationProfiles: 'configurationProfiles',
+	tpv: 'tpv',
 };
 
 consts.dbCollections = {
@@ -1228,6 +1229,16 @@ consts.preUpgradeCheckRelaxationsMode = {
 	skipVolumeStatusCheck: true,
 	allowAlarmClients: true
 };
+
+consts.volumeClass = {
+	REGULAR: 'REGULAR',
+	CDV:     'CDV',
+	TPV:     'TPV',
+};
+
+// Valid power-of-2 values for CDV and TPV extent sizes
+consts.cdvExtentSizeMBValues = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
+consts.tpvExtentSizeKBValues = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
 
 if (typeof module !== 'undefined' && typeof module.exports !== 'undefined')
 	module.exports = consts;
