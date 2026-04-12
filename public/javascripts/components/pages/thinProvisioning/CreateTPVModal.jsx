@@ -22,8 +22,10 @@ const CreateTPVModal = ({
 	onSubmit = _ => {}
 }) => {
 	const isCreate = !tpv._id;
-	const { register, handleSubmit, formState, control } = useForm({ mode: 'all' });
+	const { register, handleSubmit, formState, control, watch } = useForm({ mode: 'all' });
 	const [cdvs, setCDVs] = useState([]);
+	const selectedCdvId = watch('cdvId', tpv.tpvConfig?.cdvId || null);
+	const selectedCdv = cdvs.find(c => c._id === selectedCdvId);
 
 	useEffect(() => {
 		VolumesService.getCDVs().then(result => {
@@ -52,12 +54,18 @@ const CreateTPVModal = ({
 		onSubmit(payload);
 	};
 
-	const cdvOptions = cdvs.map(cdv => ({ text: cdv.name, value: cdv._id }));
-
-	const extentSizeOptions = consts.tpvExtentSizeKBValues.map(kb => ({
-		text: kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`,
-		value: kb,
+	const cdvOptions = cdvs.map(cdv => ({
+		text: `${cdv.name} (${cdv.cdvConfig?.maxTPVs ? (cdv.tpvCount || 0) + '/' + cdv.cdvConfig.maxTPVs + ' TPVs, ' : ''}${cdv.capacity} GB)`,
+		value: cdv._id,
 	}));
+
+	const maxExtentKB = selectedCdv ? selectedCdv.cdvConfig?.cdvExtentSizeMB * 1024 : Infinity;
+	const extentSizeOptions = consts.tpvExtentSizeKBValues
+		.filter(kb => kb <= maxExtentKB)
+		.map(kb => ({
+			text: kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`,
+			value: kb,
+		}));
 
 	return (
 		<Modal
@@ -170,6 +178,9 @@ const CreateTPVModal = ({
 							name="virtualSizeGB"
 							label="Virtual Size (GB)"
 							errorMessage={formState.errors?.virtualSizeGB?.message}
+							topHint={selectedCdv
+								? <i className="text-muted">CDV capacity: {selectedCdv.capacity} GB</i>
+								: undefined}
 						>
 							<Input
 								name="virtualSizeGB"

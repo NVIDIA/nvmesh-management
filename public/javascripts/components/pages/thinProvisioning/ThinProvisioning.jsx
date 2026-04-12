@@ -75,7 +75,7 @@ const ThinProvisioning = () => {
 				: '—',
 		},
 		{
-			name: 'Max Virtual Size',
+			name: 'Max Size',
 			field: 'tpvConfig.maxVirtualSizeGB',
 			filterable: false,
 			className: 'fixed-size-column sx-column',
@@ -85,22 +85,10 @@ const ThinProvisioning = () => {
 				: '—',
 		},
 		{
-			name: 'Extent Size',
-			field: 'tpvConfig.tpvExtentSizeKB',
-			filterable: false,
-			className: 'fixed-size-column sx-column',
-			rowClassName: 'fixed-size-column',
-			value: tpvRow => {
-				const kb = tpvRow.tpvConfig?.tpvExtentSizeKB;
-				if (kb == null) return '—';
-				return kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`;
-			},
-		},
-		{
-			name: 'Exclusive Client',
+			name: 'Client',
 			field: 'tpvConfig.exclusiveClient',
-			placeholder: 'Search by Exclusive Client',
-			value: tpvRow => tpvRow.tpvConfig?.exclusiveClient || '—',
+			placeholder: 'Search by Client',
+			value: tpvRow => tpvRow.tpvConfig?.exclusiveClient || <em>Detached</em>,
 		},
 		{
 			name: 'Status',

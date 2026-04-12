@@ -452,6 +452,10 @@ const CreateEditVolume = ({
 							/>
 						</FormControl>
 
+						{!isCreate && volume.volumeClass === consts.volumeClass.CDV && (
+							<div className="alert alert-info">This volume is a Carrier Direct Volume (CDV).</div>
+						)}
+
 						{isCreate && (
 							<FormControl name="isCDV" label="CDV Mode">
 								<Toggle

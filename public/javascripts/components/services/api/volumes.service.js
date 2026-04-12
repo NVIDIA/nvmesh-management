@@ -83,7 +83,7 @@ export const VolumesService = {
 	async getCDVs() {
 		return await apiService.get('/all/0/0', {
 			filter: { volumeClass: 'CDV' },
-			projection: { _id: 1, uuid: 1, name: 1, capacity: 1, cdvConfig: 1 }
+			projection: { _id: 1, uuid: 1, name: 1, capacity: 1, cdvConfig: 1, tpvCount: 1 }
 		});
 	},
 
