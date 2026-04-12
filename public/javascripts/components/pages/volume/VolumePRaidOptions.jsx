@@ -172,8 +172,8 @@ const VolumePRaidOptions = ({
 						const options = [
 							{
 								value: consts.separationTypes.MINIMAL,
-								name: 'Minimal Target Node Separation',
-								description: `Survive one target failure (min. ${requiredMirrorsMinimal} targets).`,
+								name: 'N+1 Target Redundancy',
+								description: `Up to two volume segments per target. Survive one target failure (min. ${requiredMirrorsMinimal} targets).`,
 								order: 2
 							},
 							{
@@ -190,8 +190,8 @@ const VolumePRaidOptions = ({
 
 							options.unshift({
 								value: consts.separationTypes.FULL,
-								name: 'Full Target Node Separation',
-								description: `Only one segment per target. Survive up to ${redundancy} ` +
+								name: `N+${redundancy} Target Redundancy`,
+								description: `Only one volume segment per target. Survive up to ${redundancy} ` +
 									`target failures (min. ${requiredMirrorsFull} targets).`,
 								order: 1
 							});

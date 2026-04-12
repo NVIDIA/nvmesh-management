@@ -5,6 +5,7 @@
 
 const consts = require('../../consts.js');
 const { pRaidOptionsPropertiesConditions } = require('../common/pRaidOptions.js');
+const { protectionFieldsExclusive } = require('../common/protectionFieldsExclusive.js');
 const { encryptionPropertiesConditions } = require('../common/encryption.js');
 const { classesScheme } = require('../common/volumeLimitations.js');
 
@@ -32,6 +33,7 @@ const scheme = {
 		// set pRaidOptions
 		pRaidOptionsPropertiesConditions,
 		encryptionPropertiesConditions,
+		protectionFieldsExclusive,
 		{
 			if: { required: ['allowOverflow'], properties: { allowOverflow: { const: false } } },
 			then: {

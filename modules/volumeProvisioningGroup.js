@@ -39,6 +39,7 @@ scope.saveVPGs = (vpgs, user, mainCallback) => {
 		e.createdBy = user.email;
 		e.dateCreated = new Date();
 		e.dateModified = new Date();
+		utils.applyProtectionLevelDefaults(e);
 	});
 
 	let messages = [];

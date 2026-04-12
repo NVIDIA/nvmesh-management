@@ -5,14 +5,18 @@
 
 const consts = require('../../consts.js');
 
+const protectionLevelEnum = { enum: Object.values(consts.separationTypes) };
+
 const pRaidOptionsProperties = {
 	stripeSize: { type: 'integer', minimum: 32, default: 32 },
 	stripeWidth: { type: 'integer', minimum: 2, default: 2 },
 	dataBlocks: { type: 'integer', minimum: 1, maximum: 10, default: 8 },
 	parityBlocks: { type: 'integer', minimum: 1, maximum: 2, default: 2 },
-	protectionLevel: { enum: Object.values(consts.separationTypes), default: consts.separationTypes.FULL },
+	protectionLevel: { ...protectionLevelEnum, default: consts.separationTypes.FULL },
+	protectionLevelNoDefault: protectionLevelEnum,
 	enableCrcCheck: { type: 'boolean', default: false },
 	numberOfMirrors: { type: 'integer', minimum: Math.min(...consts.validNumberOfMirrors), maximum: Math.max(...consts.validNumberOfMirrors), default: 1 },
+	ignoreNodeSeparation: { type: 'boolean' },
 };
 
 const pRaidOptionsPropertiesByRAIDLevel = {
@@ -36,7 +40,8 @@ const pRaidOptionsPropertiesByRAIDLevel = {
 		stripeSize: pRaidOptionsProperties.stripeSize,
 		stripeWidth: pRaidOptionsProperties.stripeWidth,
 		numberOfMirrors: pRaidOptionsProperties.numberOfMirrors,
-		protectionLevel: pRaidOptionsProperties.protectionLevel,
+		protectionLevel: pRaidOptionsProperties.protectionLevelNoDefault,
+		ignoreNodeSeparation: pRaidOptionsProperties.ignoreNodeSeparation,
 		enableCrcCheck: pRaidOptionsProperties.enableCrcCheck,
 	},
 	[consts.RAIDLevel.STRIPED_RAID_0]: {
@@ -45,7 +50,8 @@ const pRaidOptionsPropertiesByRAIDLevel = {
 	},
 	[consts.RAIDLevel.MIRRORED_RAID_1]: {
 		numberOfMirrors: pRaidOptionsProperties.numberOfMirrors,
-		protectionLevel: pRaidOptionsProperties.protectionLevel,
+		protectionLevel: pRaidOptionsProperties.protectionLevelNoDefault,
+		ignoreNodeSeparation: pRaidOptionsProperties.ignoreNodeSeparation,
 		enableCrcCheck: pRaidOptionsProperties.enableCrcCheck,
 	},
 	[consts.RAIDLevel.CONCATENATED]: {},

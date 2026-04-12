@@ -3197,6 +3197,18 @@ scope.getEffectiveProtectionLevel = (volume) => {
 	return consts.separationTypes.MINIMAL;
 };
 
+// applied in code as AJV defaults conflicts with protectionLevel/ignoreNodeSeparation mutual exclusivity.
+scope.applyProtectionLevelDefaults = (volume) => {
+	if (!consts.mirroredRaidLevels.includes(volume.RAIDLevel))
+		return;
+
+	if (volume.ignoreNodeSeparation && !volume.protectionLevel)
+		volume.protectionLevel = consts.separationTypes.IGNORE;
+
+	if (!volume.protectionLevel)
+		volume.protectionLevel = consts.separationTypes.FULL;
+};
+
 scope.calcHasEnoughMirrors = (volume, availableMirrors) => {
 	const protectionLevel = scope.getEffectiveProtectionLevel(volume);
 	let requiredTargets;
@@ -3226,7 +3238,7 @@ scope.validateFeatureCompatibility = (featureRequirements, callback) => {
 		const collection = db.collection(mapping.collection);
 		const query = { $expr: { $lt: [{ $toInt: `$${mapping.field}` }, minVersionInt] } };
 
-		if (collection === consts.dbCollections.CONFIGURATION_VERSION)
+		if (mapping.collection === consts.dbCollections.CONFIGURATION_VERSION)
 			query._id = { $ne: 'CLUSTER' };
 
 		collection.countDocuments(query, (err, count) => {
@@ -3719,14 +3731,13 @@ function enrichDrives(drives, callback) {
 	});
 }
 
-function getDataDisksForRAID1(nodeMatch, diskMatch, volume, callback) {
-	var db = app.get('db');
-	var serverCollection = db.collection('server');
-	var numberOfSegments = getNumberOfRequiredDisksByVolume(volume);
+function getDataDisksForRAID1(nodeMatch, diskMatch, volume, maxDisksPerGroup, callback) {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
 
 	diskMatch = scope.extend(true, diskMatch, { 'disks.largestSegmentAvailable.blocks': { $gt: 0 } });
 
-	var pipeline = [
+	let pipeline = [
 		{ $match: nodeMatch },
 		{
 			$project: {
@@ -3848,13 +3859,15 @@ function getDataDisksForRAID1(nodeMatch, diskMatch, volume, callback) {
 			{
 				$group: {
 					_id: '$domains.identifier',
-					disks: { $first: '$disks' },
+					disks: { $push: '$disks' },
 					node_id: { $first: '$node_id' },
 					uuid: { $first: '$uuid' },
-					zone: { $first: '$zone' }
+					zone: { $first: '$zone' },
+					largestAvailableBlocks: { $max: '$disks.largestSegmentAvailable.blocks' }
 				}
 			},
-			{ $sort: { 'disks.largestSegmentAvailable.blocks': -1 } },
+			{ $project: { disks: { $slice: ['$disks', maxDisksPerGroup] }, node_id: 1, uuid: 1, zone: 1, largestAvailableBlocks: 1 } },
+			{ $sort: { largestAvailableBlocks: -1, _id: 1 } },
 		]);
 	}
 
@@ -3864,122 +3877,125 @@ function getDataDisksForRAID1(nodeMatch, diskMatch, volume, callback) {
 				_id: '$_id',
 				zone: { $first: '$zone' },
 				uuid: { $first: '$uuid' },
-				disks: { $first: '$disks' },
-				node_id: { $first: '$node_id' }
+				disks: volume.domain ? { $first: '$disks' } : { $push: '$disks' },
+				node_id: { $first: '$node_id' },
+				largestAvailableBlocks: volume.domain
+					? { $max: { $arrayElemAt: ['$disks.largestSegmentAvailable.blocks', 0] } }
+					: { $max: '$disks.largestSegmentAvailable.blocks' }
 			}
 		},
+		{ $project: { disks: { $slice: ['$disks', maxDisksPerGroup] }, node_id: 1, uuid: 1, zone: 1, largestAvailableBlocks: 1 } },
 		{ $match: { disks: { $exists: true, $ne: [] } } },
-		{ $sort: { 'disks.largestSegmentAvailable.blocks': -1, _id: 1 } },
-		{ $limit: numberOfSegments },
-		{
-			$project: {
-				_id: '$_id',
-				node_id: '$node_id',
-				zone: 1,
-				uuid: 1,
-				'disks.uuid': 1,
-				'disks.diskID': 1,
-				'disks.blocks': 1,
-				'disks.block_size': 1,
-				'disks.zone': '$zone',
-				'disks.usableBlocks': 1,
-				'disks.GPT.lastUsableLba': 1,
-				'disks.GPT.firstUsableLba': 1,
-				'disks.largestSegmentAvailable': 1,
-			}
-		}
+		{ $sort: { largestAvailableBlocks: -1, _id: 1 } },
 	]);
 
-	serverCollection.aggregate(pipeline).toArray(function(err, results) {
+	serverCollection.aggregate(pipeline).toArray((err, separationGroups) => {
 		if (err)
-			new MongoError(err).log();
+			return callback(new MongoError(err).log());
 
-		var usedZone;
-		var disks = [];
-
-		if (results && results.length >= numberOfSegments) {
-			if (volume.domain) {
-				// check whether there is a drive duplication in the results, which indicates a domain violation
-				// since that drive has 2 different domain identifiers for the same domain scope
-				const diskIDs = results.map((d) => d.disks.diskID);
-				const hasDuplicates = (new Set(diskIDs)).size !== diskIDs.length;
-
-				if (hasDuplicates) {
-					let domainErr = new SystemMessage(systemMessages.UTILS_GET_DATA_DISKS_FOR_RAID1_FAILURE_DOMAIN_VIOLATION);
-					return callback(null, disks, domainErr);
-				}
-			}
-
-			usedZone = nodeMatch.zone;
-			disks = results;
-		}
-
-		enrichDrives(disks, (err, disks) => {
-			callback(usedZone, disks);
-		});
+		callback(null, separationGroups);
 	});
 }
 
-function getDisksForRAID1(nodeMatch, dataDiskMatch, volume, drivesWithDomains, callback) {
-	let disksForAllocation = [];
-	const notEnoughDrives = new SystemMessage(systemMessages.UTILS_GET_DATA_DISKS_FOR_RAID1_FAILURE_NOT_ENOUGH_DRIVES);
-	const protectionLevel = scope.getEffectiveProtectionLevel(volume);
+// returns suitable drives only, regardless of if it is enough for allocation or not
+function selectDisksForRAID1(separationGroups, segmentsNeeded, protectionLevel, numberOfMirrors) {
+	const selected = [];
+	const groupUsage = {};
 
-	async.series([
-		function tryFullSeparation(callback) {
-			const sdt1 = new Date();
-			getDataDisksForRAID1(nodeMatch, dataDiskMatch, volume, function(zone, disks, domainErr) {
-				const edt1 = new Date();
-				logger.sysDEBUG('getDisksForRAID1::getDatadisksForRAID1 took: ' + (edt1 - sdt1) + ' milliseconds');
+	for (const group of separationGroups) {
+		if (selected.length === segmentsNeeded)
+			break;
 
-				const cantFallback = (protectionLevel === consts.separationTypes.FULL ||
-					(protectionLevel === consts.separationTypes.MINIMAL && volume.numberOfMirrors === 1));
-
-				if ((!disks?.length || domainErr) && cantFallback)
-					return callback(domainErr || notEnoughDrives);
-
-				disksForAllocation = domainErr ? [] : disks;
-				callback();
-			});
-		},
-		function tryMinimalSeparation(callback) {
-			if (disksForAllocation && disksForAllocation.length)
-				return callback();
-
-			const minSeparationVolume = scope.extend(true, {}, volume, { numberOfMirrors: 1 });
-			getDataDisksForRAID1(nodeMatch, dataDiskMatch, minSeparationVolume, function(zone, distributedDisks, domainErr) {
-				const cantFallback = protectionLevel === consts.separationTypes.MINIMAL;
-
-				if ((!distributedDisks?.length || domainErr) && cantFallback)
-					return callback(domainErr || notEnoughDrives);
-
-				disksForAllocation = domainErr ? [] : distributedDisks;
-				callback();
-			});
-		},
-		function tryFillRemainingSegments(callback) {
-			const numberOfDataSegments = getNumberOfRequiredDisksByVolume(volume) / (volume.stripeWidth || 1);
-			const remaining = numberOfDataSegments - (disksForAllocation ? disksForAllocation.length : 0);
-			if (remaining <= 0)
-				return callback();
-
-			const diskMatch = scope.extend(true, {}, dataDiskMatch);
-			if (protectionLevel === consts.separationTypes.MINIMAL && disksForAllocation && disksForAllocation.length)
-				scope.appendPropertyOrObject(diskMatch, 'disks.diskID', '$nin', disksForAllocation.map(d => d.disks.diskID));
-
-			getDisksForRAID0(nodeMatch, diskMatch, remaining, true, function(err, disks) {
-				if (err || !disks || disks.length < remaining)
-					return callback(notEnoughDrives);
-
-				disksForAllocation = (disksForAllocation || []).concat(disks);
-				callback();
-			});
+		if (group.disks.length > 0) {
+			selected.push(projectDiskFromGroup(group, 0));
+			groupUsage[group._id] = 1;
 		}
-	], function(err) {
-		if (err)
-			err = new SystemMessage(systemMessages.UTILS_GET_DRIVES_FOR_RAID1_FAILURE).addInfo(Entities.Error, err);
+	}
 
-		callback(err, disksForAllocation);
+	if (selected.length === segmentsNeeded)
+		return selected;
+
+	const canRelaxSeparation = protectionLevel === consts.separationTypes.IGNORE ||
+		(protectionLevel === consts.separationTypes.MINIMAL && numberOfMirrors > 1);
+
+	if (!canRelaxSeparation)
+		return selected;
+
+	const remaining = [];
+	for (const group of separationGroups) {
+		const startIdx = groupUsage[group._id] ? 1 : 0;
+		for (let i = startIdx; i < group.disks.length; i++)
+			remaining.push({ group, diskIdx: i });
+	}
+
+	if (remaining.length < segmentsNeeded - selected.length)
+		return selected;
+
+	remaining.sort((a, b) =>
+		b.group.disks[b.diskIdx].largestSegmentAvailable.blocks -
+		a.group.disks[a.diskIdx].largestSegmentAvailable.blocks);
+
+	const MAX_DISKS_PER_GROUP_MINIMAL = 2;
+	const maxPerGroup = protectionLevel === consts.separationTypes.MINIMAL ? MAX_DISKS_PER_GROUP_MINIMAL : Infinity;
+
+	for (const candidate of remaining) {
+		if (selected.length === segmentsNeeded)
+			break;
+
+		const usage = groupUsage[candidate.group._id] || 0;
+		if (usage < maxPerGroup) {
+			selected.push(projectDiskFromGroup(candidate.group, candidate.diskIdx));
+			groupUsage[candidate.group._id] = usage + 1;
+		}
+	}
+
+	return selected;
+}
+
+function projectDiskFromGroup(group, diskIdx) {
+	const disk = group.disks[diskIdx];
+	return {
+		_id: group._id,
+		node_id: group.node_id,
+		uuid: group.uuid,
+		zone: group.zone,
+		disks: {
+			uuid: disk.uuid,
+			diskID: disk.diskID,
+			blocks: disk.blocks,
+			block_size: disk.block_size,
+			zone: group.zone,
+			usableBlocks: disk.usableBlocks,
+			GPT: disk.GPT ? { lastUsableLba: disk.GPT.lastUsableLba, firstUsableLba: disk.GPT.firstUsableLba } : undefined,
+			largestSegmentAvailable: disk.largestSegmentAvailable,
+		}
+	};
+}
+
+function getDisksForRAID1(nodeMatch, dataDiskMatch, volume, drivesWithDomains, callback) {
+	const segmentsNeeded = getNumberOfRequiredDisksByVolume(volume) / (volume.stripeWidth || 1);
+	const onError = (innerErr) => callback(new SystemMessage(systemMessages.UTILS_GET_DRIVES_FOR_RAID1_FAILURE).addInfo(Entities.Error, innerErr));
+
+	getDataDisksForRAID1(nodeMatch, dataDiskMatch, volume, segmentsNeeded, function(err, separationGroups) {
+		if (err)
+			return onError(err);
+
+		const selected = selectDisksForRAID1(separationGroups, segmentsNeeded, scope.getEffectiveProtectionLevel(volume), volume.numberOfMirrors);
+		if (selected.length < segmentsNeeded)
+			return onError(new SystemMessage(systemMessages.UTILS_GET_DATA_DISKS_FOR_RAID1_FAILURE_NOT_ENOUGH_DRIVES));
+
+		if (volume.domain) {
+			const diskIDs = selected.map(d => d.disks.diskID);
+			if (new Set(diskIDs).size !== diskIDs.length)
+				return onError(new SystemMessage(systemMessages.UTILS_GET_DATA_DISKS_FOR_RAID1_FAILURE_DOMAIN_VIOLATION));
+		}
+
+		enrichDrives(selected, (err, enrichedDisks) => {
+			if (err)
+				return onError(err);
+
+			callback(null, enrichedDisks);
+		});
 	});
 }
 
@@ -5354,6 +5370,8 @@ scope.createVolume = function(volume, user, cb) {
 
 		if (err)
 			return cb(err, null, new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_RESOLVE_VPG).addInfo(Entities.Error, err));
+
+		scope.applyProtectionLevelDefaults(volume);
 
 		// This is the data/metadata volume of a snapshot, we don't send configuration until snapshot created successfully
 		let shouldUpdateConfiguration = !scope.isSnapshotDataOrMetadataVolume(volume);

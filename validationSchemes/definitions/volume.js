@@ -5,6 +5,7 @@
 
 const consts = require('../../consts.js');
 const { pRaidOptionsPropertiesConditions } = require('../common/pRaidOptions.js');
+const { protectionFieldsExclusive } = require('../common/protectionFieldsExclusive.js');
 const { encryptionPropertiesConditions } = require('../common/encryption.js');
 const { classesScheme, limitByDisksScheme, limitByNodesScheme, limitationsDependencies } = require('../common/volumeLimitations.js');
 
@@ -78,6 +79,7 @@ const scheme = {
 			}
 		},
 		encryptionPropertiesConditions,
+		protectionFieldsExclusive,
 		{
 			// allow request with VPG and without RAIDLevel ( If VPG not given -> require RAIDLevel )
 			if: { properties: { VPG: { maxLength: 0 } } },

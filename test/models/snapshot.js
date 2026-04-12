@@ -5,14 +5,14 @@
 
 /* global app */
 const { createSnapshot } = require('../../modules/volume');
-const { VolumeRAID10 } = require('./volume');
+const { VolumeRAID1 } = require('./volume');
 const consts = require('../../consts');
 const { Entities } = require('../../modules/error');
 const volumeModule = require('../../modules/volume');
 
 const user = { email: consts.ADMIN_USER };
 
-class Snapshot extends VolumeRAID10 {
+class Snapshot extends VolumeRAID1 {
 	constructor(name, sourceID, params) {
 		super();
 		this._id = name;

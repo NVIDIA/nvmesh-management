@@ -534,6 +534,8 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 * <small><i>Options: `Full Separation`, `Minimal Separation`,
 * `Ignore Separation`</i></small>
 * <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
+* @apiBody (RAID) {boolean} [ignoreNodeSeparation] <strong>Obsolete</strong> — use `protectionLevel` (`Ignore Separation` instead of `true`).
+Mutually exclusive with `protectionLevel`.<br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
 * @apiBody (RAID) {boolean} [enableCrcCheck=false] Enable CRC check for the `volume`. Defaults to true for `Erasure Coding` and `Striped Erasure Coding`.
 <br/><strong>Depends on `RAIDLevel`. Not allowed if `VPG` is set.</strong>
 * @apiExample {string} Payload example
