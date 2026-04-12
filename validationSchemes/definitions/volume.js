@@ -39,6 +39,30 @@ const commonCustomProperties = {
 	VSGs: { $ref: consts.MANAGEMENT_DEFINITIONS + '/vsgNamesList.js' },
 };
 
+const cdvConfigScheme = {
+	type: 'object',
+	unevaluatedProperties: false,
+	properties: {
+		cdvExtentSizeMB: { type: 'integer', enum: consts.cdvExtentSizeMBValues },
+		allocatorSizeGB: { type: 'integer', default: 1, minimum: 1 },
+		maxTPVs:         { type: 'integer', default: 512, minimum: 1 },
+	},
+};
+
+const tpvConfigScheme = {
+	type: 'object',
+	unevaluatedProperties: false,
+	properties: {
+		cdvId:            { type: 'string', minLength: 1 },
+		tpvExtentSizeKB:  { type: 'integer', enum: consts.tpvExtentSizeKBValues },
+		virtualSizeGB:    { type: 'number', exclusiveMinimum: 0 },
+		maxVirtualSizeGB: { type: 'number', default: 1000, exclusiveMinimum: 0 },
+	},
+};
+
+const isTPV = { properties: { volumeClass: { const: 'TPV' } }, required: ['volumeClass'] };
+const isCDV = { properties: { volumeClass: { const: 'CDV' } }, required: ['volumeClass'] };
+
 const scheme = {
 	$id: consts.MANAGEMENT_DEFINITIONS + '/volume.js',
 	type: 'object',
@@ -56,6 +80,9 @@ const scheme = {
 		enableNVMf: { type: 'boolean', default: false },
 		metadata: { $ref: consts.MANAGEMENT_DEFINITIONS + '/volumeMetadata.js', default: {} },
 		use_debug_di: { type: 'boolean', default: false },
+		volumeClass: { type: 'string', enum: Object.values(consts.volumeClass), default: 'REGULAR' },
+		cdvConfig: cdvConfigScheme,
+		tpvConfig: tpvConfigScheme,
 	},
 	if: { properties: { enableNVMf: { const: true } }, required: ['enableNVMf'] },
 	then: {
@@ -66,7 +93,7 @@ const scheme = {
 		required: ['selectedClientsForNvmf']
 	},
 	else: { properties: { name: { $ref: consts.MANAGEMENT_DEFINITIONS + '/volumeName.js' } } },
-	required: ['capacity', 'name'],
+	required: ['name'],
 	allOf: [
 		{
 			// set pRaidOptions, limitations and common properties if not using VPG
@@ -79,10 +106,31 @@ const scheme = {
 		},
 		encryptionPropertiesConditions,
 		{
-			// allow request with VPG and without RAIDLevel ( If VPG not given -> require RAIDLevel )
-			if: { properties: { VPG: { maxLength: 0 } } },
+			// capacity required for REGULAR and CDV; TPV capacity is derived from tpvConfig.virtualSizeGB by the backend
+			if: { not: isTPV },
+			then: { required: ['capacity'] }
+		},
+		{
+			// RAIDLevel required when not using VPG, except for TPV (which inherits RAID from its CDV)
+			if: { allOf: [{ properties: { VPG: { maxLength: 0 } } }, { not: isTPV }] },
 			then: { required: ['RAIDLevel'] }
-		}
+		},
+		{
+			// CDV: cdvConfig required; cdvExtentSizeMB required within it
+			if: isCDV,
+			then: {
+				required: ['cdvConfig'],
+				properties: { cdvConfig: { required: ['cdvExtentSizeMB'] } }
+			}
+		},
+		{
+			// TPV: tpvConfig required; cdvId, tpvExtentSizeKB, virtualSizeGB required within it
+			if: isTPV,
+			then: {
+				required: ['tpvConfig'],
+				properties: { tpvConfig: { required: ['cdvId', 'tpvExtentSizeKB', 'virtualSizeGB'] } }
+			}
+		},
 	],
 	dependencies: {
 		sourceID: {
