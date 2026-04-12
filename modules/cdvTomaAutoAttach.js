@@ -1,0 +1,120 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* global app */
+
+const consts = require('../consts');
+const logger = require('../logger');
+const { MongoError } = require('./error');
+
+// Manages the automatic attachment of CDV volumes to TOMA nodes that host
+// RW-enabled disk segments of the CDV's first pRAID.  A TOMA node needs the CDV
+// attached (non-hidden, SHARED_RW) so its allocator process can perform direct
+// block I/O to the allocator area (first allocatorSizeGB of the CDV).
+//
+// Attachment lifetime is tracked via the `toma:<cdvUUID>` referenceID on the
+// client attachment.  The CDV is detached from a node only when BOTH the
+// toma:* and all tpv:* referenceIDs are gone (handled by detachVolumes ref logic).
+
+class CDVTomaAutoAttach {
+	// Lazy require to avoid circular dependency (client.js ↔ volume.js ↔ cdvTomaAutoAttach.js).
+	_clientModule() {
+		return require('./client');
+	}
+
+	// Returns node_id values of all RW-enabled disk segments in the CDV's first pRAID chunk.
+	_firstPRaidNodeIds(cdv) {
+		if (!cdv.chunks || !cdv.chunks[0]) return [];
+		const firstChunk = cdv.chunks[0];
+		return [...new Set(
+			firstChunk.pRaids
+				.flatMap(pRaid => pRaid.diskSegments)
+				.filter(seg => seg.status === 'RW_ENABLED')
+				.map(seg => seg.node_id)
+		)];
+	}
+
+	// Called once after a CDV is created (chunk layout is populated by RAID allocation).
+	// Attaches the CDV to every node that hosts a first-pRAID RW segment.
+	async initCDV(cdv) {
+		const nodeIds = this._firstPRaidNodeIds(cdv);
+		await Promise.all(nodeIds.map(nodeId => this.attachCDVToNode(cdv, nodeId)));
+	}
+
+	// Called when a TOMA topology update affects the first pRAID of a CDV.
+	// addedNodeIds / removedNodeIds are node_id strings.
+	async onTopologyUpdate(cdvUUID, addedNodeIds, removedNodeIds) {
+		const db = app.get('db');
+		const volumeCollection = db.collection('volume');
+
+		const cdv = await volumeCollection.findOne({ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV });
+		if (!cdv) {
+			logger.sysDEBUG(`cdvTomaAutoAttach.onTopologyUpdate: CDV ${cdvUUID} not found`);
+			return;
+		}
+
+		await Promise.all([
+			...addedNodeIds.map(nodeId => this.attachCDVToNode(cdv, nodeId)),
+			...removedNodeIds.map(nodeId => this.maybeDetachCDVFromNode(cdv, nodeId))
+		]);
+	}
+
+	// Attaches the CDV to the client running on nodeId.
+	// Uses isHidden=false so the TOMA node gets a real R/W block device for allocator I/O.
+	// referenceID = `toma:<cdvUUID>` — cleared by maybeDetachCDVFromNode.
+	attachCDVToNode(cdv, nodeId) {
+		return new Promise((resolve) => {
+			const db = app.get('db');
+			const clientCollection = db.collection('client');
+
+			clientCollection.findOne({ _id: nodeId }, { projection: { uuid: 1 } }, (err, clientDoc) => {
+				if (err) {
+					new MongoError(err).log();
+					return resolve();
+				}
+				if (!clientDoc) {
+					logger.sysDEBUG(`cdvTomaAutoAttach.attachCDVToNode: no client record for nodeId ${nodeId}`);
+					return resolve();
+				}
+
+				this._clientModule().attachVolumes(nodeId, clientDoc.uuid, [{
+					uuid: cdv.uuid,
+					name: cdv._id,
+					referenceID: `toma:${cdv.uuid}`,
+					reservation: { mode: consts.reservationModeNames.SHARED_READ_WRITE },
+					isHidden: false
+				}], () => resolve());
+			});
+		});
+	}
+
+	// Removes the toma:<cdvUUID> referenceID from the CDV attachment on nodeId.
+	// detachVolumes sends an actual DetachVolumes message only when referenceIDs becomes empty
+	// (i.e. no other tpv:* or toma:* refs remain), so this is safe to call unconditionally.
+	maybeDetachCDVFromNode(cdv, nodeId) {
+		return new Promise((resolve) => {
+			const db = app.get('db');
+			const clientCollection = db.collection('client');
+
+			clientCollection.findOne({ _id: nodeId }, { projection: { uuid: 1 } }, (err, clientDoc) => {
+				if (err) {
+					new MongoError(err).log();
+					return resolve();
+				}
+				if (!clientDoc) {
+					return resolve();
+				}
+
+				this._clientModule().detachVolumes(nodeId, clientDoc.uuid, [{
+					uuid: cdv.uuid,
+					name: cdv._id,
+					referenceID: `toma:${cdv.uuid}`
+				}], () => resolve());
+			});
+		});
+	}
+}
+
+module.exports = new CDVTomaAutoAttach();

@@ -27,6 +27,7 @@ const { sysERROR } = require('../logger.js');
 const { DeleteVolume } = require('../models/kafkaMessages/DeleteVolume');
 const { UpdateVolume } = require('../models/kafkaMessages/UpdateVolume.js');
 const { DeleteVolumeCompleted } = require('../models/kafkaMessages/DeleteVolumeCompleted.js');
+const cdvTomaAutoAttach = require('./cdvTomaAutoAttach');
 
 var scope = {};
 scope.volumeCalculationInProgress = {};
@@ -3025,6 +3026,17 @@ scope.saveVolumes = (requestVolumes, user, cb) => {
 				otherVolumes,
 				msgs => { messages.push(...msgs); cb(); }
 			);
+		},
+		cb => {
+			// Fire-and-forget TOMA auto-attach for newly created CDVs (chunks populated by saveVolume).
+			const createdCDVs = otherVolumes.filter(v => v.volumeClass === consts.volumeClass.CDV && v.uuid);
+			if (!createdCDVs.length) return cb();
+			async.each(createdCDVs, (cdv, next) => {
+				cdvTomaAutoAttach.initCDV(cdv).then(() => next()).catch(err => {
+					logger.sysDEBUG(`cdvTomaAutoAttach.initCDV failed for CDV ${cdv._id}: ${err}`);
+					next();
+				});
+			}, cb);
 		}
 	], () => cb(messages));
 };
@@ -3056,7 +3068,6 @@ function prepareCDVForCreate(volume) {
 		maxTPVs:         cfg.maxTPVs         != null ? cfg.maxTPVs         : 512,
 	};
 	delete volume.tpvConfig;
-	// TODO (step 5): after RAID allocation completes, call cdvTomaAutoAttach.initCDV(volume)
 }
 
 function createTPV(volume, user, cb) {

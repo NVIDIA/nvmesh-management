@@ -1284,7 +1284,8 @@ function setAttachmentOnConfigResponses(configResponse, attachingVolumes) {
 						emulation: attachingVolumesMap[volume.uuid].emulation,
 						version: attachingVolumesMap[volume.uuid].version,
 						attachmentsVersionRef: attachingVolumesMap[volume.uuid].attachmentsVersionRef,
-						referenceIDs: attachingVolumesMap[volume.uuid].referenceIDs
+						referenceIDs: attachingVolumesMap[volume.uuid].referenceIDs,
+						...(attachingVolumesMap[volume.uuid].isHidden && { isHidden: true })
 					}
 				}
 			));
@@ -3396,7 +3397,8 @@ scope.attachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 					name: volumeConfResult.result.name,
 					action: consts.volumeAttachmentActions.ATTACHING,
 					reservation: volumeConfResult.requestObj.reservation,
-					...(volumeConfResult.requestObj.emulation && { emulation: volumeConfResult.requestObj.emulation })
+					...(volumeConfResult.requestObj.emulation && { emulation: volumeConfResult.requestObj.emulation }),
+					...(volumeConfResult.requestObj.isHidden && { isHidden: true })
 				};
 				attachment.reservation.version = volumeConfResult.result.reservationVersion;
 
@@ -4607,6 +4609,108 @@ scope.sendUpdateTargetNICsMessage = function(clientID, topic, targetIDs, originI
 			cb
 		);
 	});
+};
+
+scope.fetchClientByID = function(clientID, cb) {
+	utils.fetchEntityByID('client', clientID, false, {}, systemMessages.CLIENT_NOT_FOUND, cb);
+};
+
+// ─── Thin Provisioning ───────────────────────────────────────────────────────
+
+scope.attachTPV = (clientID, clientUUID, tpvName, callback) => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	let tpv, cdv;
+
+	async.series([
+		function loadTPVAndCDV(cb) {
+			volumeCollection.findOne({ _id: tpvName, volumeClass: consts.volumeClass.TPV }, (err, tpvDoc) => {
+				if (err) return cb(new MongoError(err).log());
+				if (!tpvDoc) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.ID, tpvName));
+				tpv = tpvDoc;
+
+				volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV }, (err2, cdvDoc) => {
+					if (err2) return cb(new MongoError(err2).log());
+					if (!cdvDoc) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, tpv.tpvConfig.cdvUUID));
+					cdv = cdvDoc;
+					cb();
+				});
+			});
+		},
+		function attachCDV(cb) {
+			// attachVolumes handles both cases: new CDV attach (isHidden=true) and ref-only update
+			// (CDV already SHARED_RW attached due to another TPV or TOMA ref).
+			scope.attachVolumes(clientID, clientUUID, [{
+				uuid: cdv.uuid,
+				name: cdv._id,
+				referenceID: `tpv:${tpv.uuid}`,
+				reservation: { mode: consts.reservationModeNames.SHARED_READ_WRITE },
+				isHidden: true
+			}], () => cb());
+		},
+		function attachTPVVolume(cb) {
+			scope.attachVolumes(clientID, clientUUID, [{
+				uuid: tpv.uuid,
+				name: tpv._id,
+				reservation: { mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE }
+			}], () => cb());
+		},
+		function setExclusiveClient(cb) {
+			volumeCollection.findOneAndUpdate(
+				{ _id: tpvName, volumeClass: consts.volumeClass.TPV },
+				{ $set: { 'tpvConfig.exclusiveClient': clientID } },
+				(err) => {
+					if (err) new MongoError(err).log();
+					cb();
+				}
+			);
+		}
+	], callback);
+};
+
+scope.detachTPV = (clientID, clientUUID, tpvName, callback) => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	let tpv, cdv;
+
+	async.series([
+		function loadTPVAndCDV(cb) {
+			volumeCollection.findOne({ _id: tpvName, volumeClass: consts.volumeClass.TPV }, (err, tpvDoc) => {
+				if (err) return cb(new MongoError(err).log());
+				if (!tpvDoc) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.ID, tpvName));
+				tpv = tpvDoc;
+
+				volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV }, (err2, cdvDoc) => {
+					if (err2) return cb(new MongoError(err2).log());
+					if (!cdvDoc) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, tpv.tpvConfig.cdvUUID));
+					cdv = cdvDoc;
+					cb();
+				});
+			});
+		},
+		function detachTPVVolume(cb) {
+			scope.detachVolumes(clientID, clientUUID, [{ uuid: tpv.uuid, name: tpv._id }], () => cb());
+		},
+		function maybeDetachCDV(cb) {
+			// Remove tpv:<uuid> referenceID from CDV attachment. detachVolumes will send a full
+			// DetachVolumes message only if this was the last referenceID (no other tpv:* or toma:* refs).
+			scope.detachVolumes(clientID, clientUUID, [{
+				uuid: cdv.uuid,
+				name: cdv._id,
+				referenceID: `tpv:${tpv.uuid}`
+			}], () => cb());
+		},
+		function clearExclusiveClient(cb) {
+			volumeCollection.findOneAndUpdate(
+				{ _id: tpvName },
+				{ $unset: { 'tpvConfig.exclusiveClient': 1 } },
+				(err) => {
+					if (err) new MongoError(err).log();
+					cb();
+				}
+			);
+		}
+	], callback);
 };
 
 module.exports = scope;
