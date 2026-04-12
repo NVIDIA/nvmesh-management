@@ -3267,8 +3267,7 @@ scope.deleteTPVs = (tpvIds, user, cb) => {
 						return step(true);
 					}
 					tpv = doc;
-					// TODO (step 6): kafkaModule.sendCDVAllocatorFreeAll(tpv.tpvConfig.cdvUUID, tpv.uuid)
-					step();
+					kafkaModule.sendCDVAllocatorFreeAll(tpv.tpvConfig.cdvUUID, tpv.uuid, () => step());
 				});
 			},
 			function deleteTPVRecord(step) {
@@ -3336,15 +3335,39 @@ scope.extendTPV = ({ tpvId, newSizeGB }, user, cb) => {
 					return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
 						.addInfo(Entities.Volume.ID, tpvId));
 
-				// TODO (step 6): if tpv.tpvConfig.exclusiveClient, send UpdateVolume Kafka message
-				cb(new SystemAdminMessage(systemMessages.VOLUME_UPDATED)
+				const respond = () => cb(new SystemAdminMessage(systemMessages.VOLUME_UPDATED)
 					.addInfo(Entities.Volume.ID, tpvId));
+
+				if (tpv.tpvConfig.exclusiveClient) {
+					const clientModule = require('./client');
+					clientModule.sendUpdateVolumesToClient(updated, respond);
+				} else {
+					respond();
+				}
 			}
 		);
 	});
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Called by kafkaRouter when TOMA reports a CDV is near capacity (< 10% free extents).
+scope.handleCDVCapacityWarning = (message, callback) => {
+	sysERROR(`CDV capacity warning received for CDV ${message.cdvUUID}: ${message.usedExtents}/${message.totalExtents} extents used`);
+
+	// Auto-extend disabled for now. When enabled, extend the CDV by 25% of its current capacity (minimum 1 GB).
+	// const db = app.get('db');
+	// const volumeCollection = db.collection('volume');
+	// volumeCollection.findOne({ uuid: message.cdvUUID, volumeClass: consts.volumeClass.CDV }, (err, cdv) => {
+	// 	if (err || !cdv) return callback();
+	// 	const increaseGB = Math.max(1, Math.ceil(cdv.capacity * 0.25));
+	// 	const newCapacity = cdv.capacity + increaseGB;
+	// 	const systemUser = { email: consts.SYSTEM_USER };
+	// 	scope.extendVolumes([{ _id: cdv._id, uuid: cdv.uuid, capacity: newCapacity }], systemUser, () => callback());
+	// });
+
+	callback();
+};
 
 scope.fetchVolumeVersionByUUID = function fetchVolumeVersionByUUID(uuid, cb) {
 	var db = app.get('db');

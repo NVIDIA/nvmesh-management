@@ -194,6 +194,10 @@ function routeTOMAMessage(message, callback) {
 			volumeEncryptionModule.handleCommandResponse(message, callback);
 			break;
 
+		case consts.kafkaMessageTypes.TOMAToManagement_TP.cdvCapacityWarning:
+			volumeModule.handleCDVCapacityWarning(message, callback);
+			break;
+
 		default:
 			new SystemMessage(systemMessages.KAFKA_UNKNOWN_MESSAGE_TYPE)
 				.addInfo(Entities.KafkaMessage.messageType, message.type)

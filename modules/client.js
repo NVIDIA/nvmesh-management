@@ -3597,29 +3597,107 @@ scope.getCombinedStatusAttachment = (client, dataAttachmentID, cb) => {
 scope.attach = (clientID, clientUUID, requestedVolumes, cb) => {
 	logger.sysDEBUG(`clients/attach for client: ${clientID} volumes: ${JSON.stringify(requestedVolumes)}`);
 
-	utils.executeOnVolumesAndClient(
-		requestedVolumes,
-		clientID,
-		clientUUID,
-		scope.attachVolumes,
-		scope.attachSnapshots,
-		(clientID, clientUUID, mdVolumes, cb) => volumeModule.mdVolumeOperationNotSupportedResponse(mdVolumes, cb),
-		cb
-	);
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	const names = requestedVolumes.map(v => v.name);
+
+	volumeCollection.find({ _id: { $in: names } }, { projection: { _id: 1, volumeClass: 1, uuid: 1 } }).toArray((err, docs) => {
+		if (err) {
+			return utils.executeOnVolumesAndClient(requestedVolumes, clientID, clientUUID,
+				scope.attachVolumes, scope.attachSnapshots,
+				(clientID, clientUUID, mdVolumes, cb) => volumeModule.mdVolumeOperationNotSupportedResponse(mdVolumes, cb), cb);
+		}
+
+		const classMap = {};
+		docs.forEach(d => { classMap[d._id] = { volumeClass: d.volumeClass, uuid: d.uuid }; });
+
+		const tpvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.TPV);
+		const otherVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass !== consts.volumeClass.TPV);
+
+		const allMessages = [];
+
+		async.parallel([
+			next => {
+				if (!tpvVolumes.length) return next();
+				async.each(tpvVolumes, (vol, eachCb) => {
+					scope.attachTPV(clientID, clientUUID, vol.name, attachErr => {
+						const msg = attachErr
+							? new SystemAdminMessage(systemMessages.BUILD_RESPONSES_ERROR)
+								.addInfo(Entities.Volume.ID, vol.name)
+								.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+								.addInfo(Entities.Client.ID, clientID)
+							: new SystemAdminMessage(systemMessages.VOLUME_STATE_ATTACHING)
+								.addInfo(Entities.Volume.ID, vol.name)
+								.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+								.addInfo(Entities.Client.ID, clientID);
+						allMessages.push(msg);
+						eachCb();
+					});
+				}, next);
+			},
+			next => {
+				if (!otherVolumes.length) return next();
+				utils.executeOnVolumesAndClient(otherVolumes, clientID, clientUUID,
+					scope.attachVolumes, scope.attachSnapshots,
+					(clientID, clientUUID, mdVolumes, cb) => volumeModule.mdVolumeOperationNotSupportedResponse(mdVolumes, cb),
+					msgs => { allMessages.push(...msgs); next(); }
+				);
+			}
+		], () => cb(allMessages));
+	});
 };
 
 scope.detach = (clientID, clientUUID, requestedVolumes, cb) => {
 	logger.sysDEBUG(`clients/detach for client: ${clientID} volumes: ${JSON.stringify(requestedVolumes)}`);
 
-	utils.executeOnVolumesAndClient(
-		requestedVolumes,
-		clientID,
-		clientUUID,
-		scope.detachVolumes,
-		scope.detachSnapshots,
-		(clientID, clientUUID, mdVolumes, cb) => volumeModule.mdVolumeOperationNotSupportedResponse(mdVolumes, cb),
-		cb
-	);
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	const names = requestedVolumes.map(v => v.name);
+
+	volumeCollection.find({ _id: { $in: names } }, { projection: { _id: 1, volumeClass: 1, uuid: 1 } }).toArray((err, docs) => {
+		if (err) {
+			return utils.executeOnVolumesAndClient(requestedVolumes, clientID, clientUUID,
+				scope.detachVolumes, scope.detachSnapshots,
+				(clientID, clientUUID, mdVolumes, cb) => volumeModule.mdVolumeOperationNotSupportedResponse(mdVolumes, cb), cb);
+		}
+
+		const classMap = {};
+		docs.forEach(d => { classMap[d._id] = { volumeClass: d.volumeClass, uuid: d.uuid }; });
+
+		const tpvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.TPV);
+		const otherVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass !== consts.volumeClass.TPV);
+
+		const allMessages = [];
+
+		async.parallel([
+			next => {
+				if (!tpvVolumes.length) return next();
+				async.each(tpvVolumes, (vol, eachCb) => {
+					scope.detachTPV(clientID, clientUUID, vol.name, detachErr => {
+						const msg = detachErr
+							? new SystemAdminMessage(systemMessages.DETACH_VOLUME_GENERAL_ERROR)
+								.addInfo(Entities.Volume.ID, vol.name)
+								.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+								.addInfo(Entities.Client.ID, clientID)
+							: new SystemAdminMessage(systemMessages.VOLUME_STATE_DETACHING)
+								.addInfo(Entities.Volume.ID, vol.name)
+								.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+								.addInfo(Entities.Client.ID, clientID);
+						allMessages.push(msg);
+						eachCb();
+					});
+				}, next);
+			},
+			next => {
+				if (!otherVolumes.length) return next();
+				utils.executeOnVolumesAndClient(otherVolumes, clientID, clientUUID,
+					scope.detachVolumes, scope.detachSnapshots,
+					(clientID, clientUUID, mdVolumes, cb) => volumeModule.mdVolumeOperationNotSupportedResponse(mdVolumes, cb),
+					msgs => { allMessages.push(...msgs); next(); }
+				);
+			}
+		], () => cb(allMessages));
+	});
 };
 
 scope.setEmulationMode = (clientID, clientUUID, requestedVolumes, cb) => {

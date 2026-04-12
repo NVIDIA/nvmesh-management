@@ -25,6 +25,7 @@ var kafkaRouter = require('./kafkaRouter.js');
 var { MongoError, SystemMessage, Entities, InteropDBError } = require('./error.js');
 
 const { metrics, isMetricsEnabled } = require('./openTelemetry.js');
+const { CDVAllocatorFreeAll } = require('../models/kafkaMessages/CDVAllocatorFreeAll');
 const { trace, context } = require('@opentelemetry/api');
 const cert = require('./cert.js');
 
@@ -1864,6 +1865,44 @@ function getGroupIdForTopic(topicName) {
 
 	new SystemMessage(systemMessages.KAFKA_GROUP_ID_NOT_FOUND).addInfo(Entities.KafkaTopics, topicName).log();
 }
+
+// Sends CDVAllocatorFreeAll to every first-pRAID TOMA node for the given CDV.
+// Used when a TPV is deleted so TOMA can reclaim all CDV_extents owned by that TPV.
+scope.sendCDVAllocatorFreeAll = (cdvUUID, tpvUUID, cb = () => {}) => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	const serverCollection = db.collection('server');
+
+	volumeCollection.findOne({ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV }, { projection: { chunks: 1 } }, (err, cdv) => {
+		if (err || !cdv) {
+			logger.sysDEBUG(`sendCDVAllocatorFreeAll: CDV ${cdvUUID} not found`);
+			return cb();
+		}
+
+		const nodeIds = (cdv.chunks && cdv.chunks[0])
+			? [...new Set(
+				cdv.chunks[0].pRaids
+					.flatMap(pRaid => pRaid.diskSegments)
+					.filter(seg => seg.status === 'RW_ENABLED')
+					.map(seg => seg.node_id)
+			)]
+			: [];
+
+		if (!nodeIds.length)
+			return cb();
+
+		serverCollection.find({ node_id: { $in: nodeIds } }, { projection: { node_id: 1, topics: 1 } }).toArray((err2, targets) => {
+			if (err2 || !targets || !targets.length) {
+				logger.sysDEBUG(`sendCDVAllocatorFreeAll: no targets found for CDV ${cdvUUID}`);
+				return cb();
+			}
+
+			async.each(targets, (target, next) => {
+				scope.sendMessages(target.topics[consts.topicSuffix.TOMA_COMMANDS], [new CDVAllocatorFreeAll(cdvUUID, tpvUUID)], next);
+			}, () => cb());
+		});
+	});
+};
 
 // return an object mapping topic names to their offsets information (which is an object mapping partition numbers to offsets)
 // i.e. { 'default.management.priority': { 0: 100, 1: 200 }, 'scale-1.client.main': { 0: 300, 1: 400 } }

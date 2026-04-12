@@ -948,7 +948,76 @@ router.post('/delete', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @api {post} /volumes/tpv/update Update a TPV
+* @apiName UpdateTPV
+* @apiGroup volumes
+* @apiDescription Update mutable fields of a Thin-Provisioned Volume (name, description, maxVirtualSizeGB).
+* @apiBody {string} _id TPV ID.
+* @apiBody {string} [description] New description.
+* @apiBody {object} [tpvConfig] TPV configuration overrides.
+* @apiBody {number} [tpvConfig.maxVirtualSizeGB] New maximum virtual size in GB.
+*/
+router.post('/tpv/update', isAdminRole, function(req, res) {
+	let updateObj = req.body;
+	let user = req.user;
+
+	let incomingRequestSystemAdminMessages = [createAuditRequestLog(req, systemMessages.VOLUME_UPDATE_REQUEST)
+		.addInfo(Entities.Volume.ID, updateObj._id)];
+
+	utils.handleRESTAndLog(
+		incomingRequestSystemAdminMessages,
+		cb => volumeModule.updateTPV(updateObj, user, m => cb([m])),
+		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Volume.ID, Entities.Volume.UUID)))
+	);
+});
+
+/**
+* @api {post} /volumes/tpv/delete Delete TPVs
+* @apiName DeleteTPVs
+* @apiGroup volumes
+* @apiDescription Delete one or more Thin-Provisioned Volumes. Each TPV must be detached before deletion.
+* @apiBody {object[]} tpvIds Array of TPV IDs to delete.
+* @apiBody {string} tpvIds._id TPV ID.
+*/
+router.post('/tpv/delete', isAdminRole, function(req, res) {
+	let tpvIds = req.body;
+	let user = req.user;
+
+	let incomingRequestSystemAdminMessages = tpvIds.map(({ _id }) => createAuditRequestLog(req, systemMessages.VOLUME_DELETE_REQUEST)
+		.addInfo(Entities.Volume.ID, _id));
+
+	utils.handleRESTAndLog(
+		incomingRequestSystemAdminMessages,
+		cb => volumeModule.deleteTPVs(tpvIds, user, cb),
+		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Volume.ID, Entities.Volume.UUID)))
+	);
+});
+
+/**
+* @api {post} /volumes/tpv/extend Extend a TPV
+* @apiName ExtendTPV
+* @apiGroup volumes
+* @apiDescription Increase the virtual size of a Thin-Provisioned Volume.
+* The new size must be larger than the current size and must not exceed maxVirtualSizeGB.
+* @apiBody {string} tpvId TPV ID to extend.
+* @apiBody {number} newSizeGB New virtual size in GB.
+*/
+router.post('/tpv/extend', isAdminRole, function(req, res) {
+	let { tpvId, newSizeGB } = req.body;
+	let user = req.user;
+
+	let incomingRequestSystemAdminMessages = [createAuditRequestLog(req, systemMessages.VOLUME_EXTEND_REQUEST)
+		.addInfo(Entities.Volume.ID, tpvId)];
+
+	utils.handleRESTAndLog(
+		incomingRequestSystemAdminMessages,
+		cb => volumeModule.extendTPV({ tpvId, newSizeGB }, user, m => cb([m])),
+		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Volume.ID, Entities.Volume.UUID)))
+	);
+});
+
+/**
+* @apiVersion 17.0.0
 * @api {get} /volumes/:id Get volume by ID
 * @apiName GetVolume
 * @apiGroup volumes
