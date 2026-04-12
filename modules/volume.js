@@ -3291,9 +3291,11 @@ scope.deleteTPVs = (tpvIds, user, cb) => {
 				});
 			},
 		], () => {
-			if (!message)
+			if (!message) {
 				message = new SystemAdminMessage(systemMessages.VOLUME_MARKED_FOR_DELETION)
 					.addInfo(Entities.Volume.ID, _id);
+				events.emitEvent([events.getVolumeID(tpv.name)], objectNotifier.events.volumeRemovedEvent, tpv);
+			}
 			messages.push(message);
 			next();
 		});
