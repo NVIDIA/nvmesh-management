@@ -79,6 +79,15 @@ scope.getAllVolumes = function(projection, page, count, filter, sort, cb) {
 		}
 	];
 
+	// Denormalize CDV name for TPV queries
+	if (query.filter.volumeClass === consts.volumeClass.TPV) {
+		pipeline.push(
+			{ $lookup: { from: 'volume', localField: 'tpvConfig.cdvId', foreignField: '_id', as: '_cdv', pipeline: [{ $project: { name: 1 } }] } },
+			{ $addFields: { 'tpvConfig.cdvName': { $arrayElemAt: ['$_cdv.name', 0] } } },
+			{ $unset: '_cdv' }
+		);
+	}
+
 	if (Object.keys(query.projection).length)
 		pipeline.push({ $project: query.projection });
 
@@ -2529,6 +2538,14 @@ scope.markVolumesForDeletion = function(volumes, cb) {
 					callback();
 				});
 			},
+			function failIfCDVHasTPVs(callback) {
+				if (dbVolume.volumeClass !== consts.volumeClass.CDV || !dbVolume.tpvCount)
+					return callback();
+
+				handleDeleteVolumeError(systemMessages.VOLUME_DELETE_FAILED,
+					`CDV has ${dbVolume.tpvCount} TPV(s). Delete all TPVs before deleting the CDV.`, volume);
+				return callback(true);
+			},
 			function failIfSourceVolumeInUse(callback) {
 				if (!dbVolume.usedAsSourceCount || dbVolume.usedAsSourceCount == 0)
 					return callback();
@@ -3103,6 +3120,13 @@ function createTPV(volume, user, cb) {
 					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
 						.addInfo(Entities.Volume.name, volume.name)
 						.addInfo(Entities.Error, 'virtualSizeGB cannot exceed parent CDV capacity');
+					return next(true);
+				}
+				if (tpvExtentSizeKB > doc.cdvConfig.cdvExtentSizeMB * 1024) {
+					const maxKB = doc.cdvConfig.cdvExtentSizeMB * 1024;
+					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
+						.addInfo(Entities.Volume.name, volume.name)
+						.addInfo(Entities.Error, `tpvExtentSizeKB (${tpvExtentSizeKB}) cannot exceed cdvExtentSizeMB * 1024 (${maxKB})`);
 					return next(true);
 				}
 				cdv = doc;

@@ -328,7 +328,11 @@ const CreateEditVolume = ({
 
 		if (isCDV) {
 			toSubmit.volumeClass = consts.volumeClass.CDV;
-			toSubmit.cdvConfig = { cdvExtentSizeMB: data.cdvExtentSizeMB || 1024 };
+			toSubmit.cdvConfig = {
+				cdvExtentSizeMB: data.cdvExtentSizeMB || 1024,
+				allocatorSizeGB: data.allocatorSizeGB || 1,
+				maxTPVs: data.maxTPVs || 512,
+			};
 		}
 
 		return toSubmit;
@@ -460,29 +464,67 @@ const CreateEditVolume = ({
 						)}
 
 						{isCDV && (
-							<FormControl
-								name="cdvExtentSizeMB"
-								label="CDV Extent Size"
-								errorMessage={formState.errors?.cdvExtentSizeMB?.message}
-							>
-								<Controller
-									control={control}
+							<>
+								<FormControl
 									name="cdvExtentSizeMB"
-									defaultValue={volume.cdvConfig?.cdvExtentSizeMB || 1024}
-									rules={{ required: isCDV ? 'Extent size is required' : false }}
-									render={({ field: { onChange, value } }) => (
-										<Select
-											id="cdv-extent-size"
-											value={value}
-											onChange={onChange}
-											options={consts.cdvExtentSizeMBValues.map(mb => ({
-												text: mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`,
-												value: mb
-											}))}
-										/>
-									)}
-								/>
-							</FormControl>
+									label="CDV Extent Size"
+									errorMessage={formState.errors?.cdvExtentSizeMB?.message}
+								>
+									<Controller
+										control={control}
+										name="cdvExtentSizeMB"
+										defaultValue={volume.cdvConfig?.cdvExtentSizeMB || 1024}
+										rules={{ required: isCDV ? 'Extent size is required' : false }}
+										render={({ field: { onChange, value } }) => (
+											<Select
+												id="cdv-extent-size"
+												disabled={!isCreate}
+												value={value}
+												onChange={onChange}
+												options={consts.cdvExtentSizeMBValues.map(mb => ({
+													text: mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`,
+													value: mb
+												}))}
+											/>
+										)}
+									/>
+								</FormControl>
+
+								<FormControl
+									name="allocatorSizeGB"
+									label="Allocator Size (GB)"
+									errorMessage={formState.errors?.allocatorSizeGB?.message}
+								>
+									<Input
+										name="allocatorSizeGB"
+										type="number"
+										className="form-control"
+										disabled={!isCreate}
+										{...register('allocatorSizeGB', {
+											value: volume.cdvConfig?.allocatorSizeGB || 1,
+											min: { value: 1, message: 'Minimum is 1 GB' },
+											valueAsNumber: true,
+										})}
+									/>
+								</FormControl>
+
+								<FormControl
+									name="maxTPVs"
+									label="Max TPVs"
+									errorMessage={formState.errors?.maxTPVs?.message}
+								>
+									<Input
+										name="maxTPVs"
+										type="number"
+										className="form-control"
+										{...register('maxTPVs', {
+											value: volume.cdvConfig?.maxTPVs || 512,
+											min: { value: 1, message: 'Minimum is 1' },
+											valueAsNumber: true,
+										})}
+									/>
+								</FormControl>
+							</>
 						)}
 
 					</div>

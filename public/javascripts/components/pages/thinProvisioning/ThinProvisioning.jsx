@@ -59,10 +59,10 @@ const ThinProvisioning = () => {
 			sort: 'asc',
 		},
 		{
-			name: 'CDV',
+			name: 'Parent CDV',
 			field: 'tpvConfig.cdvId',
 			placeholder: 'Search by CDV',
-			value: tpvRow => tpvRow.tpvConfig?.cdvId || '—',
+			value: tpvRow => tpvRow.tpvConfig?.cdvName || tpvRow.tpvConfig?.cdvId || '—',
 		},
 		{
 			name: 'Virtual Size',

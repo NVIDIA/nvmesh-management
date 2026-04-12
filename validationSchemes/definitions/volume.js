@@ -54,9 +54,12 @@ const tpvConfigScheme = {
 	unevaluatedProperties: false,
 	properties: {
 		cdvId: { type: 'string', minLength: 1 },
+		cdvUUID: { type: 'string' },
 		tpvExtentSizeKB: { type: 'integer', enum: consts.tpvExtentSizeKBValues },
 		virtualSizeGB: { type: 'number', exclusiveMinimum: 0 },
 		maxVirtualSizeGB: { type: 'number', default: 1000, exclusiveMinimum: 0 },
+		exclusiveClient: { type: ['string', 'null'], default: null },
+		exclusiveClientUUID: { type: ['string', 'null'], default: null },
 	},
 };
 
@@ -81,6 +84,7 @@ const scheme = {
 		metadata: { $ref: consts.MANAGEMENT_DEFINITIONS + '/volumeMetadata.js', default: {} },
 		use_debug_di: { type: 'boolean', default: false },
 		volumeClass: { type: 'string', enum: Object.values(consts.volumeClass), default: 'REGULAR' },
+		tpvCount: { type: 'integer', default: 0, minimum: 0 },
 		cdvConfig: cdvConfigScheme,
 		tpvConfig: tpvConfigScheme,
 	},

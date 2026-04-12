@@ -148,8 +148,10 @@ const Volumes = () => {
 	const [showCreateEditModal, setShowCreateEditModal] = useState(false);
 	const [diagramVolumeId, setDiagramVolumeId] = useState();
 	const [volume, setVolume] = useState({});
-	const [showCDVs, setShowCDVs] = useState(false);
-	const showCDVsRef = useRef(false);
+	const [showRegular, setShowRegular] = useState(true);
+	const [showCDVs, setShowCDVs] = useState(true);
+	const showRegularRef = useRef(true);
+	const showCDVsRef = useRef(true);
 	const tableRef = useRef();
 	const isPassphraseCmdDisabled = selectedVolumes.some(v =>
 		!v.isEncrypted ||
@@ -211,8 +213,8 @@ const Volumes = () => {
 					volume.capacity;
 				return <>
 					{CapacityService.toBiggestUnit(capacity, unitType)}
-					{volume.volumeClass === consts.volumeClass.CDV && (
-						<small className="text-muted"> CDV</small>
+					{volume.volumeClass === consts.volumeClass.CDV && volume.cdvConfig && (
+						<small className="text-muted"> ({volume.tpvCount || 0}/{volume.cdvConfig.maxTPVs} TPVs)</small>
 					)}
 				</>;
 			},
@@ -325,11 +327,15 @@ const Volumes = () => {
 
 	useEffect(() => {
 		reloadTable();
-	}, [showCDVs]);
+	}, [showRegular, showCDVs]);
 
-	const getVolumeClassFilter = () => showCDVsRef.current
-		? { volumeClass: { $ne: consts.volumeClass.TPV } }
-		: { volumeClass: { $nin: [consts.volumeClass.CDV, consts.volumeClass.TPV] } };
+	const getVolumeClassFilter = () => {
+		const classes = [];
+		if (showRegularRef.current) classes.push(consts.volumeClass.REGULAR, null);
+		if (showCDVsRef.current) classes.push(consts.volumeClass.CDV);
+		// TPVs are never shown here — they have their own page
+		return { volumeClass: { $in: classes } };
+	};
 
 	const loadTotalFn = async(filter) => VolumesService.loadTotal({ ...filter, ...getVolumeClassFilter() });
 
@@ -678,13 +684,24 @@ const Volumes = () => {
 				<label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal', margin: 0 }}>
 					<input
 						type="checkbox"
+						checked={showRegular}
+						onChange={e => {
+							showRegularRef.current = e.target.checked;
+							setShowRegular(e.target.checked);
+						}}
+					/>
+					Regular volumes
+				</label>
+				<label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal', margin: 0 }}>
+					<input
+						type="checkbox"
 						checked={showCDVs}
 						onChange={e => {
 							showCDVsRef.current = e.target.checked;
 							setShowCDVs(e.target.checked);
 						}}
 					/>
-					Show CDVs
+					CDVs
 				</label>
 			</div>
 

@@ -99,33 +99,42 @@ describe('consts — thin provisioning additions', () => {
 
 describe('Volumes.jsx — getVolumeClassFilter', () => {
 	// Mirrors the component closure exactly.
-	const getVolumeClassFilter = (showCDVs) => showCDVs
-		? { volumeClass: { $ne: consts.volumeClass.TPV } }
-		: { volumeClass: { $nin: [consts.volumeClass.CDV, consts.volumeClass.TPV] } };
+	// Two checkboxes: showRegular (checked) and showCDVs (checked). TPVs always excluded.
+	const getVolumeClassFilter = (showRegular, showCDVs) => {
+		const classes = [];
+		if (showRegular) classes.push(consts.volumeClass.REGULAR, null);
+		if (showCDVs) classes.push(consts.volumeClass.CDV);
+		return { volumeClass: { $in: classes } };
+	};
 
-	it('showCDVs=false — excludes both CDV and TPV', async() => {
-		const filter = getVolumeClassFilter(false);
-		const excluded = filter.volumeClass.$nin;
-		assert.ok(Array.isArray(excluded));
-		assert.ok(excluded.includes(consts.volumeClass.CDV));
-		assert.ok(excluded.includes(consts.volumeClass.TPV));
+	it('both checked — includes REGULAR, null, and CDV', async() => {
+		const filter = getVolumeClassFilter(true, true);
+		const included = filter.volumeClass.$in;
+		assert.ok(included.includes(consts.volumeClass.REGULAR));
+		assert.ok(included.includes(null));
+		assert.ok(included.includes(consts.volumeClass.CDV));
 	});
 
-	it('showCDVs=true — excludes only TPV (CDVs pass through)', async() => {
-		const filter = getVolumeClassFilter(true);
-		assert.strictEqual(filter.volumeClass.$ne, consts.volumeClass.TPV);
-		assert.strictEqual(filter.volumeClass.$nin, undefined);
+	it('both checked — never includes TPV', async() => {
+		const filter = getVolumeClassFilter(true, true);
+		assert.ok(!filter.volumeClass.$in.includes(consts.volumeClass.TPV));
 	});
 
-	it('showCDVs=false — does not exclude REGULAR volumes', async() => {
-		const filter = getVolumeClassFilter(false);
-		assert.ok(!filter.volumeClass.$nin.includes(consts.volumeClass.REGULAR));
+	it('showRegular only — includes REGULAR and null, excludes CDV', async() => {
+		const filter = getVolumeClassFilter(true, false);
+		assert.ok(filter.volumeClass.$in.includes(consts.volumeClass.REGULAR));
+		assert.ok(!filter.volumeClass.$in.includes(consts.volumeClass.CDV));
 	});
 
-	it('showCDVs=true — does not exclude CDV via $nin', async() => {
-		const filter = getVolumeClassFilter(true);
-		// $nin must be absent; CDVs should not be filtered out
-		assert.ok(!filter.volumeClass.$nin);
+	it('showCDVs only — includes CDV, excludes REGULAR', async() => {
+		const filter = getVolumeClassFilter(false, true);
+		assert.ok(filter.volumeClass.$in.includes(consts.volumeClass.CDV));
+		assert.ok(!filter.volumeClass.$in.includes(consts.volumeClass.REGULAR));
+	});
+
+	it('neither checked — empty $in array', async() => {
+		const filter = getVolumeClassFilter(false, false);
+		assert.strictEqual(filter.volumeClass.$in.length, 0);
 	});
 });
 
@@ -254,7 +263,11 @@ describe('CreateEditVolumeModal.jsx — CDV payload branch', () => {
 	const applyCDVProperties = (toSubmit, isCDV, data) => {
 		if (isCDV) {
 			toSubmit.volumeClass = consts.volumeClass.CDV;
-			toSubmit.cdvConfig = { cdvExtentSizeMB: data.cdvExtentSizeMB || 1024 };
+			toSubmit.cdvConfig = {
+				cdvExtentSizeMB: data.cdvExtentSizeMB || 1024,
+				allocatorSizeGB: data.allocatorSizeGB || 1,
+				maxTPVs: data.maxTPVs || 512,
+			};
 		}
 		return toSubmit;
 	};
@@ -274,6 +287,26 @@ describe('CreateEditVolumeModal.jsx — CDV payload branch', () => {
 		assert.strictEqual(result.cdvConfig.cdvExtentSizeMB, 1024);
 	});
 
+	it('when isCDV=true: sets cdvConfig.allocatorSizeGB from form data', async() => {
+		const result = applyCDVProperties({}, true, { allocatorSizeGB: 4 });
+		assert.strictEqual(result.cdvConfig.allocatorSizeGB, 4);
+	});
+
+	it('when isCDV=true: allocatorSizeGB defaults to 1 when not provided', async() => {
+		const result = applyCDVProperties({}, true, {});
+		assert.strictEqual(result.cdvConfig.allocatorSizeGB, 1);
+	});
+
+	it('when isCDV=true: sets cdvConfig.maxTPVs from form data', async() => {
+		const result = applyCDVProperties({}, true, { maxTPVs: 256 });
+		assert.strictEqual(result.cdvConfig.maxTPVs, 256);
+	});
+
+	it('when isCDV=true: maxTPVs defaults to 512 when not provided', async() => {
+		const result = applyCDVProperties({}, true, {});
+		assert.strictEqual(result.cdvConfig.maxTPVs, 512);
+	});
+
 	it('when isCDV=false: does not set volumeClass', async() => {
 		const result = applyCDVProperties({}, false, { cdvExtentSizeMB: 512 });
 		assert.strictEqual(result.volumeClass, undefined);
@@ -291,28 +324,40 @@ describe('CreateEditVolumeModal.jsx — CDV payload branch', () => {
 // ---------------------------------------------------------------------------
 
 describe('Sidebar.jsx — thin provisioning nav entry', () => {
-	// The entry as it appears in Sidebar.jsx links array.
+	// The parent entry as it appears in Sidebar.jsx links array.
 	const thinProvEntry = {
-		url: '/thin-provisioning/tpv',
-		icon: 'fa-database',
+		icon: 'fa-cubes',
 		caption: 'Thin Provisioning',
-		adminOnly: true,
+		adminOnly: false,
+		subItems: [{
+			url: '/thin-provisioning/tpv',
+			icon: 'fa fa-database',
+			caption: 'TPV List',
+		}]
 	};
 
-	it('URL points to the TPV route', async() => {
-		assert.strictEqual(thinProvEntry.url, '/thin-provisioning/tpv');
+	it('parent uses the fa-cubes icon', async() => {
+		assert.strictEqual(thinProvEntry.icon, 'fa-cubes');
 	});
 
-	it('is restricted to admins (adminOnly: true)', async() => {
-		assert.strictEqual(thinProvEntry.adminOnly, true);
+	it('parent is not admin-only (visible to all users)', async() => {
+		assert.strictEqual(thinProvEntry.adminOnly, false);
 	});
 
-	it('uses the fa-database icon', async() => {
-		assert.strictEqual(thinProvEntry.icon, 'fa-database');
-	});
-
-	it('caption is "Thin Provisioning"', async() => {
+	it('parent caption is "Thin Provisioning"', async() => {
 		assert.strictEqual(thinProvEntry.caption, 'Thin Provisioning');
+	});
+
+	it('has one subItem for TPV List', async() => {
+		assert.strictEqual(thinProvEntry.subItems.length, 1);
+	});
+
+	it('subItem URL points to the TPV route', async() => {
+		assert.strictEqual(thinProvEntry.subItems[0].url, '/thin-provisioning/tpv');
+	});
+
+	it('subItem caption is "TPV List"', async() => {
+		assert.strictEqual(thinProvEntry.subItems[0].caption, 'TPV List');
 	});
 });
 

@@ -4730,7 +4730,12 @@ scope.attachTPV = (clientID, clientUUID, tpvName, callback) => {
 			scope.attachVolumes(clientID, clientUUID, [{
 				uuid: tpv.uuid,
 				name: tpv._id,
-				reservation: { mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE }
+				reservation: { mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE },
+				cdvConf: {
+					uuid: cdv.uuid,
+					name: cdv._id,
+					chunks: cdv.chunks,
+				}
 			}], () => cb());
 		},
 		function setExclusiveClient(cb) {

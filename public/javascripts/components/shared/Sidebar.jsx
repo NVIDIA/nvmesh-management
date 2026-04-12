@@ -34,10 +34,14 @@ const Sidebar = () => {
 		caption: 'Volumes',
 		adminOnly: false
 	}, {
-		url: '/thin-provisioning/tpv',
-		icon: 'fa-database',
+		icon: 'fa-cubes',
 		caption: 'Thin Provisioning',
-		adminOnly: true
+		adminOnly: false,
+		subItems: [{
+			url: '/thin-provisioning/tpv',
+			icon: 'fa fa-database',
+			caption: 'TPV List',
+		}]
 	}, {
 		url: '/disks',
 		icon: 'fa-hdd-o filter:invert(1);',

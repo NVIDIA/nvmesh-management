@@ -48,6 +48,7 @@ const CreateAttachDetach = ({
 			name: 1,
 			uuid: 1,
 			volumeClass: 1,
+			tpvConfig: 1,
 			'reservation.mode': 1,
 			'reservation.version': 1,
 			'reservation.reservedBy': 1
@@ -201,7 +202,11 @@ const CreateAttachDetach = ({
 			value: volume => <>
 				{volume.name}
 				{volume.volumeClass === consts.volumeClass.TPV && (
-					<small className="text-muted"> (TPV — size managed by CDV allocator)</small>
+					<div className="alert alert-info" style={{ marginTop: 4, padding: '4px 8px', fontSize: '0.85em', marginBottom: 0 }}>
+						<i className="fa fa-info-circle" />{' '}
+						CDV <strong>{volume.tpvConfig?.cdvName || volume.tpvConfig?.cdvId}</strong> will
+						also be attached as a hidden volume to provide physical storage.
+					</div>
 				)}
 			</>
 		},

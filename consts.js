@@ -1109,7 +1109,7 @@ consts.IP_STRATEGIES = {
 consts.RE_REGISTER_TOPICS_INTERVAL = 5 * 1000;
 
 consts.updatableVolumeProperties = ['description', 'limitByNodes', 'limitByDisks', 'VSGs', 'diskClasses', 'serverClasses', 'relativeRebuildPriority',
-	'enableNVMf', 'enableCrcCheck', 'selectedClientsForNvmf', 'isReadOnly', 'allowAllocationOnOfflineDrives', 'metadata'];
+	'enableNVMf', 'enableCrcCheck', 'selectedClientsForNvmf', 'isReadOnly', 'allowAllocationOnOfflineDrives', 'metadata', 'cdvConfig'];
 
 consts.updatableVpgProperties = ['description', 'VSGs', 'allowAllocationOnOfflineDrives'];
 
