@@ -132,6 +132,7 @@ var nvmeshMetadata = require('./routes/nvmeshMetadata');
 var mongoDB = require('./routes/mongoDB');
 var techniciansScreen = require('./routes/techniciansScreen');
 var kafkaRoutes = require('./routes/kafka');
+var thinProvisioning = require('./routes/thinProvisioning');
 const kafka = require('./modules/kafka');
 const isServiceAvailable = require('./middlewares/isServiceAvailable');
 const isAuthenticated = require('./middlewares/isAuthenticated');
@@ -359,6 +360,7 @@ function doAfterDatabasesArePopulatedAndConnected() {
 		routerAPI.use('/techniciansScreen', techniciansScreen);
 		routerAPI.use('/kafka', kafkaRoutes);
 
+		app.use('/thin-provisioning', isAuthenticated, shouldChangePassword, thinProvisioning);
 		app.use('/', routerAPI);
 		app.use('/', isAuthenticated, shouldChangePassword, routes);
 

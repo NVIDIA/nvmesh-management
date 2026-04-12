@@ -34,6 +34,11 @@ const Sidebar = () => {
 		caption: 'Volumes',
 		adminOnly: false
 	}, {
+		url: '/thin-provisioning/tpv',
+		icon: 'fa-database',
+		caption: 'Thin Provisioning',
+		adminOnly: true
+	}, {
 		url: '/disks',
 		icon: 'fa-hdd-o filter:invert(1);',
 		caption: 'Drives',

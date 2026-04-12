@@ -48,7 +48,8 @@ const componentsRegistry = {
 	[consts.componentsPages.about]: `${pagesFolder}/About.js`,
 	[consts.componentsPages.pageNotFound]: `${pagesFolder}/PageNotFound.js`,
 	[consts.componentsPages.serviceUnavailable]: `${pagesFolder}/ServiceUnavailable.js`,
-	[consts.componentsPages.configurationProfiles]: `${pagesFolder}/configProfiles/ConfigProfiles.js`
+	[consts.componentsPages.configurationProfiles]: `${pagesFolder}/configProfiles/ConfigProfiles.js`,
+	[consts.componentsPages.tpv]: `${pagesFolder}/thinProvisioning/ThinProvisioning.js`,
 };
 
 managementApp.controller('reactController', function($scope) {

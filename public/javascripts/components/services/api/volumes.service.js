@@ -79,4 +79,27 @@ export const VolumesService = {
 	async getLargestVolumes() {
 		return await apiService.get('/getLargestVolumes');
 	},
+
+	async getCDVs() {
+		return await apiService.get('/all/0/0', {
+			filter: { volumeClass: 'CDV' },
+			projection: { _id: 1, uuid: 1, name: 1, capacity: 1, cdvConfig: 1 }
+		});
+	},
+
+	async createTPV(tpv) {
+		return await apiService.post('/save', tpv);
+	},
+
+	async updateTPV(tpv) {
+		return await apiService.post('/tpv/update', tpv);
+	},
+
+	async deleteTPV(tpvIds) {
+		return await apiService.post('/tpv/delete', tpvIds);
+	},
+
+	async extendTPV(data) {
+		return await apiService.post('/tpv/extend', data);
+	},
 };

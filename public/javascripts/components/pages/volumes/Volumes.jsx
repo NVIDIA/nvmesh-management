@@ -148,6 +148,8 @@ const Volumes = () => {
 	const [showCreateEditModal, setShowCreateEditModal] = useState(false);
 	const [diagramVolumeId, setDiagramVolumeId] = useState();
 	const [volume, setVolume] = useState({});
+	const [showCDVs, setShowCDVs] = useState(false);
+	const showCDVsRef = useRef(false);
 	const tableRef = useRef();
 	const isPassphraseCmdDisabled = selectedVolumes.some(v =>
 		!v.isEncrypted ||
@@ -207,7 +209,12 @@ const Volumes = () => {
 				const capacity = volume.capacity === consts.volumeCapacity.MAX && volume.blocks && volume.blockSize ?
 					volume.blocks * volume.blockSize :
 					volume.capacity;
-				return CapacityService.toBiggestUnit(capacity, unitType);
+				return <>
+					{CapacityService.toBiggestUnit(capacity, unitType)}
+					{volume.volumeClass === consts.volumeClass.CDV && (
+						<small className="text-muted"> CDV</small>
+					)}
+				</>;
 			},
 		},
 		{
@@ -316,8 +323,18 @@ const Volumes = () => {
 		SocketService.addHandler(events.newVolumeEvent.name, () => reloadTable());
 	}, []);
 
+	useEffect(() => {
+		reloadTable();
+	}, [showCDVs]);
+
+	const getVolumeClassFilter = () => showCDVsRef.current
+		? { volumeClass: { $ne: consts.volumeClass.TPV } }
+		: { volumeClass: { $nin: [consts.volumeClass.CDV, consts.volumeClass.TPV] } };
+
+	const loadTotalFn = async(filter) => VolumesService.loadTotal({ ...filter, ...getVolumeClassFilter() });
+
 	const loadRows = async(filter, sort, currentPage, count) => {
-		const volumes = await VolumesService.loadVolumes(filter, sort, currentPage, count);
+		const volumes = await VolumesService.loadVolumes({ ...filter, ...getVolumeClassFilter() }, sort, currentPage, count);
 		volumes.forEach(volume => {
 			if (volume.deletionZeroingStarted && volume.action === consts.volumeActions.MARKED_FOR_DELETION) {
 				volume.action = consts.volumeActions.DELETING;
@@ -657,6 +674,20 @@ const Volumes = () => {
 
 			<h1>Volumes</h1>
 
+			<div className="action-container" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+				<label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal', margin: 0 }}>
+					<input
+						type="checkbox"
+						checked={showCDVs}
+						onChange={e => {
+							showCDVsRef.current = e.target.checked;
+							setShowCDVs(e.target.checked);
+						}}
+					/>
+					Show CDVs
+				</label>
+			</div>
+
 			<div className="action-container">
 				<button className="btn multi-select-action-btn btn-info mgmt-btn-info"
 				        disabled={!currUser.isAdmin || !selectedVolumes.length ||
@@ -701,7 +732,7 @@ const Volumes = () => {
 				ref={tableRef}
 				tableId="volumes"
 				columns={columns}
-				loadTotal={VolumesService.loadTotal}
+				loadTotal={loadTotalFn}
 				loadRows={loadRows}
 				multiselectOptions={{
 					enabled: true,

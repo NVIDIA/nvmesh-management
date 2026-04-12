@@ -87,6 +87,7 @@ const CreateEditVolume = ({
 	const [totalSpace, setTotalSpace] = useState(0);
 	const [allocatedSpace, setAllocatedSpace] = useState(0);
 	const [availableMirrors, setAvailableMirrors] = useState(0);
+	const [isCDV, setIsCDV] = useState(volume.volumeClass === consts.volumeClass.CDV);
 	const formData = watch();
 
 	const VPGsByType = groupBy(VPGs, vpg => vpg.type === consts.volumeTypes.METADATA_VOLUME ? 'metadata' : 'normal');
@@ -325,6 +326,11 @@ const CreateEditVolume = ({
 			toSubmit.selectedClientsForNvmf = data.selectedClientsForNvmf;
 		}
 
+		if (isCDV) {
+			toSubmit.volumeClass = consts.volumeClass.CDV;
+			toSubmit.cdvConfig = { cdvExtentSizeMB: data.cdvExtentSizeMB || 1024 };
+		}
+
 		return toSubmit;
 	};
 
@@ -441,6 +447,44 @@ const CreateEditVolume = ({
 								})}
 							/>
 						</FormControl>
+
+						{isCreate && (
+							<FormControl name="isCDV" label="CDV Mode">
+								<Toggle
+									id="isCDV-toggle"
+									isChecked={isCDV}
+									onChange={checked => setIsCDV(checked)}
+								/>
+								<small className="text-muted">Create as Carrier Direct Volume (CDV) — hosts thin-provisioned volumes</small>
+							</FormControl>
+						)}
+
+						{isCDV && (
+							<FormControl
+								name="cdvExtentSizeMB"
+								label="CDV Extent Size"
+								errorMessage={formState.errors?.cdvExtentSizeMB?.message}
+							>
+								<Controller
+									control={control}
+									name="cdvExtentSizeMB"
+									defaultValue={volume.cdvConfig?.cdvExtentSizeMB || 1024}
+									rules={{ required: isCDV ? 'Extent size is required' : false }}
+									render={({ field: { onChange, value } }) => (
+										<Select
+											id="cdv-extent-size"
+											value={value}
+											onChange={onChange}
+											options={consts.cdvExtentSizeMBValues.map(mb => ({
+												text: mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`,
+												value: mb
+											}))}
+										/>
+									)}
+								/>
+							</FormControl>
+						)}
+
 					</div>
 					<div className="col-md-6">
 						<FormControl

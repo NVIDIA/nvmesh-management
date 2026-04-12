@@ -47,6 +47,7 @@ const CreateAttachDetach = ({
 		const projection = {
 			name: 1,
 			uuid: 1,
+			volumeClass: 1,
 			'reservation.mode': 1,
 			'reservation.version': 1,
 			'reservation.reservedBy': 1
@@ -196,7 +197,13 @@ const CreateAttachDetach = ({
 			name: 'Volume Name',
 			field: 'name',
 			placeholder: 'Search by Volume Name',
-			sort: 'asc'
+			sort: 'asc',
+			value: volume => <>
+				{volume.name}
+				{volume.volumeClass === consts.volumeClass.TPV && (
+					<small className="text-muted"> (TPV — size managed by CDV allocator)</small>
+				)}
+			</>
 		},
 		{
 			name: 'Reservation Mode',
