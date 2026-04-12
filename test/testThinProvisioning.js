@@ -13,7 +13,6 @@ const lockUtils = require('./testUtils/lockUtils.js');
 const consts = require('../consts.js');
 const { saveVolumes, deleteTPVs, updateTPV, extendTPV, handleCDVCapacityWarning, updateVolumes } = require('../modules/volume.js');
 const { Entities } = require('../modules/error.js');
-const systemMessages = require('../systemMessages.js');
 
 const ZONE_1 = '1';
 const TEST_USER = { email: consts.ADMIN_USER };

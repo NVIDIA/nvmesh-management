@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* global globalThis, describe, it, before */
+/* global globalThis, describe, it */
 
 import assert from 'assert';
 import consts from '../../consts.js';
