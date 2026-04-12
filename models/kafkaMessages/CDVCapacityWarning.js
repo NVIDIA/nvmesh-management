@@ -14,7 +14,7 @@ exports.CDVCapacityWarning = class CDVCapacityWarning extends MessageFromTOMA {
 	}
 
 	// payload shape: { cdvUUID: string, usedExtents: number, totalExtents: number }
-	get cdvUUID()      { return this.payload.cdvUUID; }
-	get usedExtents()  { return this.payload.usedExtents; }
+	get cdvUUID() { return this.payload.cdvUUID; }
+	get usedExtents() { return this.payload.usedExtents; }
 	get totalExtents() { return this.payload.totalExtents; }
 };

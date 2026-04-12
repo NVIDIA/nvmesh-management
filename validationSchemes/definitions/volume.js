@@ -45,7 +45,7 @@ const cdvConfigScheme = {
 	properties: {
 		cdvExtentSizeMB: { type: 'integer', enum: consts.cdvExtentSizeMBValues },
 		allocatorSizeGB: { type: 'integer', default: 1, minimum: 1 },
-		maxTPVs:         { type: 'integer', default: 512, minimum: 1 },
+		maxTPVs: { type: 'integer', default: 512, minimum: 1 },
 	},
 };
 
@@ -53,9 +53,9 @@ const tpvConfigScheme = {
 	type: 'object',
 	unevaluatedProperties: false,
 	properties: {
-		cdvId:            { type: 'string', minLength: 1 },
-		tpvExtentSizeKB:  { type: 'integer', enum: consts.tpvExtentSizeKBValues },
-		virtualSizeGB:    { type: 'number', exclusiveMinimum: 0 },
+		cdvId: { type: 'string', minLength: 1 },
+		tpvExtentSizeKB: { type: 'integer', enum: consts.tpvExtentSizeKBValues },
+		virtualSizeGB: { type: 'number', exclusiveMinimum: 0 },
 		maxVirtualSizeGB: { type: 'number', default: 1000, exclusiveMinimum: 0 },
 	},
 };

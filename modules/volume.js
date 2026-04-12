@@ -3065,7 +3065,7 @@ function prepareCDVForCreate(volume) {
 	volume.cdvConfig = {
 		cdvExtentSizeMB: cfg.cdvExtentSizeMB,
 		allocatorSizeGB: cfg.allocatorSizeGB != null ? cfg.allocatorSizeGB : 1,
-		maxTPVs:         cfg.maxTPVs         != null ? cfg.maxTPVs         : 512,
+		maxTPVs: cfg.maxTPVs != null ? cfg.maxTPVs : 512,
 	};
 	delete volume.tpvConfig;
 }
@@ -3111,26 +3111,26 @@ function createTPV(volume, user, cb) {
 		},
 		function insertTPVRecord(next) {
 			const tpv = {
-				_id:          volume.name,
-				name:         volume.name,
-				description:  volume.description || '',
-				uuid:         uuid.v1(),
-				version:      1,
-				isReserved:   false,
-				status:       consts.volumeStatuses.UNAVAILABLE,
-				volumeClass:  consts.volumeClass.TPV,
-				capacity:     virtualSizeGB,
-				createdBy:    user.email,
-				modifiedBy:   user.email,
-				dateCreated:  volume.dateCreated || new Date(),
+				_id: volume.name,
+				name: volume.name,
+				description: volume.description || '',
+				uuid: uuid.v1(),
+				version: 1,
+				isReserved: false,
+				status: consts.volumeStatuses.UNAVAILABLE,
+				volumeClass: consts.volumeClass.TPV,
+				capacity: virtualSizeGB,
+				createdBy: user.email,
+				modifiedBy: user.email,
+				dateCreated: volume.dateCreated || new Date(),
 				dateModified: volume.dateModified || new Date(),
 				tpvConfig: {
-					cdvId:               cdvId,
-					cdvUUID:             cdv.uuid,
-					tpvExtentSizeKB:     tpvExtentSizeKB,
-					virtualSizeGB:       virtualSizeGB,
-					maxVirtualSizeGB:    maxVirtualSizeGB != null ? maxVirtualSizeGB : 1000,
-					exclusiveClient:     null,
+					cdvId: cdvId,
+					cdvUUID: cdv.uuid,
+					tpvExtentSizeKB: tpvExtentSizeKB,
+					virtualSizeGB: virtualSizeGB,
+					maxVirtualSizeGB: maxVirtualSizeGB != null ? maxVirtualSizeGB : 1000,
+					exclusiveClient: null,
 					exclusiveClientUUID: null,
 				},
 			};
@@ -3320,10 +3320,10 @@ scope.extendTPV = ({ tpvId, newSizeGB }, user, cb) => {
 				.addInfo(Entities.Error, `newSizeGB exceeds maxVirtualSizeGB (${tpv.tpvConfig.maxVirtualSizeGB})`));
 
 		const $set = {
-			capacity:                    newSizeGB,
-			'tpvConfig.virtualSizeGB':   newSizeGB,
-			modifiedBy:                  user.email,
-			dateModified:                new Date(),
+			capacity: newSizeGB,
+			'tpvConfig.virtualSizeGB': newSizeGB,
+			modifiedBy: user.email,
+			dateModified: new Date(),
 		};
 
 		volumeCollection.findOneAndUpdate(

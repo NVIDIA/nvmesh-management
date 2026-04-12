@@ -1236,8 +1236,8 @@ consts.preUpgradeCheckRelaxationsMode = {
 
 consts.volumeClass = {
 	REGULAR: 'REGULAR',
-	CDV:     'CDV',
-	TPV:     'TPV',
+	CDV: 'CDV',
+	TPV: 'TPV',
 };
 
 // Valid power-of-2 values for CDV and TPV extent sizes
