@@ -2742,7 +2742,22 @@ scope.extendVolumes = (volumes, user, cb) => {
 };
 
 scope.updateVolumes = (volumes, user, cb) => {
-	modifyVolumes(volumes, user, utils.updateVolumes, cb);
+	const cdvVolumes = volumes.filter(v => v.volumeClass === consts.volumeClass.CDV);
+	const otherVolumes = volumes.filter(v => v.volumeClass !== consts.volumeClass.CDV);
+	const messages = [];
+
+	async.series([
+		next => {
+			if (!cdvVolumes.length) return next();
+			async.each(cdvVolumes, (v, eachCb) => {
+				updateCDV(v, user, msg => { messages.push(msg); eachCb(); });
+			}, next);
+		},
+		next => {
+			if (!otherVolumes.length) return next();
+			modifyVolumes(otherVolumes, user, utils.updateVolumes, msgs => { messages.push(...msgs); next(); });
+		}
+	], () => cb(messages));
 };
 
 scope.createSnapshots = function(snapshots, user, callback) {
@@ -2980,15 +2995,38 @@ scope.saveVolumes = (requestVolumes, user, cb) => {
 		volume.dateModified = volume.dateCreated = new Date();
 	});
 
-	const categorizedVolumes = utils.splitVolumesAndSnapshots(requestVolumes);
-	utils.executeFunctionsOnVolumes(
-		categorizedVolumes,
-		(volumes, callback) => { utils.createVolumes(volumes, user, callback); },
-		(snapshots, callback) => { scope.createSnapshots(snapshots, user, callback); },
-		(mdVolumes, callback) => callback(),
-		requestVolumes,
-		cb
-	);
+	const tpvVolumes = requestVolumes.filter(v => v.volumeClass === consts.volumeClass.TPV);
+	const otherVolumes = requestVolumes.filter(v => v.volumeClass !== consts.volumeClass.TPV);
+
+	otherVolumes.forEach(volume => {
+		if (volume.volumeClass === consts.volumeClass.CDV) {
+			prepareCDVForCreate(volume);
+		} else {
+			delete volume.cdvConfig;
+			delete volume.tpvConfig;
+		}
+	});
+
+	const messages = [];
+
+	async.series([
+		cb => {
+			if (!tpvVolumes.length) return cb();
+			createTPVs(tpvVolumes, user, msgs => { messages.push(...msgs); cb(); });
+		},
+		cb => {
+			if (!otherVolumes.length) return cb();
+			const categorizedVolumes = utils.splitVolumesAndSnapshots(otherVolumes);
+			utils.executeFunctionsOnVolumes(
+				categorizedVolumes,
+				(volumes, callback) => { utils.createVolumes(volumes, user, callback); },
+				(snapshots, callback) => { scope.createSnapshots(snapshots, user, callback); },
+				(mdVolumes, callback) => callback(),
+				otherVolumes,
+				msgs => { messages.push(...msgs); cb(); }
+			);
+		}
+	], () => cb(messages));
 };
 
 function startRebuildVolumes(volumes, user, cb) {
@@ -3006,6 +3044,296 @@ scope.rebuildVolumes = (requestVolumes, user, cb) => {
 		cb
 	);
 };
+
+// ─── Thin Provisioning ───────────────────────────────────────────────────────
+
+function prepareCDVForCreate(volume) {
+	volume.tpvCount = 0;
+	const cfg = volume.cdvConfig || {};
+	volume.cdvConfig = {
+		cdvExtentSizeMB: cfg.cdvExtentSizeMB,
+		allocatorSizeGB: cfg.allocatorSizeGB != null ? cfg.allocatorSizeGB : 1,
+		maxTPVs:         cfg.maxTPVs         != null ? cfg.maxTPVs         : 512,
+	};
+	delete volume.tpvConfig;
+	// TODO (step 5): after RAID allocation completes, call cdvTomaAutoAttach.initCDV(volume)
+}
+
+function createTPV(volume, user, cb) {
+	var db = app.get('db');
+	var volumeCollection = db.collection('volume');
+	var message;
+	var cdv;
+
+	const { cdvId, tpvExtentSizeKB, virtualSizeGB, maxVirtualSizeGB } = volume.tpvConfig || {};
+
+	async.series([
+		function fetchAndValidateCDV(next) {
+			volumeCollection.findOne({ _id: cdvId, volumeClass: consts.volumeClass.CDV }, (err, doc) => {
+				if (err) {
+					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
+						.addInfo(Entities.Volume.name, volume.name)
+						.addInfo(Entities.Error, new MongoError(err).log());
+					return next(true);
+				}
+				if (!doc) {
+					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
+						.addInfo(Entities.Volume.name, volume.name)
+						.addInfo(Entities.Error, `Parent CDV '${cdvId}' not found`);
+					return next(true);
+				}
+				if (doc.tpvCount >= doc.cdvConfig.maxTPVs) {
+					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
+						.addInfo(Entities.Volume.name, volume.name)
+						.addInfo(Entities.Error, `CDV is at capacity (${doc.cdvConfig.maxTPVs} TPVs)`);
+					return next(true);
+				}
+				if (virtualSizeGB > doc.capacity) {
+					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
+						.addInfo(Entities.Volume.name, volume.name)
+						.addInfo(Entities.Error, 'virtualSizeGB cannot exceed parent CDV capacity');
+					return next(true);
+				}
+				cdv = doc;
+				next();
+			});
+		},
+		function insertTPVRecord(next) {
+			const tpv = {
+				_id:          volume.name,
+				name:         volume.name,
+				description:  volume.description || '',
+				uuid:         uuid.v1(),
+				version:      1,
+				isReserved:   false,
+				status:       consts.volumeStatuses.UNAVAILABLE,
+				volumeClass:  consts.volumeClass.TPV,
+				capacity:     virtualSizeGB,
+				createdBy:    user.email,
+				modifiedBy:   user.email,
+				dateCreated:  volume.dateCreated || new Date(),
+				dateModified: volume.dateModified || new Date(),
+				tpvConfig: {
+					cdvId:               cdvId,
+					cdvUUID:             cdv.uuid,
+					tpvExtentSizeKB:     tpvExtentSizeKB,
+					virtualSizeGB:       virtualSizeGB,
+					maxVirtualSizeGB:    maxVirtualSizeGB != null ? maxVirtualSizeGB : 1000,
+					exclusiveClient:     null,
+					exclusiveClientUUID: null,
+				},
+			};
+
+			volumeCollection.insertOne(tpv, err => {
+				if (err) {
+					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
+						.addInfo(Entities.Volume.name, volume.name)
+						.addInfo(Entities.Error, new MongoError(err).log());
+					return next(true);
+				}
+				volume.uuid = tpv.uuid;
+				next();
+			});
+		},
+		function incrementTpvCount(next) {
+			volumeCollection.updateOne({ _id: cdvId }, { $inc: { tpvCount: 1 } }, err => {
+				if (err)
+					sysERROR(`createTPV: failed to increment tpvCount for CDV ${cdvId}: ${err}`);
+				next(); // non-fatal — TPV was created; any discrepancy is caught by NVCK
+			});
+		},
+	], () => {
+		if (!message)
+			message = new SystemAdminMessage(systemMessages.VOLUME_SAVED)
+				.addInfo(Entities.Volume.ID, volume.name)
+				.addInfo(Entities.Volume.UUID, volume.uuid);
+		cb(message);
+	});
+}
+
+function createTPVs(tpvVolumes, user, cb) {
+	const messages = [];
+	async.each(tpvVolumes, (volume, next) => {
+		createTPV(volume, user, msg => { messages.push(msg); next(); });
+	}, () => cb(messages));
+}
+
+function updateCDV(updateObj, user, cb) {
+	var db = app.get('db');
+	var volumeCollection = db.collection('volume');
+	var $set = {};
+
+	if ('description' in updateObj)
+		$set.description = updateObj.description;
+
+	// cdvConfig.maxTPVs is the only mutable CDV-specific config field;
+	// cdvExtentSizeMB and allocatorSizeGB are immutable after creation.
+	if (updateObj.cdvConfig && 'maxTPVs' in updateObj.cdvConfig)
+		$set['cdvConfig.maxTPVs'] = updateObj.cdvConfig.maxTPVs;
+
+	$set.modifiedBy = user.email;
+	$set.dateModified = new Date();
+
+	volumeCollection.findOneAndUpdate(
+		{ _id: updateObj._id, uuid: updateObj.uuid, volumeClass: consts.volumeClass.CDV },
+		{ $set },
+		{ returnDocument: consts.mongoReturnDocument.AFTER },
+		(err, result) => {
+			var message;
+			if (err || !result) {
+				message = new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+					.addInfo(Entities.Volume.ID, updateObj._id);
+				if (err)
+					message.addInfo(Entities.Error, new MongoError(err).log());
+			} else {
+				message = new SystemAdminMessage(systemMessages.VOLUME_UPDATED)
+					.addInfo(Entities.Volume.ID, updateObj._id)
+					.addInfo(Entities.Volume.UUID, updateObj.uuid);
+			}
+			cb(message);
+		}
+	);
+}
+
+scope.updateTPV = (updateObj, user, cb) => {
+	var db = app.get('db');
+	var volumeCollection = db.collection('volume');
+	var $set = {};
+
+	// Mutable: description, tpvConfig.maxVirtualSizeGB
+	// volumeClass and tpvConfig.cdvId are immutable — ignored if present
+	if ('description' in updateObj)
+		$set.description = updateObj.description;
+	if (updateObj.tpvConfig && 'maxVirtualSizeGB' in updateObj.tpvConfig)
+		$set['tpvConfig.maxVirtualSizeGB'] = updateObj.tpvConfig.maxVirtualSizeGB;
+
+	$set.modifiedBy = user.email;
+	$set.dateModified = new Date();
+
+	volumeCollection.findOneAndUpdate(
+		{ _id: updateObj._id, volumeClass: consts.volumeClass.TPV },
+		{ $set },
+		{ returnDocument: consts.mongoReturnDocument.AFTER },
+		(err, result) => {
+			var message;
+			if (err || !result) {
+				message = new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+					.addInfo(Entities.Volume.ID, updateObj._id);
+				if (err)
+					message.addInfo(Entities.Error, new MongoError(err).log());
+			} else {
+				message = new SystemAdminMessage(systemMessages.VOLUME_UPDATED)
+					.addInfo(Entities.Volume.ID, updateObj._id);
+			}
+			cb(message);
+		}
+	);
+};
+
+scope.deleteTPVs = (tpvIds, user, cb) => {
+	var db = app.get('db');
+	var volumeCollection = db.collection('volume');
+	const messages = [];
+
+	async.each(tpvIds, ({ _id }, next) => {
+		var message;
+		var tpv;
+
+		async.series([
+			function fetchAndValidateTPV(step) {
+				volumeCollection.findOne({ _id, volumeClass: consts.volumeClass.TPV }, (err, doc) => {
+					if (err || !doc) {
+						message = new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+							.addInfo(Entities.Volume.ID, _id);
+						if (err)
+							message.addInfo(Entities.Error, new MongoError(err).log());
+						return step(true);
+					}
+					if (doc.tpvConfig.exclusiveClient) {
+						message = new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+							.addInfo(Entities.Volume.ID, _id)
+							.addInfo(Entities.Error, 'TPV must be detached before deletion');
+						return step(true);
+					}
+					tpv = doc;
+					// TODO (step 6): kafkaModule.sendCDVAllocatorFreeAll(tpv.tpvConfig.cdvUUID, tpv.uuid)
+					step();
+				});
+			},
+			function deleteTPVRecord(step) {
+				volumeCollection.findOneAndDelete({ _id, volumeClass: consts.volumeClass.TPV }, (err, deleted) => {
+					if (err || !deleted) {
+						message = new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+							.addInfo(Entities.Volume.ID, _id);
+						if (err)
+							message.addInfo(Entities.Error, new MongoError(err).log());
+						return step(true);
+					}
+					step();
+				});
+			},
+			function decrementTpvCount(step) {
+				const cdvId = tpv.tpvConfig.cdvId;
+				volumeCollection.updateOne({ _id: cdvId }, { $inc: { tpvCount: -1 } }, err => {
+					if (err)
+						sysERROR(`deleteTPVs: failed to decrement tpvCount for CDV ${cdvId}: ${err}`);
+					step(); // non-fatal
+				});
+			},
+		], () => {
+			if (!message)
+				message = new SystemAdminMessage(systemMessages.VOLUME_MARKED_FOR_DELETION)
+					.addInfo(Entities.Volume.ID, _id);
+			messages.push(message);
+			next();
+		});
+	}, () => cb(messages));
+};
+
+scope.extendTPV = ({ tpvId, newSizeGB }, user, cb) => {
+	var db = app.get('db');
+	var volumeCollection = db.collection('volume');
+
+	volumeCollection.findOne({ _id: tpvId, volumeClass: consts.volumeClass.TPV }, (err, tpv) => {
+		if (err || !tpv)
+			return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+				.addInfo(Entities.Volume.ID, tpvId));
+
+		if (newSizeGB <= tpv.tpvConfig.virtualSizeGB)
+			return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+				.addInfo(Entities.Volume.ID, tpvId)
+				.addInfo(Entities.Error, 'newSizeGB must be greater than current virtualSizeGB'));
+
+		if (newSizeGB > tpv.tpvConfig.maxVirtualSizeGB)
+			return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+				.addInfo(Entities.Volume.ID, tpvId)
+				.addInfo(Entities.Error, `newSizeGB exceeds maxVirtualSizeGB (${tpv.tpvConfig.maxVirtualSizeGB})`));
+
+		const $set = {
+			capacity:                    newSizeGB,
+			'tpvConfig.virtualSizeGB':   newSizeGB,
+			modifiedBy:                  user.email,
+			dateModified:                new Date(),
+		};
+
+		volumeCollection.findOneAndUpdate(
+			{ _id: tpvId },
+			{ $set },
+			{ returnDocument: consts.mongoReturnDocument.AFTER },
+			(err, updated) => {
+				if (err || !updated)
+					return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+						.addInfo(Entities.Volume.ID, tpvId));
+
+				// TODO (step 6): if tpv.tpvConfig.exclusiveClient, send UpdateVolume Kafka message
+				cb(new SystemAdminMessage(systemMessages.VOLUME_UPDATED)
+					.addInfo(Entities.Volume.ID, tpvId));
+			}
+		);
+	});
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 scope.fetchVolumeVersionByUUID = function fetchVolumeVersionByUUID(uuid, cb) {
 	var db = app.get('db');
