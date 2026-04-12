@@ -4439,7 +4439,7 @@ scope.handleGetTargetNICs = (message, callback) => {
 			if (!dbTarget)
 				return eachCB();
 
-			if (nicsVersionFromClient == dbTarget.nicsVersion) {
+			if (nicsVersionFromClient === dbTarget.nicsVersion) {
 				targetsIDsForWaitingOnNICs.push(targetID);
 				eachCB();
 			} else if (nicsVersionFromClient > dbTarget.nicsVersion) {
@@ -4457,9 +4457,9 @@ scope.handleGetTargetNICs = (message, callback) => {
 		let clientCollection = db.collection('client');
 
 		// send UpdateTargetNICs message for targets with different nicsVersion
-		let targetsIDsToSendUpdatTargetsNICs = targetIDs.filter(targetID => targetsIDsForWaitingOnNICs.indexOf(targetID) == -1);
+		let targetsIDsToSendUpdateTargetsNICs = targetIDs.filter(targetID => targetsIDsForWaitingOnNICs.indexOf(targetID) === -1);
 
-		async.parallel([
+		async.series([
 			function(callback) {
 				// save waitingForTargetNics on the client for targets with the same nicsVersion as in the DB
 				if (!targetsIDsForWaitingOnNICs.length)
@@ -4471,36 +4471,85 @@ scope.handleGetTargetNICs = (message, callback) => {
 				});
 
 				clientCollection.updateOne({ _id: message.clientID }, clientUpdate, (err) => {
-					if (err)
+					if (err) {
 						new MongoError(err).log();
+						return callback(err);
+					}
 
 					async.eachSeries(targetsIDsForWaitingOnNICs, function checkForRaceNicChanges(targetID, eachCB) {
 						getDbTargetNicsVersion(targetID, function(err, dbTarget) {
 							if (err)
-								return callback(err);
+								return eachCB(err);
 
 							if (!dbTarget)
 								return eachCB();
 
-							let nicsVersionFromClient = targetRequestsById[targetID];
+							const nicsVersionFromClient = targetRequestsById[targetID].nicsVersion;
 							if (nicsVersionFromClient < dbTarget.nicsVersion)
 								// there was a nic change
-								targetsIDsToSendUpdatTargetsNICs.push(targetID);
+								targetsIDsToSendUpdateTargetsNICs.push(targetID);
 
 							eachCB();
 						});
 					}, callback);
 				});
 			}, function(callback) {
-				if (!targetsIDsToSendUpdatTargetsNICs.length)
+				if (!targetsIDsToSendUpdateTargetsNICs.length)
 					return callback();
 
-				scope.sendUpdateTargetNICsMessage(message.clientID, null, targetsIDsToSendUpdatTargetsNICs, message.originID, callback);
+				scope.sendUpdateTargetNICsMessage(message.clientID, null, targetsIDsToSendUpdateTargetsNICs, message.originID, (err) => {
+					if (err) {
+						clientCollection.updateOne({ _id: message.clientID }, { $set: { 'failedToSendUpdateTargetsNICs': true } }, (err) => {
+							if (err) {
+								new MongoError(err).log();
+							}
+							callback(err);
+						});
+					} else {
+						callback();
+					}
+				});
 			}
 		], function() {
 			callback();
 		});
 	});
+};
+
+scope.resendFailedToSendUpdateTargetsNICs = function(client, callback) {
+	const db = app.get('db');
+
+	async.waterfall([
+		function getTargets(callback) {
+			const serverCollection = db.collection('server');
+			const volumesNames = Object.values(client.attachments).map(a => a.name);
+
+			serverCollection.find(
+				{ 'disks.diskSegments.volumeName': { $in: volumesNames } },
+				{ projection: { _id: 1, node_id: 1 } }
+			).toArray((err, targets) => {
+				if (err) {
+					new MongoError(err).log();
+					return callback(err);
+				}
+
+				callback(null, targets);
+			});
+		},
+		function sendUpdateTargetNICsMessages(targets, callback) {
+			const targetIds = targets.map(target => target.node_id);
+			scope.sendUpdateTargetNICsMessage(client.clientID, null, targetIds, client.clientOriginID, callback);
+		},
+		function clearFailedToSendUpdateTargetsNICs(callback) {
+			const clientCollection = db.collection('client');
+			clientCollection.updateOne({ _id: client.clientID }, { $unset: { 'failedToSendUpdateTargetsNICs': true } }, (err) => {
+				if (err) {
+					new MongoError(err).log();
+				}
+				callback(err);
+			});
+		},
+	], callback);
 };
 
 scope.encodeTargetID = function(targetID) {
@@ -4536,10 +4585,9 @@ function adoptAndIncTargetNicsVersion(targetID, lastDbNicsVersion, clientReporte
 	var db = app.get('db');
 	var serverCollection = db.collection('server');
 
-	var $update = { nicsVersion: clientReportedNicsVersion + 1 };
 	serverCollection.findOneAndUpdate(
-		{ node_id: targetID, nicsVerion: lastDbNicsVersion },
-		[$update],
+		{ node_id: targetID, nicsVersion: lastDbNicsVersion },
+		{ $set: { nicsVersion: clientReportedNicsVersion + 1 } },
 		function(err, res) {
 			if (err)
 				return callback(new MongoError(err).log());

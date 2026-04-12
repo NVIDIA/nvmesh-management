@@ -666,6 +666,20 @@ scope.resendKafkaMessages = function(cb) {
 		function checkForMissingZonesHardwareConfiguration(callback) {
 			zoneModule.resendMissingZonesHardwareConfiguration(callback);
 		},
+		function checkForFailedToSendUpdateTargetsNICs(callback) {
+			const db = app.get('db');
+			const clientCollection = db.collection('client');
+
+			clientCollection.find({ 'failedToSendUpdateTargetsNICs': true }).toArray((err, clients) => {
+				if (err) {
+					new MongoError(err).log();
+					return callback(err);
+				}
+				async.eachSeries(clients, (client, eachCB) => {
+					clientModule.resendFailedToSendUpdateTargetsNICs(client, eachCB);
+				}, callback);
+			});
+		},
 	], cb);
 };
 
