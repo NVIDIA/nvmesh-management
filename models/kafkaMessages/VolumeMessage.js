@@ -38,6 +38,11 @@ exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 		preparedPayload['enableCrcCheck'] = payload.enableCrcCheck;
 		preparedPayload['use_debug_di'] = payload.use_debug_di;
 
+		preparedPayload['volumeClass'] = payload.volumeClass || 'REGULAR';
+		preparedPayload['isHidden']    = payload.isHidden    || false;
+		preparedPayload['cdvConfig']   = payload.cdvConfig   || null;
+		preparedPayload['tpvConfig']   = payload.tpvConfig   || null;
+
 		preparedPayload['chunks'] = payload.chunks.map(c => ({
 			uuid: c.uuid,
 			vlbs: c.vlbs,

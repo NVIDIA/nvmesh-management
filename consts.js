@@ -920,7 +920,11 @@ consts.kafkaMessageTypes = {
 		addPassphrase: 'addPassphrase',
 		deletePassphrase: 'deletePassphrase',
 		rotatePassphrase: 'rotatePassphrase',
-		requestEncryptionResponse: 'encryptionRequestResponse'
+		requestEncryptionResponse: 'encryptionRequestResponse',
+		cdvAllocatorFreeAll: 'cdvAllocatorFreeAll',
+	},
+	TOMAToManagement_TP: {
+		cdvCapacityWarning: 'cdvCapacityWarning',
 	}
 };
 
