@@ -180,6 +180,9 @@ scope.removeAlreadyDetachedAttachments = (clientID, cb) => {
 				});
 			}, callback);
 		},
+		function cleanupTPVState(callback) {
+			cleanupTPVReferencesForDetachedClient(clientID, detachedWishfulStateAttachments, callback);
+		},
 		function removeAttachmentFromWishfulState(callback) {
 			if (!detachedWishfulStateAttachments.length)
 				return callback();
@@ -1371,6 +1374,9 @@ function deleteClient(client, callback) {
 							}
 						});
 					});
+
+					// Clean up TPV-specific state (exclusiveClient, CDV references) — fire-and-forget
+					cleanupTPVReferencesForDetachedClient(clientID, dbClientWishfulStateAttachments, () => {});
 
 					message = new SystemAdminMessage(systemMessages.CLIENT_DELETED);
 					callback();
@@ -3011,6 +3017,13 @@ scope.detachPreemptedClients = (clientsWithAttachmentsForPotentialDetach, cb) =>
 								});
 						}, doneCallback);
 					});
+		},
+		function cleanupTPVState(doneCallback) {
+			// For any preempted TPVs: clear exclusiveClient and remove CDV tpv:* referenceIDs
+			const allDetachedAttachments = Object.entries(clientsWithAttachmentsForDetach);
+			async.each(allDetachedAttachments, ([cID, attachments], next) => {
+				cleanupTPVReferencesForDetachedClient(cID, attachments, next);
+			}, doneCallback);
 		}
 	], cb);
 };
@@ -4795,5 +4808,66 @@ scope.detachTPV = (clientID, clientUUID, tpvName, callback) => {
 		}
 	], callback);
 };
+
+/**
+ * Cleans up TPV-specific state after an involuntary detach (preemption, stale cleanup, client deletion).
+ * For each attachment: if the volume is a TPV, clears tpvConfig.exclusiveClient and removes
+ * the tpv:<uuid> referenceID from the parent CDV, conditionally detaching the CDV.
+ * Non-TPV attachments are skipped silently.
+ */
+function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	const clientCollection = db.collection('client');
+
+	const uuids = attachments.map(a => a.uuid).filter(Boolean);
+	if (!uuids.length) return done();
+
+	volumeCollection.find({ uuid: { $in: uuids }, volumeClass: consts.volumeClass.TPV })
+		.project({ _id: 1, uuid: 1, tpvConfig: 1 })
+		.toArray((err, tpvDocs) => {
+			if (err) { new MongoError(err).log(); return done(); }
+			if (!tpvDocs || !tpvDocs.length) return done();
+
+			async.each(tpvDocs, (tpv, next) => {
+				async.series([
+					function clearExclusiveClient(cb) {
+						volumeCollection.updateOne(
+							{ _id: tpv._id, volumeClass: consts.volumeClass.TPV },
+							{ $unset: { 'tpvConfig.exclusiveClient': 1 } },
+							err => { if (err) new MongoError(err).log(); cb(); }
+						);
+					},
+					function removeCDVReference(cb) {
+						if (!tpv.tpvConfig?.cdvUUID) return cb();
+
+						// Look up the CDV to get its _id
+						volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV },
+							{ projection: { _id: 1, uuid: 1 } }, (err, cdv) => {
+								if (err || !cdv) {
+									if (err) new MongoError(err).log();
+									return cb();
+								}
+
+								// Look up this client's UUID for the detachVolumes call
+								clientCollection.findOne({ _id: clientID }, { projection: { uuid: 1 } }, (err2, clientDoc) => {
+									if (err2 || !clientDoc) {
+										if (err2) new MongoError(err2).log();
+										return cb();
+									}
+
+									// Remove the tpv:<uuid> referenceID; detachVolumes handles conditional CDV detach
+									scope.detachVolumes(clientID, clientDoc.uuid, [{
+										uuid: cdv.uuid,
+										name: cdv._id,
+										referenceID: `tpv:${tpv.uuid}`
+									}], () => cb());
+								});
+							});
+					}
+				], next);
+			}, done);
+		});
+}
 
 module.exports = scope;
