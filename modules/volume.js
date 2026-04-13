@@ -3149,7 +3149,7 @@ function createTPV(volume, user, cb) {
 				// Fields required by managementCM VolumeMessage serialization:
 				blockSize: consts.BLOCK_SIZE,
 				blocks: 0,
-				RAIDLevel: null,
+				RAIDLevel: consts.RAIDLevel.CONCATENATED,
 				numberOfMirrors: 0,
 				stripeWidth: 1,
 				stripeSize: 0,
