@@ -3146,18 +3146,32 @@ function createTPV(volume, user, cb) {
 				status: consts.volumeStatuses.UNAVAILABLE,
 				health: consts.targetHealth.HEALTHY,
 				volumeClass: consts.volumeClass.TPV,
-				// Fields required by managementCM VolumeMessage serialization:
+				// Fields required by managementCM VolumeMessage serialization.
+				// Several numeric fields are repurposed to carry TPV/CDV geometry
+				// that the kernel needs to call nvmeibc_tpv_attach() — the binary
+				// protocol has no dedicated TPV fields yet.
 				blockSize: consts.BLOCK_SIZE,
-				blocks: 0,
+				// Virtual size in 4 KiB management blocks (matches kernel MGMT2CLNT_SHIFT).
+				blocks: Math.floor(virtualSizeGB * 1024 * 1024 * 1024 / 4096),
 				RAIDLevel: consts.RAIDLevel.CONCATENATED,
 				numberOfMirrors: 0,
 				stripeWidth: 1,
-				stripeSize: 0,
-				dataBlocks: 0,
-				parityBlocks: 0,
+				// Repurposed: TPV extent size in KiB (passed to nvmeibc_tpv_attach).
+				stripeSize: tpvExtentSizeKB,
+				// Repurposed: CDV extent size in MiB (from parent CDV config).
+				dataBlocks: (cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMB) || 64,
+				// Repurposed: allocator size in GiB (from parent CDV config).
+				parityBlocks: Math.floor((cdv.cdvConfig && cdv.cdvConfig.allocatorSizeGB) || 1),
 				relativeRebuildPriority: 0,
 				enableCrcCheck: false,
 				use_debug_di: false,
+				// type=4 is AUTO_EXTEND_VOLUME in the kernel's nvmeibc_config_volume_type
+				// enum.  The kernel checks this bit to identify TPV and route the
+				// attach request to nvmeibc_tpv_attach() instead of nvmeibc_block_init().
+				type: 4,
+				// mdvUUID is repurposed to carry the parent CDV's UUID so the kernel
+				// can look it up in the attached volumes list.
+				mdvUUID: cdv.uuid,
 				chunks: [],  // TPV has no physical disk chunks; backed by CDV
 				capacity: virtualSizeGB,
 				createdBy: user.email,

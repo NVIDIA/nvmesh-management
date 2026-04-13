@@ -42,6 +42,10 @@ exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 		preparedPayload['isHidden'] = payload.isHidden || false;
 		preparedPayload['cdvConfig'] = payload.cdvConfig || null;
 		preparedPayload['tpvConfig'] = payload.tpvConfig || null;
+		// mdvUUID is repurposed to carry the CDV UUID for TPV volumes so the
+		// kernel can look up the parent CDV (which is already attached) when
+		// it creates the nvmeibc_tpv object.
+		preparedPayload['mdvUUID'] = payload.mdvUUID || '';
 
 		preparedPayload['chunks'] = payload.chunks.map(c => ({
 			uuid: c.uuid,
