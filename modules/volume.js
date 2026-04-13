@@ -3175,6 +3175,23 @@ function createTPV(volume, user, cb) {
 				// mdvUUID is repurposed to carry the parent CDV's UUID so the kernel
 				// can look it up in the attached volumes list.
 				mdvUUID: cdv.uuid,
+				// sourceUUID is repurposed to carry the initial CDV allocator TOMA hostname.
+				// The kernel passes this to nvmeibc_tpv_update_allocator_id() at attach time so
+				// cdv_alloc_work can send CDV_ALLOC_EXTENT requests without waiting for a separate
+				// topology push.  This is a best-effort hint: if RAFT elects a different leader,
+				// a subsequent topology push will supply the correct hostname via
+				// nvmeibc_tpv_update_allocator_id().
+				sourceUUID: (() => {
+					if (!cdv.chunks || !cdv.chunks[0]) return '';
+					const firstChunk = cdv.chunks[0];
+					const rwNodes = [...new Set(
+						firstChunk.pRaids
+							.flatMap(pRaid => pRaid.diskSegments)
+							.filter(seg => seg.status === 'RW_ENABLED')
+							.map(seg => seg.node_id)
+					)];
+					return rwNodes[0] || '';
+				})(),
 				chunks: [], // TPV has no physical disk chunks; backed by CDV
 				capacity: virtualSizeGB,
 				createdBy: user.email,
