@@ -5757,6 +5757,7 @@ scope.volumeProjection = {
 	'reservation': 1,
 	'enableCrcCheck': 1,
 	'use_debug_di': 1,
+	'mdvUUID': 1,
 	'isEncrypted': 1,
 	'encryption.headerSize': 1,
 	'metadataVolumeID': 1,
