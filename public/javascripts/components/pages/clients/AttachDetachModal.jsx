@@ -220,11 +220,14 @@ const CreateAttachDetach = ({
 			className: 'fixed-size-column lg-column',
 			rowClassName: 'fixed-size-column lg-column',
 			value: volume => {
-				const reservationModeValue = updatedVolumes[volume.name]?.reservation?.mode || volume.reservation.mode;
+				const isTPV = volume.volumeClass === consts.volumeClass.TPV;
+				const reservationModeValue = isTPV
+					? consts.reservationModeNames.EXCLUSIVE_READ_WRITE
+					: (updatedVolumes[volume.name]?.reservation?.mode || volume.reservation.mode);
 
 				return <Select
 					id={`reservation-mode-select-${volume.name}`}
-					disabled={volume.isReadOnly}
+					disabled={volume.isReadOnly || isTPV}
 					value={reservationModeValue === consts.reservationModeNames.NONE ? consts.reservationModeNames.SHARED_READ_WRITE : reservationModeValue}
 					onChange={value => checkSelectedReservationMode(updatedVolumes[volume.name] || volume, value)}
 					options={consts.reservationModeAttachOptions.map(modeName => ({ text: modeName, value: modeName }))}
