@@ -1013,7 +1013,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	VOLUME_FAILED_TO_UPDATE: {
-		message: 'Failed to updat volume',
+		message: 'Failed to update volume',
 		id: 1472,
 		header: 'Update Volume Failed',
 		logLevel: consts.loggingLevel.ERROR,
