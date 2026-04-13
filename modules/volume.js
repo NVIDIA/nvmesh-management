@@ -123,8 +123,11 @@ scope.getAllVolumes = function(projection, page, count, filter, sort, cb) {
 
 scope.getVolumesHealthCalculationPipeline = () => {
 	return [
-		{ $match: { status: { $nin: [consts.volumeStatuses.PENDING, consts.volumeStatuses.TO_BE_DELETED] }, isReserved: false,
-			volumeClass: { $nin: [consts.volumeClass.CDV, consts.volumeClass.TPV] } } },
+		{ $match: {
+			status: { $nin: [consts.volumeStatuses.PENDING, consts.volumeStatuses.TO_BE_DELETED] },
+			isReserved: false,
+			volumeClass: { $nin: [consts.volumeClass.CDV, consts.volumeClass.TPV] },
+		} },
 		{ $addFields: { zones: '$chunks.zone' } },
 		{ $project: { zones: 1, health: 1, RAIDLevel: 1 } },
 		{
@@ -3172,7 +3175,7 @@ function createTPV(volume, user, cb) {
 				// mdvUUID is repurposed to carry the parent CDV's UUID so the kernel
 				// can look it up in the attached volumes list.
 				mdvUUID: cdv.uuid,
-				chunks: [],  // TPV has no physical disk chunks; backed by CDV
+				chunks: [], // TPV has no physical disk chunks; backed by CDV
 				capacity: virtualSizeGB,
 				createdBy: user.email,
 				modifiedBy: user.email,

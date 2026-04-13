@@ -680,32 +680,7 @@ const Volumes = () => {
 
 			<h1>Volumes</h1>
 
-			<div className="action-container" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-				<label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal', margin: 0 }}>
-					<input
-						type="checkbox"
-						checked={showRegular}
-						onChange={e => {
-							showRegularRef.current = e.target.checked;
-							setShowRegular(e.target.checked);
-						}}
-					/>
-					Regular volumes
-				</label>
-				<label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal', margin: 0 }}>
-					<input
-						type="checkbox"
-						checked={showCDVs}
-						onChange={e => {
-							showCDVsRef.current = e.target.checked;
-							setShowCDVs(e.target.checked);
-						}}
-					/>
-					CDVs
-				</label>
-			</div>
-
-			<div className="action-container">
+			<div className="action-container" style={{ display: 'flex', alignItems: 'center' }}>
 				<button className="btn multi-select-action-btn btn-info mgmt-btn-info"
 				        disabled={!currUser.isAdmin || !selectedVolumes.length ||
 					        selectedVolumes.some(volume => volume.type === consts.volumeTypes.METADATA_VOLUME)}
@@ -743,6 +718,30 @@ const Volumes = () => {
 						                    !v.encryption.command?.response?.error ||
 						                    !!v.encryption.command?.response?.acknowledged)}/>
 				</DropdownButton>
+				<div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+					<label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal', margin: 0 }}>
+						<input
+							type="checkbox"
+							checked={showRegular}
+							onChange={e => {
+								showRegularRef.current = e.target.checked;
+								setShowRegular(e.target.checked);
+							}}
+						/>
+						Regular volumes
+					</label>
+					<label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal', margin: 0 }}>
+						<input
+							type="checkbox"
+							checked={showCDVs}
+							onChange={e => {
+								showCDVsRef.current = e.target.checked;
+								setShowCDVs(e.target.checked);
+							}}
+						/>
+						CDVs
+					</label>
+				</div>
 			</div>
 
 			<FiltSortTable

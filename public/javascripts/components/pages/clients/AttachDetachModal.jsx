@@ -199,16 +199,18 @@ const CreateAttachDetach = ({
 			field: 'name',
 			placeholder: 'Search by Volume Name',
 			sort: 'asc',
-			value: volume => <>
-				{volume.name}
-				{volume.volumeClass === consts.volumeClass.TPV && (
-					<div className="alert alert-info" style={{ marginTop: 4, padding: '4px 8px', fontSize: '0.85em', marginBottom: 0 }}>
-						<i className="fa fa-info-circle" />{' '}
-						CDV <strong>{volume.tpvConfig?.cdvName || volume.tpvConfig?.cdvId}</strong> will
-						also be attached as a hidden volume to provide physical storage.
-					</div>
-				)}
-			</>
+			value: volume => volume.name,
+		},
+		{
+			name: 'CDV',
+			field: 'cdvName',
+			filterable: false,
+			sortable: false,
+			className: 'fixed-size-column lg-column',
+			rowClassName: 'fixed-size-column lg-column',
+			value: volume => volume.volumeClass === consts.volumeClass.TPV
+				? (volume.tpvConfig?.cdvName || volume.tpvConfig?.cdvId || '')
+				: '',
 		},
 		{
 			name: 'Reservation Mode',
