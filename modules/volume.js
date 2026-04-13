@@ -65,7 +65,7 @@ scope.getAllVolumes = function(projection, page, count, filter, sort, cb) {
 
 	var pipeline = [
 		{ $match: query.filter },
-		{ $addFields: { zones: '$chunks.zone' } },
+		{ $addFields: { zones: { $ifNull: ['$chunks.zone', []] } } },
 		{
 			$lookup: {
 				from: 'configurationVersion',
@@ -123,7 +123,8 @@ scope.getAllVolumes = function(projection, page, count, filter, sort, cb) {
 
 scope.getVolumesHealthCalculationPipeline = () => {
 	return [
-		{ $match: { status: { $nin: [consts.volumeStatuses.PENDING, consts.volumeStatuses.TO_BE_DELETED] }, isReserved: false } },
+		{ $match: { status: { $nin: [consts.volumeStatuses.PENDING, consts.volumeStatuses.TO_BE_DELETED] }, isReserved: false,
+			volumeClass: { $nin: [consts.volumeClass.CDV, consts.volumeClass.TPV] } } },
 		{ $addFields: { zones: '$chunks.zone' } },
 		{ $project: { zones: 1, health: 1, RAIDLevel: 1 } },
 		{

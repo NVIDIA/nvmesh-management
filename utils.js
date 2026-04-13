@@ -4527,9 +4527,11 @@ scope.getStatus = function(skipLogs, cb) {
 				if (err)
 					err = new MongoError(err);
 
-				results.forEach(function(e) {
-					status.volumes[e._id] = { healthy: e.healthy, alarm: e.alarm, critical: e.critical };
-				});
+				if (!err) {
+					results.forEach(function(e) {
+						status.volumes[e._id] = { healthy: e.healthy, alarm: e.alarm, critical: e.critical };
+					});
+				}
 
 				callback(err);
 			});
