@@ -5783,7 +5783,8 @@ scope.volumeProjection = {
 	'chunks.pRaids.diskSegments.diskUUID': 1,
 	'chunks.pRaids.diskSegments.diskID': 1,
 	'chunks.pRaids.diskSegments.nodeUUID': 1,
-	'chunks.pRaids.diskSegments.node_id': 1
+	'chunks.pRaids.diskSegments.node_id': 1,
+	'volumeClass': 1
 };
 
 function createErrorsForMissingVolumes(requestVolumes, volumes, snapshots, mdVolumes) {

@@ -2096,8 +2096,14 @@ function getConfigurationResponseWrapper(request, results) {
 		}
 
 		scope.getClientConfigurationByVolumes(volumesForConfiguration, (err, conf) => {
-			if (conf && conf.volumes && conf.volumes.length)
+			if (conf && conf.volumes && conf.volumes.length) {
 				conf.volumes = addRequestedPreemptFlagToConfVolumes(conf.volumes, results);
+				// CDV volumes must be delivered before TPV volumes so that the kernel can
+				// find the parent CDV when it processes the TPV attach.
+				conf.volumes.sort((a, b) =>
+					(a.volumeClass === consts.volumeClass.TPV ? 1 : 0) -
+					(b.volumeClass === consts.volumeClass.TPV ? 1 : 0));
+			}
 
 			cb(err, conf);
 		}, clientsGetConfUUID);
