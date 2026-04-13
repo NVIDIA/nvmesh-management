@@ -3146,6 +3146,7 @@ function createTPV(volume, user, cb) {
 				status: consts.volumeStatuses.UNAVAILABLE,
 				health: consts.targetHealth.HEALTHY,
 				volumeClass: consts.volumeClass.TPV,
+				blockSize: consts.BLOCK_SIZE,
 				capacity: virtualSizeGB,
 				createdBy: user.email,
 				modifiedBy: user.email,
