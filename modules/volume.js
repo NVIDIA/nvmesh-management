@@ -3168,10 +3168,10 @@ function createTPV(volume, user, cb) {
 				relativeRebuildPriority: 0,
 				enableCrcCheck: false,
 				use_debug_di: false,
-				// type=4 is AUTO_EXTEND_VOLUME in the kernel's nvmeibc_config_volume_type
-				// enum.  The kernel checks this bit to identify TPV and route the
-				// attach request to nvmeibc_tpv_attach() instead of nvmeibc_block_init().
-				type: 4,
+				// 'thin' encodes to 4 (AUTO_EXTEND_VOLUME) via the CM's MultiValCodec
+				// in clnt_scheme.json.  The kernel checks this bit to identify TPV and
+				// route the attach request to nvmeibc_tpv_attach().
+				type: 'thin',
 				// mdvUUID is repurposed to carry the parent CDV's UUID so the kernel
 				// can look it up in the attached volumes list.
 				mdvUUID: cdv.uuid,
