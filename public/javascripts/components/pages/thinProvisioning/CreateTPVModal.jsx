@@ -42,7 +42,6 @@ const CreateTPVModal = ({
 				cdvId: data.cdvId,
 				tpvExtentSizeKB: data.tpvExtentSizeKB,
 				virtualSizeGB: Number(data.virtualSizeGB),
-				maxVirtualSizeGB: Number(data.maxVirtualSizeGB || data.virtualSizeGB),
 			},
 		};
 
@@ -190,24 +189,6 @@ const CreateTPVModal = ({
 								{...register('virtualSizeGB', {
 									value: tpv.tpvConfig?.virtualSizeGB,
 									required: 'Virtual size is required',
-									min: { value: 1, message: 'Minimum size is 1 GB' },
-									valueAsNumber: true,
-								})}
-							/>
-						</FormControl>
-
-						<FormControl
-							name="maxVirtualSizeGB"
-							label="Max Virtual Size (GB)"
-							errorMessage={formState.errors?.maxVirtualSizeGB?.message}
-						>
-							<Input
-								name="maxVirtualSizeGB"
-								type="number"
-								className="form-control"
-								placeholder="e.g. 1000"
-								{...register('maxVirtualSizeGB', {
-									value: tpv.tpvConfig?.maxVirtualSizeGB,
 									min: { value: 1, message: 'Minimum size is 1 GB' },
 									valueAsNumber: true,
 								})}

@@ -57,7 +57,6 @@ const tpvConfigScheme = {
 		cdvUUID: { type: 'string' },
 		tpvExtentSizeKB: { type: 'integer', enum: consts.tpvExtentSizeKBValues },
 		virtualSizeGB: { type: 'number', exclusiveMinimum: 0 },
-		maxVirtualSizeGB: { type: 'number', default: 1000, exclusiveMinimum: 0 },
 		exclusiveClient: { type: ['string', 'null'], default: null },
 		exclusiveClientUUID: { type: ['string', 'null'], default: null },
 	},

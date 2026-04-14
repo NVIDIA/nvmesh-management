@@ -194,7 +194,6 @@ describe('CreateTPVModal.jsx — TPV payload builder', () => {
 				cdvId: data.cdvId,
 				tpvExtentSizeKB: data.tpvExtentSizeKB,
 				virtualSizeGB: Number(data.virtualSizeGB),
-				maxVirtualSizeGB: Number(data.maxVirtualSizeGB || data.virtualSizeGB),
 			},
 		};
 		if (!isCreate) {
@@ -209,7 +208,6 @@ describe('CreateTPVModal.jsx — TPV payload builder', () => {
 		cdvId: 'cdv-1',
 		tpvExtentSizeKB: 1024,
 		virtualSizeGB: 50,
-		maxVirtualSizeGB: 200,
 	};
 
 	it('sets volumeClass to TPV', async() => {
@@ -217,17 +215,10 @@ describe('CreateTPVModal.jsx — TPV payload builder', () => {
 		assert.strictEqual(payload.volumeClass, consts.volumeClass.TPV);
 	});
 
-	it('passes virtualSizeGB and maxVirtualSizeGB as numbers', async() => {
-		const payload = buildTPVPayload({ ...baseFormData, virtualSizeGB: '50', maxVirtualSizeGB: '200' });
+	it('passes virtualSizeGB as a number', async() => {
+		const payload = buildTPVPayload({ ...baseFormData, virtualSizeGB: '50' });
 		assert.strictEqual(typeof payload.tpvConfig.virtualSizeGB, 'number');
-		assert.strictEqual(typeof payload.tpvConfig.maxVirtualSizeGB, 'number');
 		assert.strictEqual(payload.tpvConfig.virtualSizeGB, 50);
-		assert.strictEqual(payload.tpvConfig.maxVirtualSizeGB, 200);
-	});
-
-	it('maxVirtualSizeGB defaults to virtualSizeGB when not supplied', async() => {
-		const payload = buildTPVPayload({ ...baseFormData, maxVirtualSizeGB: undefined });
-		assert.strictEqual(payload.tpvConfig.maxVirtualSizeGB, baseFormData.virtualSizeGB);
 	});
 
 	it('description defaults to empty string when not supplied', async() => {

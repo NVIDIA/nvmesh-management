@@ -951,11 +951,9 @@ router.post('/delete', isAdminRole, function(req, res) {
 * @api {post} /volumes/tpv/update Update a TPV
 * @apiName UpdateTPV
 * @apiGroup volumes
-* @apiDescription Update mutable fields of a Thin-Provisioned Volume (name, description, maxVirtualSizeGB).
+* @apiDescription Update mutable fields of a Thin-Provisioned Volume (description).
 * @apiBody {string} _id TPV ID.
 * @apiBody {string} [description] New description.
-* @apiBody {object} [tpvConfig] TPV configuration overrides.
-* @apiBody {number} [tpvConfig.maxVirtualSizeGB] New maximum virtual size in GB.
 */
 router.post('/tpv/update', isAdminRole, function(req, res) {
 	let updateObj = req.body;
@@ -998,7 +996,7 @@ router.post('/tpv/delete', isAdminRole, function(req, res) {
 * @apiName ExtendTPV
 * @apiGroup volumes
 * @apiDescription Increase the virtual size of a Thin-Provisioned Volume.
-* The new size must be larger than the current size and must not exceed maxVirtualSizeGB.
+* The new size must be larger than the current size.
 * @apiBody {string} tpvId TPV ID to extend.
 * @apiBody {number} newSizeGB New virtual size in GB.
 */

@@ -3098,7 +3098,7 @@ function createTPV(volume, user, cb) {
 	var message;
 	var cdv;
 
-	const { cdvId, tpvExtentSizeKB, virtualSizeGB, maxVirtualSizeGB } = volume.tpvConfig || {};
+	const { cdvId, tpvExtentSizeKB, virtualSizeGB } = volume.tpvConfig || {};
 
 	async.series([
 		function fetchAndValidateCDV(next) {
@@ -3198,7 +3198,6 @@ function createTPV(volume, user, cb) {
 					cdvUUID: cdv.uuid,
 					tpvExtentSizeKB: tpvExtentSizeKB,
 					virtualSizeGB: virtualSizeGB,
-					maxVirtualSizeGB: maxVirtualSizeGB != null ? maxVirtualSizeGB : 1000,
 					exclusiveClient: null,
 					exclusiveClientUUID: null,
 				},
@@ -3280,12 +3279,10 @@ scope.updateTPV = (updateObj, user, cb) => {
 	var volumeCollection = db.collection('volume');
 	var $set = {};
 
-	// Mutable: description, tpvConfig.maxVirtualSizeGB
+	// Mutable: description
 	// volumeClass and tpvConfig.cdvId are immutable — ignored if present
 	if ('description' in updateObj)
 		$set.description = updateObj.description;
-	if (updateObj.tpvConfig && 'maxVirtualSizeGB' in updateObj.tpvConfig)
-		$set['tpvConfig.maxVirtualSizeGB'] = updateObj.tpvConfig.maxVirtualSizeGB;
 
 	$set.modifiedBy = user.email;
 	$set.dateModified = new Date();
@@ -3384,11 +3381,6 @@ scope.extendTPV = ({ tpvId, newSizeGB }, user, cb) => {
 			return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
 				.addInfo(Entities.Volume.ID, tpvId)
 				.addInfo(Entities.Error, 'newSizeGB must be greater than current virtualSizeGB'));
-
-		if (newSizeGB > tpv.tpvConfig.maxVirtualSizeGB)
-			return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
-				.addInfo(Entities.Volume.ID, tpvId)
-				.addInfo(Entities.Error, `newSizeGB exceeds maxVirtualSizeGB (${tpv.tpvConfig.maxVirtualSizeGB})`));
 
 		const $set = {
 			capacity: newSizeGB,

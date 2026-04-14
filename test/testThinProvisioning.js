@@ -62,11 +62,11 @@ function makeCDV(name, capacityGB = 10) {
 }
 
 /** Build a minimal TPV volume object referencing an existing CDV. */
-function makeTPV(name, cdvId, virtualSizeGB = 5, maxVirtualSizeGB = 100) {
+function makeTPV(name, cdvId, virtualSizeGB = 5) {
 	return {
 		name,
 		volumeClass: consts.volumeClass.TPV,
-		tpvConfig: { cdvId, tpvExtentSizeKB: 1024, virtualSizeGB, maxVirtualSizeGB },
+		tpvConfig: { cdvId, tpvExtentSizeKB: 1024, virtualSizeGB },
 	};
 }
 
@@ -281,16 +281,6 @@ describe('Thin Provisioning', () => {
 					.then(doc => assert.strictEqual(doc.description, 'updated tpv desc'));
 			});
 
-			it('Should update tpvConfig.maxVirtualSizeGB', () => {
-				return new Promise((resolve, reject) => {
-					updateTPV({ _id: tpvName, tpvConfig: { maxVirtualSizeGB: 200 } }, TEST_USER, msg => {
-						const res = msg.createApiResponse(Entities.Volume.ID);
-						res.success ? resolve() : reject(new Error(JSON.stringify(res.error)));
-					});
-				}).then(() => getVolumeFromDB(tpvName))
-					.then(doc => assert.strictEqual(doc.tpvConfig.maxVirtualSizeGB, 200));
-			});
-
 			it('Should not update cdvId (immutable field)', () => {
 				return new Promise((resolve, reject) => {
 					updateTPV({ _id: tpvName, tpvConfig: { cdvId: 'some-other-cdv' } }, TEST_USER, msg => {
@@ -405,14 +395,6 @@ describe('Thin Provisioning', () => {
 						resolve(msg.createApiResponse(Entities.Volume.ID));
 					});
 				}).then(res => assert(!res.success, 'Expected failure: smaller size'));
-			});
-
-			it('Should fail when newSizeGB exceeds maxVirtualSizeGB', () => {
-				return new Promise(resolve => {
-					extendTPV({ tpvId: tpvName, newSizeGB: 999 }, TEST_USER, msg => {
-						resolve(msg.createApiResponse(Entities.Volume.ID));
-					});
-				}).then(res => assert(!res.success, 'Expected failure: exceeds maxVirtualSizeGB'));
 			});
 
 			it('Should fail when TPV does not exist', () => {

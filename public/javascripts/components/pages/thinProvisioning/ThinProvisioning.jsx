@@ -71,17 +71,7 @@ const ThinProvisioning = () => {
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
 			value: tpvRow => tpvRow.tpvConfig?.virtualSizeGB != null
-				? CapacityService.toBiggestUnit(tpvRow.tpvConfig.virtualSizeGB * 1024 * 1024 * 1024, unitType)
-				: '—',
-		},
-		{
-			name: 'Max Size',
-			field: 'tpvConfig.maxVirtualSizeGB',
-			filterable: false,
-			className: 'fixed-size-column sx-column',
-			rowClassName: 'fixed-size-column',
-			value: tpvRow => tpvRow.tpvConfig?.maxVirtualSizeGB != null
-				? CapacityService.toBiggestUnit(tpvRow.tpvConfig.maxVirtualSizeGB * 1024 * 1024 * 1024, unitType)
+				? CapacityService.toBiggestUnit(tpvRow.tpvConfig.virtualSizeGB, unitType)
 				: '—',
 		},
 		{
