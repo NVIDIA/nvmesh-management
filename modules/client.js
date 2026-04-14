@@ -4734,6 +4734,29 @@ scope.attachTPV = (clientID, clientUUID, tpvName, callback) => {
 				});
 			});
 		},
+		function refreshSourceUUID(cb) {
+			// TPVs created before the sourceUUID fix have an empty field in MongoDB.
+			// Recompute from the CDV's current RW segments so the kernel attach
+			// message carries a valid allocator_toma_id on first attach.
+			if (tpv.sourceUUID) return cb();
+			const rwNodes = [...new Set(
+				(cdv.chunks[0]?.pRaids || [])
+					.flatMap(pRaid => pRaid.diskSegments)
+					.filter(seg => seg.status === 'RW_ENABLED')
+					.map(seg => seg.node_id)
+			)];
+			const tomaHostname = rwNodes[0] || '';
+			if (!tomaHostname) return cb();
+			volumeCollection.updateOne(
+				{ _id: tpvName, volumeClass: consts.volumeClass.TPV },
+				{ $set: { sourceUUID: tomaHostname } },
+				err => {
+					if (err) new MongoError(err).log();
+					else tpv.sourceUUID = tomaHostname;
+					cb(); // non-fatal; proceed even if update fails
+				}
+			);
+		},
 		function attachCDV(cb) {
 			// attachVolumes handles both cases: new CDV attach (isHidden=true) and ref-only update
 			// (CDV already SHARED_RW attached due to another TPV or TOMA ref).
