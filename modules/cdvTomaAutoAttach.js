@@ -36,11 +36,44 @@ class CDVTomaAutoAttach {
 		)];
 	}
 
-	// Called once after a CDV is created (chunk layout is populated by RAID allocation).
-	// Attaches the CDV to every node that hosts a first-pRAID RW segment.
-	async initCDV(cdv) {
+	// Attaches the CDV to all first-pRAID TOMA nodes (potential allocators).
+	// Idempotent: attachVolumes handles the case where the CDV is already attached
+	// (adds the toma: referenceID without creating a duplicate attachment).
+	// Called when the first TPV on a CDV is attached to any client, and on topology additions.
+	async attachCDVToAllTomaNodes(cdv) {
 		const nodeIds = this._firstPRaidNodeIds(cdv);
 		await Promise.all(nodeIds.map(nodeId => this.attachCDVToNode(cdv, nodeId)));
+	}
+
+	// Called after a TPV is fully detached (exclusiveClient already cleared in DB).
+	// If no other TPVs on this CDV remain actively attached, removes the toma: referenceID
+	// from all first-pRAID nodes, allowing detachVolumes to send a full DetachVolumes message
+	// when no other refs (tpv:*) are present.
+	async onTPVDetached(cdv) {
+		const db = app.get('db');
+		const volumeCollection = db.collection('volume');
+
+		const remainingCount = await volumeCollection.countDocuments({
+			volumeClass: consts.volumeClass.TPV,
+			'tpvConfig.cdvUUID': cdv.uuid,
+			'tpvConfig.exclusiveClient': { $ne: null }
+		});
+
+		if (remainingCount > 0) {
+			logger.sysDEBUG(`cdvTomaAutoAttach.onTPVDetached: CDV ${cdv._id} still has ${remainingCount} active TPV(s); keeping TOMA attachment`);
+			return;
+		}
+
+		logger.sysDEBUG(`cdvTomaAutoAttach.onTPVDetached: last active TPV detached from CDV ${cdv._id}; removing TOMA attachments`);
+		const nodeIds = this._firstPRaidNodeIds(cdv);
+		await Promise.all(nodeIds.map(nodeId => this.maybeDetachCDVFromNode(cdv, nodeId)));
+	}
+
+	// Removes the toma: referenceID from all first-pRAID nodes. Used during CDV deletion
+	// to clear any remaining TOMA attachments before the volume record is removed.
+	async detachCDVFromAllNodes(cdv) {
+		const nodeIds = this._firstPRaidNodeIds(cdv);
+		await Promise.all(nodeIds.map(nodeId => this.maybeDetachCDVFromNode(cdv, nodeId)));
 	}
 
 	// Called when a TOMA topology update affects the first pRAID of a CDV.

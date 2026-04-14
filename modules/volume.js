@@ -2514,6 +2514,26 @@ scope.markVolumesForDeletion = function(volumes, cb) {
 					callback();
 				});
 			},
+			function failIfCDVHasTPVs(callback) {
+				if (dbVolume.volumeClass !== consts.volumeClass.CDV || !dbVolume.tpvCount)
+					return callback();
+
+				handleDeleteVolumeError(systemMessages.VOLUME_DELETE_FAILED,
+					`CDV has ${dbVolume.tpvCount} TPV(s). Delete all TPVs before deleting the CDV.`, volume);
+				return callback(true);
+			},
+			function detachCDVFromTomaNodes(callback) {
+				// Auto-detach CDV from all TOMA nodes before deletion. CDV attachments are
+				// auto-managed (toma: referenceIDs); clearing them here ensures the volume is
+				// not blocked by lingering TOMA attachments in failIfAttached below.
+				if (dbVolume.volumeClass !== consts.volumeClass.CDV) return callback();
+				cdvTomaAutoAttach.detachCDVFromAllNodes(dbVolume)
+					.then(() => callback())
+					.catch(err => {
+						logger.sysDEBUG(`cdvTomaAutoAttach.detachCDVFromAllNodes failed for CDV ${dbVolume._id}: ${err}`);
+						callback(); // non-fatal; failIfAttached will catch if still attached
+					});
+			},
 			function failIfAttached(callback) {
 				scope.getAttachedClientsForVolume(volume, (err, clients) => {
 					if (err) {
@@ -2541,14 +2561,6 @@ scope.markVolumesForDeletion = function(volumes, cb) {
 
 					callback();
 				});
-			},
-			function failIfCDVHasTPVs(callback) {
-				if (dbVolume.volumeClass !== consts.volumeClass.CDV || !dbVolume.tpvCount)
-					return callback();
-
-				handleDeleteVolumeError(systemMessages.VOLUME_DELETE_FAILED,
-					`CDV has ${dbVolume.tpvCount} TPV(s). Delete all TPVs before deleting the CDV.`, volume);
-				return callback(true);
 			},
 			function failIfSourceVolumeInUse(callback) {
 				if (!dbVolume.usedAsSourceCount || dbVolume.usedAsSourceCount == 0)
@@ -3048,17 +3060,6 @@ scope.saveVolumes = (requestVolumes, user, cb) => {
 				msgs => { messages.push(...msgs); cb(); }
 			);
 		},
-		cb => {
-			// Fire-and-forget TOMA auto-attach for newly created CDVs (chunks populated by saveVolume).
-			const createdCDVs = otherVolumes.filter(v => v.volumeClass === consts.volumeClass.CDV && v.uuid);
-			if (!createdCDVs.length) return cb();
-			async.each(createdCDVs, (cdv, next) => {
-				cdvTomaAutoAttach.initCDV(cdv).then(() => next()).catch(err => {
-					logger.sysDEBUG(`cdvTomaAutoAttach.initCDV failed for CDV ${cdv._id}: ${err}`);
-					next();
-				});
-			}, cb);
-		}
 	], () => cb(messages));
 };
 

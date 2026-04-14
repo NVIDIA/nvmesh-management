@@ -19,6 +19,7 @@ var { ExecutionTimer } = require('../models/executionTimer.js');
 var { MongoError, SystemMessage, Entities, SystemAdminMessage, Differentiators } = require('../modules/error.js');
 var volumeModule = require('./volume.js');
 var kafkaModule = require('./kafka.js');
+const cdvTomaAutoAttach = require('./cdvTomaAutoAttach');
 var logModule = require('./log.js');
 const systemMessages = require('../systemMessages.js');
 const configurationProfiles = require('./configurationProfiles.js');
@@ -3631,9 +3632,22 @@ scope.attach = (clientID, clientUUID, requestedVolumes, cb) => {
 		docs.forEach(d => { classMap[d._id] = { volumeClass: d.volumeClass, uuid: d.uuid }; });
 
 		const tpvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.TPV);
-		const otherVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass !== consts.volumeClass.TPV);
+		const cdvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV);
+		const otherVolumes = requestedVolumes.filter(v => {
+			const vc = classMap[v.name]?.volumeClass;
+			return vc !== consts.volumeClass.TPV && vc !== consts.volumeClass.CDV;
+		});
 
 		const allMessages = [];
+
+		// CDV volumes are auto-managed; manual attach is not permitted.
+		cdvVolumes.forEach(vol => {
+			allMessages.push(new SystemAdminMessage(systemMessages.BUILD_RESPONSES_ERROR)
+				.addInfo(Entities.Volume.ID, vol.name)
+				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+				.addInfo(Entities.Client.ID, clientID)
+				.addInfo(Entities.Error, 'CDV volumes are auto-managed and cannot be attached manually'));
+		});
 
 		async.parallel([
 			next => {
@@ -3684,9 +3698,22 @@ scope.detach = (clientID, clientUUID, requestedVolumes, cb) => {
 		docs.forEach(d => { classMap[d._id] = { volumeClass: d.volumeClass, uuid: d.uuid }; });
 
 		const tpvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.TPV);
-		const otherVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass !== consts.volumeClass.TPV);
+		const cdvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV);
+		const otherVolumes = requestedVolumes.filter(v => {
+			const vc = classMap[v.name]?.volumeClass;
+			return vc !== consts.volumeClass.TPV && vc !== consts.volumeClass.CDV;
+		});
 
 		const allMessages = [];
+
+		// CDV volumes are auto-managed; manual detach is not permitted.
+		cdvVolumes.forEach(vol => {
+			allMessages.push(new SystemAdminMessage(systemMessages.DETACH_VOLUME_GENERAL_ERROR)
+				.addInfo(Entities.Volume.ID, vol.name)
+				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+				.addInfo(Entities.Client.ID, clientID)
+				.addInfo(Entities.Error, 'CDV volumes are auto-managed and cannot be detached manually'));
+		});
 
 		async.parallel([
 			next => {
@@ -4734,6 +4761,16 @@ scope.attachTPV = (clientID, clientUUID, tpvName, callback) => {
 				});
 			});
 		},
+		function attachCDVToTomaNodes(cb) {
+			// Ensure all first-pRAID TOMA nodes (potential CDV allocators) have the CDV attached
+			// with isHidden=false before attaching the CDV to the TPV client.  Doing TOMA first
+			// means that if the TPV client is also a TOMA node, the CDV arrives as non-hidden
+			// (block device visible) and the subsequent client attach just adds a tpv: referenceID.
+			cdvTomaAutoAttach.attachCDVToAllTomaNodes(cdv).then(() => cb()).catch(err => {
+				logger.sysDEBUG(`attachTPV: cdvTomaAutoAttach.attachCDVToAllTomaNodes failed for CDV ${cdv._id}: ${err}`);
+				cb(); // non-fatal — TOMA will get CDV via topology push when it becomes available
+			});
+		},
 		function attachCDV(cb) {
 			// attachVolumes handles both cases: new CDV attach (isHidden=true) and ref-only update
 			// (CDV already SHARED_RW attached due to another TPV or TOMA ref).
@@ -4811,6 +4848,14 @@ scope.detachTPV = (clientID, clientUUID, tpvName, callback) => {
 					cb();
 				}
 			);
+		},
+		function maybeDetachCDVFromTomaNodes(cb) {
+			// exclusiveClient is now cleared; if no other TPVs remain active on this CDV,
+			// remove the toma: referenceIDs from all first-pRAID nodes.
+			cdvTomaAutoAttach.onTPVDetached(cdv).then(() => cb()).catch(err => {
+				logger.sysDEBUG(`detachTPV: cdvTomaAutoAttach.onTPVDetached failed for CDV ${cdv._id}: ${err}`);
+				cb(); // non-fatal
+			});
 		}
 	], callback);
 };
@@ -4836,6 +4881,7 @@ function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
 			if (!tpvDocs || !tpvDocs.length) return done();
 
 			async.each(tpvDocs, (tpv, next) => {
+				let cdvForCleanup = null;
 				async.series([
 					function clearExclusiveClient(cb) {
 						volumeCollection.updateOne(
@@ -4849,11 +4895,13 @@ function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
 
 						// Look up the CDV to get its _id
 						volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV },
-							{ projection: { _id: 1, uuid: 1 } }, (err, cdv) => {
+							{ projection: { _id: 1, uuid: 1, chunks: 1 } }, (err, cdv) => {
 								if (err || !cdv) {
 									if (err) new MongoError(err).log();
 									return cb();
 								}
+
+								cdvForCleanup = cdv; // captured for maybeDetachCDVFromTomaNodes below
 
 								// Look up this client's UUID for the detachVolumes call
 								clientCollection.findOne({ _id: clientID }, { projection: { uuid: 1 } }, (err2, clientDoc) => {
@@ -4870,6 +4918,15 @@ function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
 									}], () => cb());
 								});
 							});
+					},
+					function maybeDetachCDVFromTomaNodes(cb) {
+						if (!cdvForCleanup) return cb();
+						// exclusiveClient already cleared; if no other TPVs remain active on this CDV,
+						// remove toma: referenceIDs from all first-pRAID TOMA nodes.
+						cdvTomaAutoAttach.onTPVDetached(cdvForCleanup).then(() => cb()).catch(err => {
+							logger.sysDEBUG(`cleanupTPVReferences: cdvTomaAutoAttach.onTPVDetached failed for CDV ${cdvForCleanup._id}: ${err}`);
+							cb(); // non-fatal
+						});
 					}
 				], next);
 			}, done);
