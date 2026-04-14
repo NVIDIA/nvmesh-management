@@ -123,20 +123,34 @@ def run_csi_driver_pytests(csi_driver_root, python_bin, test_path, pytest_args):
     logger.info(" ".join(pytest_cmd))
     logger.info("=" * 70)
 
-    # Run pytest in subprocess with CSI driver's venv
-    result = subprocess.run(
+    env = {
+        **os.environ,
+        "PYTHONPATH": csi_driver_root,
+        "PROJECT_ROOT": csi_driver_root,
+        "TEST_CONFIG_PATH": os.path.join(csi_driver_root, "test/config.yaml"),
+    }
+
+    # Stream pytest output line-by-line (merged stderr) while capturing for the result object
+    stdout_lines = []
+
+    with subprocess.Popen(
         pytest_cmd,
         cwd=csi_driver_root,
-        env={
-            **os.environ,
-            "PYTHONPATH": csi_driver_root,
-            "PROJECT_ROOT": csi_driver_root,
-            "TEST_CONFIG_PATH": os.path.join(csi_driver_root, "test/config.yaml"),
-        },
-        check=False
-    )
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    ) as proc:
+        if proc.stdout is None:
+            raise RuntimeError("pytest subprocess has no stdout pipe")
+        for line in proc.stdout:
+            stdout_lines.append(line)
+            logger.info("%s", line.rstrip("\n"))
 
-    return result
+    return subprocess.CompletedProcess(
+        pytest_cmd, proc.returncode, stdout="".join(stdout_lines), stderr=None
+    )
 
 def ensure_csi_driver_cloned(branch_name):
     """
