@@ -731,7 +731,7 @@ describe('VPG Reclaim', () => {
 			stripeWidth: 1,
 			dataBlocks: 4,
 			parityBlocks: 1,
-			protectionLevel: consts.ecSeparationTypes.FULL
+			protectionLevel: consts.separationTypes.FULL
 		};
 		let vpgUuid;
 
