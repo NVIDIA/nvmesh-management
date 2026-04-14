@@ -4758,14 +4758,17 @@ scope.attachTPV = (clientID, clientUUID, tpvName, callback) => {
 			});
 		},
 		function attachCDV(cb) {
-			// attachVolumes handles both cases: new CDV attach (isHidden=true) and ref-only update
+			// attachVolumes handles both cases: new CDV attach and ref-only update
 			// (CDV already SHARED_RW attached due to another TPV or TOMA ref).
+			// isHidden must be false (not set) so the client kernel gets a real R/W
+			// block device for TPV L1-tree I/O (load_state / flush_state).  With
+			// isHidden=true the kernel skips gendisk/queue creation and tpv_cdv_sync_io
+			// cannot submit bios.  Same rationale as cdvTomaAutoAttach.js isHidden=false.
 			scope.attachVolumes(clientID, clientUUID, [{
 				uuid: cdv.uuid,
 				name: cdv._id,
 				referenceID: `tpv:${tpv.uuid}`,
-				reservation: { mode: consts.reservationModeNames.SHARED_READ_WRITE },
-				isHidden: true
+				reservation: { mode: consts.reservationModeNames.SHARED_READ_WRITE }
 			}], () => cb());
 		},
 		function attachTPVVolume(cb) {
