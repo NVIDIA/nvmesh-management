@@ -3472,6 +3472,7 @@ scope.extendTPV = ({ tpvId, newSizeGB }, user, cb) => {
 
 		const $set = {
 			capacity: newSizeGB,
+			blocks: Math.floor(newSizeGB * 1024 * 1024 * 1024 / 4096),
 			'tpvConfig.virtualSizeGB': newSizeGB,
 			modifiedBy: user.email,
 			dateModified: new Date(),
