@@ -1064,6 +1064,7 @@ consts.componentsPages = {
 	pageNotFound: 'pageNotFound',
 	configurationProfiles: 'configurationProfiles',
 	tpv: 'tpv',
+	cdv: 'cdv',
 };
 
 consts.dbCollections = {

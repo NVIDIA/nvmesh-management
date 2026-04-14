@@ -321,9 +321,13 @@ describe('Sidebar.jsx — thin provisioning nav entry', () => {
 		caption: 'Thin Provisioning',
 		adminOnly: false,
 		subItems: [{
+			url: '/thin-provisioning/cdv',
+			icon: 'fa fa-database',
+			caption: 'CDVs',
+		}, {
 			url: '/thin-provisioning/tpv',
 			icon: 'fa fa-database',
-			caption: 'TPV List',
+			caption: 'TPVs',
 		}]
 	};
 
@@ -339,16 +343,24 @@ describe('Sidebar.jsx — thin provisioning nav entry', () => {
 		assert.strictEqual(thinProvEntry.caption, 'Thin Provisioning');
 	});
 
-	it('has one subItem for TPV List', async() => {
-		assert.strictEqual(thinProvEntry.subItems.length, 1);
+	it('has two subItems: CDVs and TPVs', async() => {
+		assert.strictEqual(thinProvEntry.subItems.length, 2);
 	});
 
-	it('subItem URL points to the TPV route', async() => {
-		assert.strictEqual(thinProvEntry.subItems[0].url, '/thin-provisioning/tpv');
+	it('first subItem URL points to the CDV route', async() => {
+		assert.strictEqual(thinProvEntry.subItems[0].url, '/thin-provisioning/cdv');
 	});
 
-	it('subItem caption is "TPV List"', async() => {
-		assert.strictEqual(thinProvEntry.subItems[0].caption, 'TPV List');
+	it('first subItem caption is "CDVs"', async() => {
+		assert.strictEqual(thinProvEntry.subItems[0].caption, 'CDVs');
+	});
+
+	it('second subItem URL points to the TPV route', async() => {
+		assert.strictEqual(thinProvEntry.subItems[1].url, '/thin-provisioning/tpv');
+	});
+
+	it('second subItem caption is "TPVs"', async() => {
+		assert.strictEqual(thinProvEntry.subItems[1].caption, 'TPVs');
 	});
 });
 
@@ -368,5 +380,17 @@ describe('Router.jsx — componentsRegistry TPV entry', () => {
 
 	it('expected ThinProvisioning.js path contains the correct folder and filename', async() => {
 		assert.ok(expectedPath.includes('thinProvisioning/ThinProvisioning.js'));
+	});
+});
+
+describe('Router.jsx — componentsRegistry CDV entry', () => {
+	const expectedPath = './pages/thinProvisioning/CDVs.js';
+
+	it('componentsPages.cdv is the key used to look up the component', async() => {
+		assert.strictEqual(consts.componentsPages.cdv, 'cdv');
+	});
+
+	it('expected CDVs.js path contains the correct folder and filename', async() => {
+		assert.ok(expectedPath.includes('thinProvisioning/CDVs.js'));
 	});
 });

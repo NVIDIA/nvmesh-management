@@ -50,6 +50,7 @@ const componentsRegistry = {
 	[consts.componentsPages.serviceUnavailable]: `${pagesFolder}/ServiceUnavailable.js`,
 	[consts.componentsPages.configurationProfiles]: `${pagesFolder}/configProfiles/ConfigProfiles.js`,
 	[consts.componentsPages.tpv]: `${pagesFolder}/thinProvisioning/ThinProvisioning.js`,
+	[consts.componentsPages.cdv]: `${pagesFolder}/thinProvisioning/CDVs.js`,
 };
 
 managementApp.controller('reactController', function($scope) {

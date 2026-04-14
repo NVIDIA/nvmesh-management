@@ -148,10 +148,6 @@ const Volumes = () => {
 	const [showCreateEditModal, setShowCreateEditModal] = useState(false);
 	const [diagramVolumeId, setDiagramVolumeId] = useState();
 	const [volume, setVolume] = useState({});
-	const [showRegular, setShowRegular] = useState(true);
-	const [showCDVs, setShowCDVs] = useState(true);
-	const showRegularRef = useRef(true);
-	const showCDVsRef = useRef(true);
 	const tableRef = useRef();
 	const isPassphraseCmdDisabled = selectedVolumes.some(v =>
 		!v.isEncrypted ||
@@ -325,17 +321,8 @@ const Volumes = () => {
 		SocketService.addHandler(events.newVolumeEvent.name, () => reloadTable());
 	}, []);
 
-	useEffect(() => {
-		reloadTable();
-	}, [showRegular, showCDVs]);
-
-	const getVolumeClassFilter = () => {
-		const classes = [];
-		if (showRegularRef.current) classes.push(consts.volumeClass.REGULAR, null);
-		if (showCDVsRef.current) classes.push(consts.volumeClass.CDV);
-		// TPVs are never shown here — they have their own page
-		return { volumeClass: { $in: classes } };
-	};
+	// Show only regular volumes; CDVs have their own page, TPVs have their own page
+	const getVolumeClassFilter = () => ({ volumeClass: { $in: [consts.volumeClass.REGULAR, null] } });
 
 	const loadTotalFn = async(filter) => VolumesService.loadTotal({ ...filter, ...getVolumeClassFilter() });
 
@@ -718,30 +705,6 @@ const Volumes = () => {
 						                    !v.encryption.command?.response?.error ||
 						                    !!v.encryption.command?.response?.acknowledged)}/>
 				</DropdownButton>
-				<div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
-					<label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal', margin: 0 }}>
-						<input
-							type="checkbox"
-							checked={showRegular}
-							onChange={e => {
-								showRegularRef.current = e.target.checked;
-								setShowRegular(e.target.checked);
-							}}
-						/>
-						Regular volumes
-					</label>
-					<label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal', margin: 0 }}>
-						<input
-							type="checkbox"
-							checked={showCDVs}
-							onChange={e => {
-								showCDVsRef.current = e.target.checked;
-								setShowCDVs(e.target.checked);
-							}}
-						/>
-						CDVs
-					</label>
-				</div>
 			</div>
 
 			<FiltSortTable

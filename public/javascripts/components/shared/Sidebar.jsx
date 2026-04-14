@@ -38,9 +38,13 @@ const Sidebar = () => {
 		caption: 'Thin Provisioning',
 		adminOnly: false,
 		subItems: [{
+			url: '/thin-provisioning/cdv',
+			icon: 'fa fa-database',
+			caption: 'CDVs',
+		}, {
 			url: '/thin-provisioning/tpv',
 			icon: 'fa fa-database',
-			caption: 'TPV List',
+			caption: 'TPVs',
 		}]
 	}, {
 		url: '/disks',
