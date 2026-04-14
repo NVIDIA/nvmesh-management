@@ -24,10 +24,24 @@ const VolumeProvisioningGroups = () => {
 	const [selectedVPGs, setSelectedVPGs] = useState([]);
 	const [showCreateEditModal, setShowCreateEditModal] = useState(false);
 	const [vpg, setVPG] = useState({});
+	const [capacityUsageMap, setCapacityUsageMap] = useState({});
 	const tableRef = useRef();
 
+	const loadCapacityUsage = async() => {
+		const usageData = await VolumeProvisioningGroupsService.getCapacityUsageAll();
+		if (Array.isArray(usageData)) {
+			const map = {};
+			usageData.forEach(u => { map[u.VPG] = u; });
+			setCapacityUsageMap(map);
+		}
+	};
+
 	useEffect(() => {
-		const interval = setInterval(() => reloadTable(false), 3000);
+		loadCapacityUsage();
+		const interval = setInterval(() => {
+			reloadTable(false);
+			loadCapacityUsage();
+		}, 3000);
 		return () => clearInterval(interval);
 	}, []);
 
@@ -36,6 +50,11 @@ const VolumeProvisioningGroups = () => {
 			tableRef.current.reloadRows(deselectMissingRows);
 			tableRef.current.reloadTotal();
 		}
+	};
+
+	const hasReclaimableSpace = (vpg) => {
+		const usage = capacityUsageMap[vpg._id];
+		return usage && usage.allocatedCapacity < vpg.capacity;
 	};
 
 	const columns = [
@@ -48,6 +67,20 @@ const VolumeProvisioningGroups = () => {
 			name: 'Description',
 			field: 'description',
 			placeholder: 'Search by Description'
+		},
+		{
+			name: 'Allocated Space',
+			field: 'allocatedCapacity',
+			filterable: false,
+			sortable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: vpg => {
+				const usage = capacityUsageMap[vpg._id];
+				if (!vpg.capacity || !usage)
+					return '-';
+				return CapacityService.toBiggestUnit(usage.allocatedCapacity, unitType);
+			}
 		},
 		{
 			name: 'Reserved Space',
@@ -82,7 +115,14 @@ const VolumeProvisioningGroups = () => {
 			className: 'fixed-size-column action-column',
 			rowClassName: 'fixed-size-column',
 			value: (vpg) => (
-				!vpg.isDefault && <a className="fa fa-pencil edit-button" onClick={() => handleEditVPG(vpg)}></a>
+				!vpg.isDefault && <>
+					<a className="fa fa-pencil edit-button" onClick={() => handleEditVPG(vpg)}></a>
+					{vpg.capacity > 0 &&
+						<a className={'fa fa-compress edit-button'}
+						   title="Reclaim unused reserved space"
+						   disabled={!hasReclaimableSpace(vpg)}
+						   onClick={() => handleReclaimVPG(vpg)}></a>}
+				</>
 			),
 		},
 	];
@@ -119,9 +159,9 @@ const VolumeProvisioningGroups = () => {
 	};
 
 	const updateVpg = async(editedVpg) => {
-		if (editedVpg.capacity > vpg.capacity) {
+		if (editedVpg.capacity > vpg.capacity)
 			return updateAndExtendVpg(editedVpg);
-		}
+
 		// eslint-disable-next-line no-unused-vars
 		const { capacity, ...editedVpgWithoutCapacity } = editedVpg;
 
@@ -166,6 +206,22 @@ const VolumeProvisioningGroups = () => {
 		}
 		setShowCreateEditModal(false);
 		setVPG({});
+	};
+
+	const handleReclaimVPG = async(vpg) => {
+		const confirmed = await confirm(`Reclaim unused reserved space from VPG "${vpg.name}"?`);
+		if (!confirmed)
+			return;
+
+		const responses = await VolumeProvisioningGroupsService.reclaim([{ _id: vpg._id, uuid: vpg.uuid }]);
+		if (responses[0].success) {
+			successAlert(`${vpg.name} reserved space reclaimed successfully`);
+			reloadTable();
+			loadCapacityUsage();
+		} else {
+			const errorMsg = extractErrorMsg(responses[0].error);
+			errorAlert(`Failed to reclaim reserved space for ${vpg.name} - ${errorMsg}`);
+		}
 	};
 
 	const handleDeleteVPG = async() => {

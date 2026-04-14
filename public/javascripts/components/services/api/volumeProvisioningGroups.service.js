@@ -40,6 +40,18 @@ export const VolumeProvisioningGroupsService = {
 		return await apiService.post('/extend', vpg);
 	},
 
+	async reclaim(vpgs) {
+		return await apiService.post('/reclaim', vpgs);
+	},
+
+	async getCapacityUsageById(vpgId) {
+		return await apiService.get(`/getVolumesCapacityUsageByID/${vpgId}`);
+	},
+
+	async getCapacityUsageAll() {
+		return await apiService.get('/getVolumesCapacityUsage/all');
+	},
+
 	async getDisksById(vpgId) {
 		return await apiService.get(`/getDisksByID/${vpgId}`);
 	}
