@@ -148,6 +148,20 @@ const ThinProvisioning = () => {
 				errorAlert(`Failed to create TPV ${editedTPV.name} — ${extractErrorMsg(responses[0]?.error)}`);
 			}
 		} else {
+			const newSizeGB = editedTPV.tpvConfig?.virtualSizeGB;
+			const sizeChanged = newSizeGB != null && newSizeGB !== tpv.tpvConfig?.virtualSizeGB;
+
+			if (sizeChanged) {
+				const extendRes = await VolumesService.extendTPV({ tpvId: editedTPV._id, newSizeGB });
+				const res = Array.isArray(extendRes) ? extendRes[0] : extendRes;
+				if (!res?.success) {
+					errorAlert(`Failed to extend TPV ${editedTPV._id} — ${extractErrorMsg(res?.error)}`);
+					setShowCreateEditModal(false);
+					setTPV({});
+					return;
+				}
+			}
+
 			const responses = await VolumesService.updateTPV(editedTPV);
 			const res = Array.isArray(responses) ? responses[0] : responses;
 			if (res?.success) {
