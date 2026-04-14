@@ -14,17 +14,22 @@ const { generateTargets } = require('./testUtils/entityGenerators.js');
 const {
 	checkForZeroedLargestSegmentAvailable,
 	checkForSnapshotsWithoutMetadata, checkForSnapshotsMetadataWithNoData,
-	checkPendingAttachments
+	checkPendingAttachments,
+	checkAndRecoverReclaimingReservedVolumes,
+	checkVPGReservedVolumeCapacitySync
 } = require('../modules/sanityAndRecover.js');
 const { VolumeConcatenated, VolumeRAID10 } = require('./models/volume.js');
 const { Snapshot } = require('./models/snapshot.js');
 const systemMessages = require('../systemMessages.js');
 const consts = require('../consts.js');
 const { Client } = require('./models/client.js');
-//const { Client } = require('./models/client.js');
+const VPGModule = require('../modules/volumeProvisioningGroup.js');
+const utils = require('../utils.js');
+const { Entities } = require('../modules/error.js');
 
 const ZONE_1 = '1';
 const RAID_1_VPG = 'DEFAULT_RAID_1_VPG';
+const USER = { email: consts.SYSTEM_USER };
 
 var serverCollection;
 
@@ -366,6 +371,219 @@ describe('Sanity And Recover', function() {
 						assert.strictEqual(dbClient1.attachments[volume.uuid].action, consts.volumeAttachmentActions.DETACHING);
 						resolve();
 					});
+				});
+			});
+		});
+	});
+
+
+	describe('VPG Reclaim - Sanity Recovery', () => {
+		let vpgCollection, volumeCollection;
+
+		function saveVPG(name, capacity, RAIDLevel, extraAttrs = {}) {
+			return new Promise((resolve, reject) => {
+				const vpg = { name, RAIDLevel, capacity, allowOverflow: true, ...extraAttrs };
+				VPGModule.saveVPGs([vpg], USER, logs => {
+					const res = logs.map(l => l.createApiResponse(Entities.VPG.ID, Entities.VPG.UUID))[0];
+					if (res.error) return reject(res.error);
+					resolve(res);
+				});
+			});
+		}
+
+		function createVolume(name, capacity, RAIDLevel, vpgName, extraAttrs = {}) {
+			return new Promise((resolve, reject) => {
+				const volume = { _id: name, name, capacity, RAIDLevel, VPG: vpgName, ...extraAttrs };
+				utils.createVolumes([volume], USER, logs => {
+					const res = logs.map(l => l.createApiResponse(Entities.Volume.ID, Entities.Volume.UUID))[0];
+					if (res.error) return reject(res.error);
+					resolve(res);
+				});
+			});
+		}
+
+		function getReservedVolume(vpgId) {
+			return volumeCollection.findOne({ _id: vpgId, isReserved: true });
+		}
+
+		function getReservedDiskSegments(vpgId) {
+			return serverCollection.aggregate([
+				{ $unwind: '$disks' },
+				{ $unwind: '$disks.diskSegments' },
+				{ $match: { 'disks.diskSegments.isReserved': true, 'disks.diskSegments.volumeName': vpgId } },
+				{ $project: { diskSegment: '$disks.diskSegments' } }
+			]).toArray().then(results => results.map(r => r.diskSegment));
+		}
+
+		function getPendingSegments(vpgId) {
+			return serverCollection.aggregate([
+				{ $unwind: '$disks' },
+				{ $unwind: '$disks.diskSegments' },
+				{ $match: { 'disks.diskSegments.pendingReclaim.vpgId': vpgId } },
+				{ $project: { diskSegment: '$disks.diskSegments' } }
+			]).toArray().then(results => results.map(r => r.diskSegment));
+		}
+
+		before(() => {
+			vpgCollection = app.get('db').collection('volumeProvisioningGroup');
+			volumeCollection = app.get('db').collection('volume');
+		});
+
+		describe('Rollback IN_PROGRESS (crash before commit point)', () => {
+			const VPG_NAME = 'reclaim_rollback';
+			const VPG_CAPACITY = 50;
+			let originalCapacity;
+
+			before(() => {
+				app.set('bootVersion', 1);
+				return setup.newSetup()
+					.then(() => generateAndSaveTargets(10, 8))
+					.then(() => saveVPG(VPG_NAME, VPG_CAPACITY, consts.RAIDLevel.MIRRORED_RAID_1, { numberOfMirrors: 1 }))
+					.then(() => createVolume(`${VPG_NAME}_v1`, 10, consts.RAIDLevel.MIRRORED_RAID_1, VPG_NAME, { numberOfMirrors: 1 }))
+					.then(() => createVolume(`${VPG_NAME}_v2`, 10, consts.RAIDLevel.MIRRORED_RAID_1, VPG_NAME, { numberOfMirrors: 1 }))
+					.then(() => getReservedVolume(VPG_NAME))
+					.then(vol => { originalCapacity = vol.capacity; });
+			});
+
+			it('simulate crash: set IN_PROGRESS + pendingReclaim flags', () => {
+				const handledBy = { managementId: app.get('managementId'), bootVersion: app.get('bootVersion') };
+				return volumeCollection.updateOne(
+					{ _id: VPG_NAME, isReserved: true },
+					{ $set: { reclaimAction: consts.reservedVolumeReclaimActions.IN_PROGRESS, handledBy } }
+				).then(() => serverCollection.updateMany(
+					{ 'disks.diskSegments.isReserved': true, 'disks.diskSegments.volumeName': VPG_NAME },
+					{
+						$set: {
+							'disks.$[disk].diskSegments.$[seg].pendingReclaim': {
+								vpgId: VPG_NAME,
+								type: consts.segmentPendingReclaimTypes.REMOVAL
+							}
+						}
+					},
+					{ arrayFilters: [{ 'disk.diskSegments.volumeName': VPG_NAME }, { 'seg.isReserved': true, 'seg.volumeName': VPG_NAME }] }
+				)).then(() => {
+					app.set('bootVersion', app.get('bootVersion') + 1);
+				});
+			});
+
+			it('sanity should rollback: clear pending flags and action', () => {
+				return convertCallbackToPromise(checkAndRecoverReclaimingReservedVolumes);
+			});
+
+			it('reserved volume should be restored to original state', () => {
+				return getReservedVolume(VPG_NAME).then(vol => {
+					assert.ok(vol, 'Reserved volume should exist');
+					assert.strictEqual(vol.reclaimAction, undefined, 'reclaimAction should be cleared');
+					assert.strictEqual(vol.capacity, originalCapacity, 'capacity should be unchanged');
+				});
+			});
+
+			it('no pending segments should remain', () => {
+				return getPendingSegments(VPG_NAME).then(segs => {
+					assert.strictEqual(segs.length, 0, 'No pending segments after rollback');
+				});
+			});
+
+			it('VPG capacity should be unchanged', () => {
+				return vpgCollection.findOne({ _id: VPG_NAME }).then(vpg => {
+					assert.strictEqual(vpg.capacity, VPG_CAPACITY, 'VPG capacity unchanged');
+				});
+			});
+		});
+
+		describe('Commit COMMITTING (crash after commit point)', () => {
+			const VPG_NAME = 'reclaim_commit';
+			const VPG_CAPACITY = 50;
+
+			before(() => {
+				app.set('managementId', 'test');
+				app.set('bootVersion', 1);
+				return setup.newSetup()
+					.then(() => generateAndSaveTargets(10, 8))
+					.then(() => saveVPG(VPG_NAME, VPG_CAPACITY, consts.RAIDLevel.MIRRORED_RAID_1, { numberOfMirrors: 1 }))
+					.then(() => createVolume(`${VPG_NAME}_v1`, 10, consts.RAIDLevel.MIRRORED_RAID_1, VPG_NAME, { numberOfMirrors: 1 }))
+					.then(() => createVolume(`${VPG_NAME}_v2`, 10, consts.RAIDLevel.MIRRORED_RAID_1, VPG_NAME, { numberOfMirrors: 1 }));
+			});
+
+			it('simulate crash: set COMMITTING + pendingReclaim flags + reclaimUUIDMap', () => {
+				const handledBy = { managementId: app.get('managementId'), bootVersion: app.get('bootVersion') };
+				return getReservedDiskSegments(VPG_NAME).then(reservedSegs => {
+					const reclaimUUIDMap = {};
+					reservedSegs.forEach(seg => {
+						reclaimUUIDMap[seg.uuid] = [{ uuid: 'fake-new-uuid-' + seg.uuid, lbs: seg.lbs, lbe: seg.lbe }];
+					});
+
+					const markPromises = reservedSegs.map(seg =>
+						serverCollection.updateMany(
+							{ 'disks.diskSegments._id': seg._id },
+							{
+								$set: {
+									'disks.$[disk].diskSegments.$[s].pendingReclaim': {
+										vpgId: VPG_NAME,
+										type: consts.segmentPendingReclaimTypes.REMOVAL
+									}
+								}
+							},
+							{ arrayFilters: [{ 'disk.diskSegments._id': seg._id }, { 's._id': seg._id }] }
+						)
+					);
+					return Promise.all(markPromises).then(() => volumeCollection.updateOne(
+						{ _id: VPG_NAME, isReserved: true },
+						{ $set: { reclaimAction: consts.reservedVolumeReclaimActions.COMMITTING, handledBy, reclaimUUIDMap } }
+					));
+				}).then(() => {
+					app.set('bootVersion', app.get('bootVersion') + 1);
+				});
+			});
+
+			it('sanity should commit: apply pending removals and clear action', () => {
+				return convertCallbackToPromise(checkAndRecoverReclaimingReservedVolumes);
+			});
+
+			it('reclaimAction and reclaimUUIDMap should be cleared', () => {
+				return getReservedVolume(VPG_NAME).then(vol => {
+					if (vol) {
+						assert.strictEqual(vol.reclaimAction, undefined, 'reclaimAction should be cleared');
+						assert.strictEqual(vol.reclaimUUIDMap, undefined, 'reclaimUUIDMap should be cleared');
+					}
+				});
+			});
+
+			it('no pending segments should remain', () => {
+				return getPendingSegments(VPG_NAME).then(segs => {
+					assert.strictEqual(segs.length, 0, 'No pending segments after commit');
+				});
+			});
+		});
+
+		describe('VPG capacity mismatch (crash after shrink, before VPG update)', () => {
+			const VPG_NAME = 'reclaim_capacity';
+			const VPG_CAPACITY = 50;
+
+			before(() => {
+				app.set('managementId', 'test');
+				app.set('bootVersion', 1);
+				return setup.newSetup()
+					.then(() => generateAndSaveTargets(10, 8))
+					.then(() => saveVPG(VPG_NAME, VPG_CAPACITY, consts.RAIDLevel.MIRRORED_RAID_1, { numberOfMirrors: 1 }))
+					.then(() => createVolume(`${VPG_NAME}_v1`, 10, consts.RAIDLevel.MIRRORED_RAID_1, VPG_NAME, { numberOfMirrors: 1 }))
+					.then(() => createVolume(`${VPG_NAME}_v2`, 10, consts.RAIDLevel.MIRRORED_RAID_1, VPG_NAME, { numberOfMirrors: 1 }));
+			});
+
+			it('simulate crash: update reserved volume capacity but not VPG', () => {
+				return volumeCollection.updateOne(
+					{ _id: VPG_NAME, isReserved: true },
+					{ $set: { capacity: 20, action: null, handledBy: null } }
+				);
+			});
+
+			it('sanity should sync VPG capacity to reserved volume', () => {
+				return convertCallbackToPromise(checkVPGReservedVolumeCapacitySync);
+			});
+
+			it('VPG capacity should match reserved volume', () => {
+				return vpgCollection.findOne({ _id: VPG_NAME }).then(vpg => {
+					assert.strictEqual(vpg.capacity, 20, 'VPG capacity should be synced to 20');
 				});
 			});
 		});

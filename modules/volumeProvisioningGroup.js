@@ -349,25 +349,16 @@ scope.reclaimVPGs = (vpgs, user, mainCallback) => {
 			function acquireLockAndReclaim(cb) {
 				let zone;
 
-				const releaseLock = (done) => {
-					if (zone)
-						lockModule.releaseLockByZone(zone, done);
-					else
-						done();
-				};
-
 				const reclaimDone = (err) => {
 					if (err) {
 						messages.push(createSysMessage(err));
-						releaseLock(() => {
-							cb(true);
-						});
+						lockModule.releaseLockByZone(zone, () => { cb(err); });
+
 						return;
 					}
 
-					// Update VPG capacity while still holding the lock to prevent concurrent modifications.
 					updateVPGCapacityFromReservedVolume(vpg._id, user, (err) => {
-						releaseLock(() => {
+						lockModule.releaseLockByZone(zone, () => {
 							if (err)
 								messages.push(createSysMessage(err));
 							else
@@ -381,7 +372,7 @@ scope.reclaimVPGs = (vpgs, user, mainCallback) => {
 				lockModule.acquireLockByVPG(vpg._id, (err, lockedZone) => {
 					if (err) {
 						messages.push(createSysMessage(err));
-						return cb(true);
+						return cb(err);
 					}
 					zone = lockedZone;
 
@@ -393,29 +384,26 @@ scope.reclaimVPGs = (vpgs, user, mainCallback) => {
 						const allocatedCapacity = (result && result.allocatedCapacity) || 0;
 
 						if (allocatedCapacity >= vpgFromDB.capacity) {
-							releaseLock(() => {
-								messages.push(createSysMessage(systemMessages.VPG_RECLAIM_NOTHING_TO_RECLAIM));
-								cb(true);
-							});
+							messages.push(createSysMessage(systemMessages.VPG_RECLAIM_NOTHING_TO_RECLAIM));
+							lockModule.releaseLockByZone(zone, () => { cb(true); });
 							return;
 						}
 
-						volumeCollection.updateOne(
+						volumeCollection.findOneAndUpdate(
 							{ _id: vpg._id, isReserved: true },
 							{ $set: { reclaimAction: consts.reservedVolumeReclaimActions.IN_PROGRESS, handledBy: utils.getHandlingMgmtParams() } },
-							(err) => {
+							{ returnDocument: consts.mongoReturnDocument.AFTER },
+							(err, reservedVol) => {
 								if (err)
 									return reclaimDone(new MongoError(err).log());
+
+								if (!reservedVol)
+									return reclaimDone(new SystemMessage(systemMessages.VPG_RESERVED_VOLUME_NOT_FOUND));
 
 								if (allocatedCapacity) {
 									utils.shrinkReservedSpaceVolume(vpg._id, allocatedCapacity, reclaimDone);
 								} else {
-									volumeCollection.findOne({ _id: vpg._id, isReserved: true }, (err, reservedVol) => {
-										if (err || !reservedVol)
-											return reclaimDone(err || new SystemMessage(systemMessages.VPG_RESERVED_VOLUME_NOT_FOUND));
-
-										utils.forceDeleteVolume(reservedVol, zone, null, reclaimDone);
-									});
+									utils.forceDeleteVolume(reservedVol, zone, null, reclaimDone);
 								}
 							}
 						);
