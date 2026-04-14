@@ -40,7 +40,7 @@ const CreateTPVModal = ({
 			volumeClass: consts.volumeClass.TPV,
 			tpvConfig: {
 				cdvId: data.cdvId,
-				tpvExtentSizeKB: data.tpvExtentSizeKB,
+				tpvExtentSizeKB: Number(data.tpvExtentSizeKB),
 				virtualSizeGB: Number(data.virtualSizeGB),
 			},
 		};
