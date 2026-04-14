@@ -1883,7 +1883,7 @@ scope.sendCDVAllocatorFreeAll = (cdvUUID, tpvUUID, cb = () => {}) => {
 			? [...new Set(
 				cdv.chunks[0].pRaids
 					.flatMap(pRaid => pRaid.diskSegments)
-					.filter(seg => seg.status === 'RW_ENABLED')
+					.filter(seg => seg.status === consts.diskSegmentStatuses.NORMAL)
 					.map(seg => seg.node_id)
 			)]
 			: [];

@@ -3187,7 +3187,7 @@ function createTPV(volume, user, cb) {
 					const rwNodes = [...new Set(
 						firstChunk.pRaids
 							.flatMap(pRaid => pRaid.diskSegments)
-							.filter(seg => seg.status === 'RW_ENABLED')
+							.filter(seg => seg.status === consts.diskSegmentStatuses.NORMAL)
 							.map(seg => seg.node_id)
 					)];
 					return rwNodes[0] || '';
