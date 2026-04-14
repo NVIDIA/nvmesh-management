@@ -23,6 +23,7 @@ const {
 	deleteVPGs,
 	updateVPGs,
 	extendVPGs,
+	reclaimVPGs,
 	getVolumesCapacityUsageByID,
 	getVolumesCapacityUsageAll,
 	fetchVPGByID
@@ -344,6 +345,45 @@ router.post('/extend', function(req, res) {
 	utils.handleRESTAndLog(
 		incomingRequestSystemAdminMessages,
 		cb => extendVPGs(VPGs, req.user, cb),
+		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.VPG.ID, Entities.VPG.UUID)))
+	);
+});
+
+/**
+* @apiVersion 17.2.0
+* @api {post} /volumeProvisioningGroups/reclaim Reclaim VPG reserved space
+* @apiName ReclaimVPGs
+* @apiGroup VPGs
+* @apiDescription Reclaim all unused reserved space from VPGs, reducing reserved space to the effective capacity consumed by derived volumes.
+* @apiBody {object[]} VPGs `VPGs` to reclaim.
+* @apiBody {string} VPGs._id <strong>Required</strong>. The `ID` of the `VPG`.
+* @apiBody {string} VPGs.uuid <strong>Required</strong>. The `UUID` of the `VPG`.
+* @apiExample {object[]} Payload example
+* [{
+*		"_id": "VPG5",
+*		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398"
+* }]
+*
+* @apiSuccess {object} results success statuses
+* @apiSuccessExample Example data on success
+* [{
+* 		"_id": "VPG5",
+*		"uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
+* 		"success": true,
+*		"error": null,
+* 		"payload": null
+* }]
+*/
+router.post('/reclaim', function(req, res) {
+	let VPGs = req.body;
+
+	let incomingRequestSystemAdminMessages = VPGs.map(vpg => createAuditRequestLog(req, systemMessages.VPG_RECLAIM_REQUEST)
+		.addInfo(Entities.VPG.ID, vpg._id)
+		.addInfo(Entities.VPG.UUID, vpg.uuid));
+
+	utils.handleRESTAndLog(
+		incomingRequestSystemAdminMessages,
+		cb => reclaimVPGs(VPGs, req.user, cb),
 		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.VPG.ID, Entities.VPG.UUID)))
 	);
 });

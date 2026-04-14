@@ -3499,6 +3499,64 @@ var systemMessages = {
 		logLevel: consts.loggingLevel.INFO,
 		sysLogLevel: consts.loggingLevel.INFO
 	},
+	VPG_RECLAIM_REQUEST: {
+		message: 'REST API Request: Reclaim VPG reserved space',
+		id: 16350,
+		header: getAuditHeader(consts.entity.vpg, consts.operation.reclaim),
+		logLevel: consts.loggingLevel.INFO,
+		sysLogLevel: consts.loggingLevel.INFO,
+		isAudit: true,
+		isSecurity: true
+	},
+	VPG_RECLAIMED: {
+		message: 'VPG reserved space reclaimed successfully',
+		id: 16351,
+		header: 'VPG Reclaimed',
+		logLevel: consts.loggingLevel.INFO,
+		sysLogLevel: consts.loggingLevel.INFO
+	},
+	VPG_RECLAIM_FAILED: {
+		message: 'Failed to reclaim VPG reserved space',
+		id: 16352,
+		header: 'VPG Reclaim Failed',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	VPG_RECLAIM_NOTHING_TO_RECLAIM: {
+		message: 'No unused reserved space to reclaim',
+		id: 16353,
+		sysLogLevel: consts.loggingLevel.INFO
+	},
+	SANITY_RECLAIMING_RESERVED_VOLUME_FOUND: {
+		message: 'Found reserved volume stuck in RECLAIMING state from a crashed management',
+		id: 16355,
+		sysLogLevel: consts.loggingLevel.WARNING
+	},
+	SANITY_RECLAIMING_RESERVED_VOLUME_RECOVERED: {
+		message: 'Rebuilt reserved volume from disk after a crashed reclaim operation',
+		id: 16356,
+		sysLogLevel: consts.loggingLevel.INFO
+	},
+	SANITY_RECLAIMING_RESERVED_VOLUME_RECOVERY_FAILED: {
+		message: 'Failed to recover reserved volume after a crashed reclaim operation',
+		id: 16357,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	SANITY_RECLAIMING_RESERVED_VOLUME_ROLLED_BACK: {
+		message: 'Rolled back pending reclaim on reserved volume after a crashed management',
+		id: 16359,
+		sysLogLevel: consts.loggingLevel.WARNING
+	},
+	SANITY_VPG_CAPACITY_MISMATCH_FIXED: {
+		message: 'VPG capacity was out of sync with its reserved volume and has been corrected',
+		id: 163581,
+		sysLogLevel: consts.loggingLevel.WARNING
+	},
+	VPG_RESERVED_VOLUME_IS_RECLAIMING: {
+		message: 'The VPG reserved volume is currently being reclaimed',
+		id: 16358,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	CLIENT_ALREADY_HAS_SNAPSHOT_ATTACHED: {
 		message: 'The client already has a snapshot attached.',
 		id: 16270,

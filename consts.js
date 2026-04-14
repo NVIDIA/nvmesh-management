@@ -631,7 +631,17 @@ consts.volumeActions = {
 	INITIALIZING_ENCRYPTION: 'initializingEncryption',
 	ADDING_PASSPHRASE: 'addingPassphrase',
 	DELETING_PASSPHRASE: 'deletingPassphrase',
-	ROTATING_PASSPHRASE: 'rotatingPassphrase'
+	ROTATING_PASSPHRASE: 'rotatingPassphrase',
+};
+
+consts.reservedVolumeReclaimActions = {
+	IN_PROGRESS: 'inProgress',
+	COMMITTING: 'committing'
+};
+
+consts.segmentPendingReclaimTypes = {
+	REMOVAL: 'removal',
+	REPLACE: 'replace'
 };
 
 consts.volumeEncryptionCommands = {
@@ -1030,7 +1040,8 @@ consts.operation = {
 	execute: 'Execute',
 	markAsCompleted: 'Mark As Completed',
 	skipFailedMachine: 'Skip Failed Machine',
-	provision: 'Provision'
+	provision: 'Provision',
+	reclaim: 'Reclaim'
 };
 
 consts.componentsPages = {

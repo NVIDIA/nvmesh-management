@@ -1026,48 +1026,45 @@ scope.getZoneConfiguration = function(zone, cb) {
 	});
 };
 
-function getLargestRangeAndTotalAvailableSpace(disk, segmentStart, segmentEnd, startRange, endRange) {
-	var minVal = startRange;
-	var maxVal = 0;
-	var totalAvailableSpace = 0;
-	var lbs;
-	var lbe;
-	//Check if any segments are already allocated.
-	if (disk.diskSegments && disk.diskSegments.length)
-		disk.diskSegments.sort(function(a, b) { return a[segmentStart] - b[segmentStart]; }).forEach(function(diskSegment, i) {
-			var blocksFromLeft = diskSegment[segmentStart] - minVal;
-			if (blocksFromLeft > maxVal) {
-				maxVal = blocksFromLeft;
-				lbs = minVal;
-				lbe = diskSegment[segmentStart] - 1;
-			}
+// Returns all free ranges within [startRange, endRange) given a list of used segments.
+function getAllFreeRanges(segments, startRange, endRange) {
+	let freeRanges = [];
+	let cursor = startRange;
 
-			// add the available gap to the total available space
-			if (blocksFromLeft > 0)
-				totalAvailableSpace = totalAvailableSpace + blocksFromLeft;
+	if (segments && segments.length) {
+		segments.sort((a, b) => a.lbs - b.lbs).forEach(segment => {
+			if (segment.lbs > cursor)
+				freeRanges.push({ lbs: cursor, lbe: segment.lbs - 1 });
 
-			if (diskSegment[segmentEnd] + 1 > minVal)
-				minVal = diskSegment[segmentEnd] + 1;
-
-			//check the end edge.
-			if (disk.diskSegments.length - 1 == i) {
-				var blocksInTheEnd = endRange - minVal;
-				if (blocksInTheEnd >= maxVal) {
-					maxVal = blocksInTheEnd;
-					lbs = minVal;
-					lbe = lbs + blocksInTheEnd - 1;
-				}
-
-				if (blocksInTheEnd > 0)
-					totalAvailableSpace = totalAvailableSpace + blocksInTheEnd;
-			}
+			if (segment.lbe + 1 > cursor)
+				cursor = segment.lbe + 1;
 		});
-	//No segments are allocated, just take all the space.
-	else {
-		lbs = minVal;
-		lbe = endRange - 1;
-		totalAvailableSpace = endRange - minVal;
 	}
+
+	if (cursor < endRange)
+		freeRanges.push({ lbs: cursor, lbe: endRange - 1 });
+
+	return freeRanges;
+}
+
+function getLargestRangeAndTotalAvailableSpace(disk, startRange, endRange) {
+	const freeRanges = getAllFreeRanges(disk.diskSegments, startRange, endRange);
+
+	let lbs = startRange;
+	let lbe = startRange - 1;
+	let totalAvailableSpace = 0;
+	let maxVal = 0;
+
+	freeRanges.forEach(range => {
+		const blocks = range.lbe - range.lbs + 1;
+		totalAvailableSpace += blocks;
+
+		if (blocks >= maxVal) {
+			maxVal = blocks;
+			lbs = range.lbs;
+			lbe = range.lbe;
+		}
+	});
 
 	return { start: lbs, end: lbe, totalAvailableSpace: totalAvailableSpace };
 }
@@ -1087,7 +1084,7 @@ scope.calculateAvailableSpace = function(disk) {
 		maxValSegment = scope.getAvailableSpace(disk) + consts.RESERVED_GPT_BLOCKS;
 	}
 
-	var result = getLargestRangeAndTotalAvailableSpace(disk, 'lbs', 'lbe', minValSegment, maxValSegment);
+	var result = getLargestRangeAndTotalAvailableSpace(disk, minValSegment, maxValSegment);
 
 	return result.totalAvailableSpace;
 };
@@ -1107,7 +1104,7 @@ scope.getLargestSegment = function(disk) {
 			consts.BLOCK_SET_SIZE + consts.RESERVED_GPT_BLOCKS;
 	}
 
-	var segment = getLargestRangeAndTotalAvailableSpace(disk, 'lbs', 'lbe', minValSegment, maxValSegment);
+	var segment = getLargestRangeAndTotalAvailableSpace(disk, minValSegment, maxValSegment);
 
 	var result = {
 		lbs: segment.start,
@@ -2943,7 +2940,9 @@ scope.getReservedSegments = function(disk, VPG) {
 
 	if (disk.diskSegments && disk.diskSegments.length) {
 		//Reserved segments
-		var reservedSegments = VPG ? disk.diskSegments.filter(function(segment) { return segment.isReserved && segment.volumeName === VPG; }) : [];
+		var reservedSegments = VPG ? disk.diskSegments.filter(function(segment) {
+			return segment.isReserved && segment.volumeName === VPG && !segment.pendingReclaim;
+		}) : [];
 		//Regular segments
 		var segments = disk.diskSegments.filter(function(segment) { return !segment.isReserved; });
 
@@ -3064,6 +3063,28 @@ scope.getLargestReservedChunk = function(volume, alreadyUsedDisks, lockedZone, c
 				});
 			else
 				callback();
+		},
+		function checkNotReclaiming(callback) {
+			const volumeCollection = db.collection('volume');
+			volumeCollection.findOne(
+				{
+					_id: volume.VPG,
+					isReserved: true,
+					reclaimAction: { $in: [consts.reservedVolumeReclaimActions.IN_PROGRESS, consts.reservedVolumeReclaimActions.COMMITTING] }
+				},
+				{ projection: { name: 1, uuid: 1 } },
+				(err, reclaimingVolume) => {
+					if (err)
+						return callback(new MongoError(err).log());
+
+					if (reclaimingVolume)
+						return callback(new SystemMessage(systemMessages.VPG_RESERVED_VOLUME_IS_RECLAIMING)
+							.addInfo(Entities.VPG.Name, reclaimingVolume.name)
+							.addInfo(Entities.VPG.UUID, reclaimingVolume.uuid).log());
+
+					callback();
+				}
+			);
 		},
 		function fetchDisks(callback) {
 			//Load reserved segments
@@ -4317,6 +4338,597 @@ scope.forceDeleteDiskSegments = function(diskSegmentsToRemove, cb) {
 
 		cb(err);
 	});
+};
+
+scope.commitReclaimRemovals = function(removals, cb) {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+
+	async.eachSeries(removals, (seg, nextSegment) => {
+		const blocks = seg.lbe - seg.lbs + 1;
+		serverCollection.updateOne(
+			{ 'disks.diskID': seg.diskID },
+			{
+				$pull: { 'disks.$.diskSegments': { _id: seg._id } },
+				$inc: { 'disks.$.availableBlocks': blocks, 'disks.$.version': 1 },
+				$set: { 'disks.$.largestSegmentAvailable': { blocks: 0, lbs: 0, lbe: 0 } }
+			},
+			(err) => {
+				if (err)
+					new MongoError(err).log();
+
+				nextSegment();
+			}
+		);
+	}, cb);
+};
+
+// Commits pending-replace segments: atomically swaps original with replacements and updates
+// reservedUUID on derived segments in a single pipeline update per replacement.
+// `replacementItems` is an array of { diskID, originalDiskSegmentID, replacements: [...], freedBlocks }.
+scope.commitReclaimReplacements = function(replacementItems, callback) {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+
+	async.eachSeries(replacementItems, (item, nextItem) => {
+		// for each replacement segment, match derived segments (fromReserved=true) within its range and set their reservedUUID to the new UUID.
+		const reservedUUIDBranches = item.replacements.map(replacementSegment => ({
+			case: { $and: [
+				{ $gte: ['$$seg.lbs', replacementSegment.lbs] },
+				{ $lte: ['$$seg.lbe', replacementSegment.lbe] },
+				{ $eq: ['$$seg.fromReserved', true] }
+			] },
+			then: { $mergeObjects: ['$$seg', { reservedUUID: replacementSegment.uuid }] }
+		}));
+
+		serverCollection.updateOne(
+			{ 'disks.diskID': item.diskID },
+			[{
+				$set: {
+					disks: {
+						$map: {
+							input: '$disks',
+							as: 'disk',
+							in: {
+								$cond: [
+									{ $eq: ['$$disk.diskID', item.diskID] },
+									{
+										$mergeObjects: [
+											'$$disk',
+											{
+												// Filter out original, update reservedUUID on covered derived segments, append replacements
+												diskSegments: {
+													$concatArrays: [
+														{ $map: {
+															input: { $filter: {
+																input: '$$disk.diskSegments',
+																cond: { $ne: ['$$this._id', item.originalDiskSegmentID] }
+															} },
+															as: 'seg',
+															in: {
+																$switch: {
+																	branches: reservedUUIDBranches,
+																	default: '$$seg'
+																}
+															}
+														} },
+														item.replacements
+													]
+												},
+												availableBlocks: { $add: ['$$disk.availableBlocks', item.freedBlocks] },
+												version: { $add: ['$$disk.version', 1] },
+												largestSegmentAvailable: { blocks: 0, lbs: 0, lbe: 0 }
+											}
+										]
+									},
+									'$$disk'
+								]
+							}
+						}
+					}
+				}
+			}],
+			(err) => {
+				if (err)
+					new MongoError(err).log();
+
+				nextItem();
+			}
+		);
+	}, callback);
+};
+
+scope.recalculateLargestSegmentForDisks = function(diskIDs, cb) {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+
+	serverCollection.aggregate([
+		{
+			$project: {
+				'disks.diskID': 1,
+				'disks.diskSegments': 1,
+				'disks.usableBlocks': 1,
+				'disks.availableBlocks': 1,
+				'disks.blocks': 1,
+				'disks.block_size': 1,
+				'disks.GPT.firstUsableLba': 1,
+				'disks.GPT.lastUsableLba': 1
+			}
+		},
+		{ $unwind: '$disks' },
+		{ $match: { 'disks.diskID': { $in: diskIDs } } },
+		{
+			$project: {
+				diskID: '$disks.diskID',
+				diskSegments: '$disks.diskSegments',
+				usableBlocks: '$disks.usableBlocks',
+				availableBlocks: '$disks.availableBlocks',
+				blocks: '$disks.blocks',
+				block_size: '$disks.block_size',
+				'GPT.firstUsableLba': '$disks.GPT.firstUsableLba',
+				'GPT.lastUsableLba': '$disks.GPT.lastUsableLba'
+			}
+		}
+	]).toArray((err, disks) => {
+		if (err)
+			return cb(new MongoError(err).log());
+
+		async.eachSeries(disks, (disk, nextDisk) => {
+			const largestSegmentAvailable = scope.getLargestSegment(disk);
+			serverCollection.updateMany(
+				{ 'disks.diskID': disk.diskID },
+				{ $set: { 'disks.$.largestSegmentAvailable': largestSegmentAvailable } },
+				(err) => {
+					if (err)
+						new MongoError(err).log();
+
+					nextDisk();
+				}
+			);
+		}, cb);
+	});
+};
+
+// Builds a map of { diskID -> [{ lbs, lbe }] } from derived volumes' fromReserved disk segments.
+function buildUsedRangesByDisk(derivedVolumes) {
+	const usedRangesByDisk = {};
+
+	derivedVolumes.forEach(vol => {
+		vol.chunks.forEach(chunk => {
+			chunk.pRaids.forEach(pRaid => {
+				pRaid.diskSegments.forEach(diskSegment => {
+					if (diskSegment.fromReserved) {
+						if (!usedRangesByDisk[diskSegment.diskID])
+							usedRangesByDisk[diskSegment.diskID] = [];
+
+						usedRangesByDisk[diskSegment.diskID].push({ lbs: diskSegment.lbs, lbe: diskSegment.lbe });
+					}
+				});
+			});
+		});
+	});
+
+	return usedRangesByDisk;
+}
+
+// Returns the used groups within [refSeg.lbs, refSeg.lbe] as the complement of free gaps.
+function getUsedGroups(usedRanges, refSeg) {
+	const freeRanges = getAllFreeRanges(usedRanges, refSeg.lbs, refSeg.lbe + 1);
+	if (!freeRanges.length)
+		return null;
+
+	const groups = [];
+	let cursor = refSeg.lbs;
+	freeRanges.forEach(free => {
+		if (cursor < free.lbs)
+			groups.push({ lbs: cursor, lbe: free.lbs - 1 });
+		cursor = free.lbe + 1;
+	});
+	if (cursor <= refSeg.lbe)
+		groups.push({ lbs: cursor, lbe: refSeg.lbe });
+
+	return groups;
+}
+
+// Creates replacement segments for each used group across all pRaids in a chunk.
+// Returns [{ blocks, pRaidSegments: [[seg, seg], [seg, seg]] }], one entry per group.
+function buildGroupedReplacements(groups, refSeg, reservedVolumeChunk) {
+	return groups.map(group => {
+		const blocks = group.lbe - group.lbs + 1;
+		const offset = group.lbs - refSeg.lbs;
+
+		const pRaidSegments = reservedVolumeChunk.pRaids.map(pRaid =>
+			pRaid.diskSegments.map(originalDiskSegment => {
+				const newId = uuid.v1();
+
+				return {
+					...originalDiskSegment,
+					_id: newId,
+					uuid: newId,
+					lbs: originalDiskSegment.lbs + offset,
+					lbe: originalDiskSegment.lbs + offset + blocks - 1
+				};
+			})
+		);
+
+		return { blocks, pRaidSegments };
+	});
+}
+
+// Updates reservedUUID on derived volume documents to match the new replacement segment UUIDs.
+// uuidMap: { oldUUID: [{ uuid: newUUID, lbs, lbe }, ...], ... }
+scope.updateReservedUUIDsOnDerivedVolumes = function(vpgId, uuidMap, cb) {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+
+	const branches = [];
+	for (const [oldUUID, replacements] of Object.entries(uuidMap)) {
+		for (const replacement of replacements) {
+			branches.push({
+				case: { $and: [
+					{ $eq: ['$$seg.reservedUUID', oldUUID] },
+					{ $gte: ['$$seg.lbs', replacement.lbs] },
+					{ $lte: ['$$seg.lbe', replacement.lbe] }
+				] },
+				then: { $mergeObjects: ['$$seg', { reservedUUID: replacement.uuid }] }
+			});
+		}
+	}
+
+	const pipeline = [{
+		$set: {
+			chunks: {
+				$map: {
+					input: '$chunks',
+					as: 'chunk',
+					in: {
+						$mergeObjects: ['$$chunk', {
+							pRaids: {
+								$map: {
+									input: '$$chunk.pRaids',
+									as: 'pRaid',
+									in: {
+										$mergeObjects: ['$$pRaid', {
+											diskSegments: {
+												$map: {
+													input: '$$pRaid.diskSegments',
+													as: 'seg',
+													in: { $switch: { branches, default: '$$seg' } }
+												}
+											}
+										}]
+									}
+								}
+							}
+						}]
+					}
+				}
+			}
+		}
+	}];
+
+	volumeCollection.updateMany(
+		{ VPG: vpgId, _id: { $ne: vpgId }, isReserved: { $ne: true } },
+		pipeline,
+		(err) => {
+			if (err)
+				new MongoError(err).log();
+			cb();
+		}
+	);
+};
+
+/**
+ * Reclaims all unused reserved space for a VPG by shrinking/splitting reserved disk segments
+ * to tightly fit only the portions actually used by derived volumes.
+ * Reclaims head gaps, tail gaps, and interior gaps (from deleted volumes).
+ **/
+scope.shrinkReservedSpaceVolume = function(vpgId, targetCapacityGB, cb) {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	const serverCollection = db.collection('server');
+	const lockCollection = db.collection('lock');
+
+	let reservedVolume;
+	// Unused reserved segments to remove entirely from disks (for example a chunk that is not used by any volume)
+	let segmentsToRemove = [];
+	// Partially used reserved segments to replace with fitting ones
+	let segmentReplacements = [];
+	let affectedDiskIds = new Set();
+	let updatedChunks = [];
+	// Maps old reserved segment UUIDs to new replacement UUIDs for updating derived volumes
+	let reclaimUUIDMap = {};
+
+	async.series([
+		function fetchReservedVolume(callback) {
+			volumeCollection.findOne({ _id: vpgId, isReserved: true }, (err, result) => {
+				if (err)
+					return callback(new MongoError(err).log());
+
+				if (!result)
+					return callback(new SystemMessage(systemMessages.VPG_RESERVED_VOLUME_NOT_FOUND));
+
+				reservedVolume = result;
+				callback();
+			});
+		},
+		// Queries derived volumes to determine which reserved ranges are in use, then identifies
+		// segments to remove (fully free) or replace (partially used with gaps).
+		// Also builds updatedChunks with one chunk per contiguous used group (uniform segment sizes).
+		function identifyReclaimableSegments(callback) {
+			const diskSegmentsProjection = {
+				'chunks.pRaids.diskSegments.diskID': 1,
+				'chunks.pRaids.diskSegments.lbs': 1,
+				'chunks.pRaids.diskSegments.lbe': 1,
+				'chunks.pRaids.diskSegments.fromReserved': 1
+			};
+			volumeCollection.find(
+				{ VPG: vpgId, _id: { $ne: vpgId }, isReserved: { $ne: true } },
+				{ projection: diskSegmentsProjection }
+			).toArray((err, derivedVolumes) => {
+				if (err)
+					return callback(new MongoError(err).log());
+
+				const usedRangesByDisk = buildUsedRangesByDisk(derivedVolumes);
+				const vlbsMultiplier = ((reservedVolume.dataBlocks * reservedVolume.stripeWidth) || reservedVolume.stripeWidth) || 1;
+				let vlbs = 0;
+				let stripeIndex = 0;
+
+				reservedVolume.chunks.forEach(reservedVolumeChunk => {
+					// Use the first pRaid's first disk segment as reference for contiguous group detection.
+					// All disks share the same gap structure, so we compute groups once and apply offsets to the rest.
+					const refSeg = reservedVolumeChunk.pRaids[0].diskSegments[0];
+					const refOrigBlocks = refSeg.lbe - refSeg.lbs + 1;
+
+					const usedRanges = (usedRangesByDisk[refSeg.diskID] || [])
+						.filter(range => range.lbs >= refSeg.lbs && range.lbe <= refSeg.lbe);
+
+					// No derived volumes use any segment in this chunk (can happen when the reserved
+					// volume spans multiple chunks and all volumes were allocated from other chunks).
+					if (!usedRanges.length) {
+						reservedVolumeChunk.pRaids.forEach(pRaid => {
+							pRaid.diskSegments.forEach(ds => {
+								segmentsToRemove.push(ds);
+								affectedDiskIds.add(ds.diskID);
+							});
+						});
+						return;
+					}
+
+					const groups = getUsedGroups(usedRanges, refSeg);
+
+					// No free gaps in the reserved segment, it is fully used, nothing to reclaim.
+					if (!groups) {
+						updatedChunks.push({
+							...reservedVolumeChunk,
+							vlbs,
+							vlbe: vlbs + refOrigBlocks * vlbsMultiplier - 1,
+							pRaids: reservedVolumeChunk.pRaids.map(pRaid => ({ ...pRaid, stripeIndex: stripeIndex++ }))
+						});
+
+						vlbs += refOrigBlocks * vlbsMultiplier;
+						return;
+					}
+
+					const groupedReplacements = buildGroupedReplacements(groups, refSeg, reservedVolumeChunk);
+
+					// Build disk level replacement entries for markPendingOnDisks and commitPendingReclaim.
+					reservedVolumeChunk.pRaids.forEach((pRaid, pRaidIndex) => {
+						pRaid.diskSegments.forEach((originalDiskSegment, diskSegmentIndex) => {
+							const originalBlocks = originalDiskSegment.lbe - originalDiskSegment.lbs + 1;
+							const newSegments = groupedReplacements.map(gr => gr.pRaidSegments[pRaidIndex][diskSegmentIndex]);
+							const keptBlocks = newSegments.reduce((sum, currSegment) => sum + (currSegment.lbe - currSegment.lbs + 1), 0);
+							const freedBlocks = originalBlocks - keptBlocks;
+
+							if (freedBlocks > 0) {
+								segmentReplacements.push({
+									original: originalDiskSegment,
+									replacements: newSegments,
+									freedBlocks
+								});
+
+								affectedDiskIds.add(originalDiskSegment.diskID);
+							}
+						});
+					});
+
+					// Build new chunks, one per used group, with uniform segment sizes.
+					// Uses the same segment objects as segmentReplacements so UUIDs match.
+					groupedReplacements.forEach(gr => {
+						const newChunkId = uuid.v1();
+
+						updatedChunks.push({
+							_id: newChunkId,
+							uuid: newChunkId,
+							isReserved: true,
+							vlbs,
+							vlbe: vlbs + gr.blocks * vlbsMultiplier - 1,
+							zone: reservedVolumeChunk.zone,
+							pRaids: reservedVolumeChunk.pRaids.map((pRaid, pRaidIdx) => ({
+								activated: pRaid.activated,
+								version: pRaid.version,
+								tomaLeaderRaftTerm: pRaid.tomaLeaderRaftTerm,
+								zone: pRaid.zone,
+								uuid: uuid.v1(),
+								stripeIndex: stripeIndex++,
+								diskSegments: gr.pRaidSegments[pRaidIdx]
+							}))
+						});
+
+						vlbs += gr.blocks * vlbsMultiplier;
+					});
+				});
+
+				callback();
+			});
+		},
+		// PENDING PHASE: mark segments with pendingReclaim flags without modifying disk layout.
+		// No segments are removed/added, no availableBlocks changes. If management crashes here,
+		// sanity rolls back by simply unsetting the flags.
+		function markPendingOnDisks(callback) {
+			if (!segmentsToRemove.length && !segmentReplacements.length)
+				return callback();
+
+			async.series([
+				function markRemovals(cb) {
+					async.eachSeries(segmentsToRemove, (diskSegment, nextSegment) => {
+						serverCollection.updateOne(
+							{ 'disks.diskID': diskSegment.diskID, 'disks.diskSegments._id': diskSegment._id },
+							{
+								$set: {
+									'disks.$[disk].diskSegments.$[seg].pendingReclaim': {
+										vpgId,
+										type: consts.segmentPendingReclaimTypes.REMOVAL
+									}
+								}
+							},
+							{
+								arrayFilters: [
+									{ 'disk.diskID': diskSegment.diskID },
+									{ 'seg._id': diskSegment._id }
+								]
+							},
+							(err) => {
+								if (err)
+									err = new MongoError(err).log();
+
+								nextSegment(err);
+							}
+						);
+					}, cb);
+				},
+				function markReplacements(cb) {
+					async.eachSeries(segmentReplacements, (replacement, nextSegment) => {
+						serverCollection.updateOne(
+							{
+								'disks.diskID': replacement.original.diskID,
+								'disks.diskSegments._id': replacement.original._id
+							},
+							{
+								$set: {
+									'disks.$[disk].diskSegments.$[seg].pendingReclaim': {
+										vpgId,
+										type: consts.segmentPendingReclaimTypes.REPLACE,
+										replacements: replacement.replacements,
+										freedBlocks: replacement.freedBlocks
+									}
+								}
+							},
+							{
+								arrayFilters: [
+									{ 'disk.diskID': replacement.original.diskID },
+									{ 'seg._id': replacement.original._id }
+								]
+							},
+							(err) => {
+								if (err)
+									err = new MongoError(err).log();
+
+								nextSegment(err);
+							}
+						);
+					}, cb);
+				}
+			], callback);
+		},
+		// COMMIT POINT: write the pre-computed chunk structure to the reserved volume.
+		// Set reclaimAction to COMMITTING so allocation stays blocked until the actual disk changes are applied.
+		// Store reclaimUUIDMap so sanity can update derived volumes' reservedUUID if management crashes.
+		/// If management crashes after this step, sanity will complete the pending disk operations.
+		function updateReservedVolume(callback) {
+			if (!segmentsToRemove.length && !segmentReplacements.length)
+				return callback();
+
+			segmentReplacements.forEach(segmentReplacement => {
+				reclaimUUIDMap[segmentReplacement.original.uuid] = segmentReplacement.replacements
+					.map(replacement => ({ uuid: replacement.uuid, lbs: replacement.lbs, lbe: replacement.lbe }));
+			});
+
+			const newBlocks = Math.floor(targetCapacityGB * consts.GB / consts.BLOCK_SIZE);
+			volumeCollection.updateOne(
+				{ _id: vpgId, isReserved: true },
+				{
+					$set: {
+						chunks: updatedChunks,
+						blocks: newBlocks,
+						capacity: targetCapacityGB,
+						reclaimAction: consts.reservedVolumeReclaimActions.COMMITTING,
+						reclaimUUIDMap
+					}
+				},
+				err => {
+					if (err)
+						return callback(new MongoError(err).log());
+
+					callback();
+				}
+			);
+		},
+		// APPLY PHASE: perform the actual disk changes for segments marked as pending.
+		function commitPendingReclaim(callback) {
+			if (!segmentsToRemove.length && !segmentReplacements.length)
+				return callback();
+
+			const replacementItems = segmentReplacements.map(segmentReplacement => ({
+				diskID: segmentReplacement.original.diskID,
+				originalDiskSegmentID: segmentReplacement.original._id,
+				replacements: segmentReplacement.replacements,
+				freedBlocks: segmentReplacement.freedBlocks
+			}));
+
+			async.series([
+				cb => scope.commitReclaimRemovals(segmentsToRemove, cb),
+				cb => scope.commitReclaimReplacements(replacementItems, cb)
+			], callback);
+		},
+		function updateDerivedVolumeReservedUUIDs(callback) {
+			scope.updateReservedUUIDsOnDerivedVolumes(vpgId, reclaimUUIDMap, callback);
+		},
+		function recalculateLargestSegmentAvailable(callback) {
+			scope.recalculateLargestSegmentForDisks([...affectedDiskIds], callback);
+		},
+		function updateSegmentsInZone(callback) {
+			const segmentsInZone = {};
+			segmentsToRemove.forEach(diskSegment => {
+				if (diskSegment.zone)
+					segmentsInZone[diskSegment.zone] = (segmentsInZone[diskSegment.zone] || 0) + 1;
+			});
+			segmentReplacements.forEach(replacement => {
+				const net = 1 - replacement.replacements.length;
+				if (replacement.original.zone)
+					segmentsInZone[replacement.original.zone] = (segmentsInZone[replacement.original.zone] || 0) + net;
+			});
+
+			const zoneKeys = Object.keys(segmentsInZone).filter(zone => segmentsInZone[zone] !== 0);
+			if (!zoneKeys.length)
+				return callback();
+
+			async.eachSeries(zoneKeys, (zone, cb) => {
+				lockCollection.updateOne(
+					{ _id: zone },
+					{ $inc: { segmentsInZone: -segmentsInZone[zone] } },
+					(err) => {
+						if (err)
+							new MongoError(err).log();
+						cb();
+					}
+				);
+			}, callback);
+		},
+		// Clear the COMMITTING reclaimAction now that all changes are applied.
+		function clearReclaimAction(callback) {
+			volumeCollection.updateOne(
+				{ _id: vpgId, isReserved: true },
+				{ $unset: { reclaimAction: 1, reclaimUUIDMap: 1 } },
+				(err) => {
+					if (err)
+						new MongoError(err).log();
+
+					callback();
+				}
+			);
+		}
+	], (err) => cb(err));
 };
 
 scope.forceDeleteVolumes = function(volumes, lockedZones, isSanity, cb) {

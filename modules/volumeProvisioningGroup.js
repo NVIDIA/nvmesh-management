@@ -13,6 +13,7 @@ const logger = require('../logger.js');
 const systemMessages = require('../systemMessages.js');
 const { MongoError, Entities, SystemAdminMessage, SystemMessage, Differentiators } = require('../modules/error.js');
 const consts = require('../consts.js');
+const lockModule = require('./lock.js');
 
 const scope = {};
 
@@ -303,6 +304,149 @@ scope.extendVPGs = (vpgs, user, mainCallback) => {
 		], () => eachCallback());
 	}, () => mainCallback(messages));
 };
+
+scope.reclaimVPGs = (vpgs, user, mainCallback) => {
+	const messages = [];
+	const db = app.get('db');
+	const vpgCollection = db.collection('volumeProvisioningGroup');
+	const volumeCollection = db.collection('volume');
+
+	async.each(vpgs, (vpg, eachCallback) => {
+		let vpgFromDB;
+
+		const createSysMessage = systemErrorMessage => (systemErrorMessage ?
+			new SystemAdminMessage(systemMessages.VPG_RECLAIM_FAILED).addInfo(Entities.Error, systemErrorMessage).log() :
+			new SystemAdminMessage(systemMessages.VPG_RECLAIMED)).addInfo(Entities.VPG.ID, vpg._id).addInfo(Entities.VPG.UUID, vpg.uuid);
+
+		async.series([
+			function fetchVPG(cb) {
+				vpgCollection.findOne({ _id: vpg._id, uuid: vpg.uuid }, (err, result) => {
+					if (err) {
+						messages.push(new MongoError(err).log());
+						return cb(true);
+					}
+
+					vpgFromDB = result;
+
+					if (!vpgFromDB) {
+						messages.push(createSysMessage(systemMessages.VPG_NOT_FOUND));
+						return cb(true);
+					}
+
+					if (vpgFromDB.isDefault) {
+						messages.push(createSysMessage(systemMessages.DEFAULT_VPG_NOT_EDITABLE));
+						return cb(true);
+					}
+
+					if (!vpgFromDB.capacity) {
+						messages.push(createSysMessage(systemMessages.VPG_RECLAIM_NOTHING_TO_RECLAIM));
+						return cb(true);
+					}
+
+					cb();
+				});
+			},
+			function acquireLockAndReclaim(cb) {
+				let zone;
+
+				const releaseLock = (done) => {
+					if (zone)
+						lockModule.releaseLockByZone(zone, done);
+					else
+						done();
+				};
+
+				const reclaimDone = (err) => {
+					if (err) {
+						messages.push(createSysMessage(err));
+						releaseLock(() => {
+							cb(true);
+						});
+						return;
+					}
+
+					// Update VPG capacity while still holding the lock to prevent concurrent modifications.
+					updateVPGCapacityFromReservedVolume(vpg._id, user, (err) => {
+						releaseLock(() => {
+							if (err)
+								messages.push(createSysMessage(err));
+							else
+								messages.push(createSysMessage());
+
+							cb(err);
+						});
+					});
+				};
+
+				lockModule.acquireLockByVPG(vpg._id, (err, lockedZone) => {
+					if (err) {
+						messages.push(createSysMessage(err));
+						return cb(true);
+					}
+					zone = lockedZone;
+
+					// Re-check allocated capacity under lock since volumes may have been created/deleted.
+					getVolumesUsageCapacity(vpg._id, result => {
+						if (result instanceof MongoError)
+							return reclaimDone(result);
+
+						const allocatedCapacity = (result && result.allocatedCapacity) || 0;
+
+						if (allocatedCapacity >= vpgFromDB.capacity) {
+							releaseLock(() => {
+								messages.push(createSysMessage(systemMessages.VPG_RECLAIM_NOTHING_TO_RECLAIM));
+								cb(true);
+							});
+							return;
+						}
+
+						volumeCollection.updateOne(
+							{ _id: vpg._id, isReserved: true },
+							{ $set: { reclaimAction: consts.reservedVolumeReclaimActions.IN_PROGRESS, handledBy: utils.getHandlingMgmtParams() } },
+							(err) => {
+								if (err)
+									return reclaimDone(new MongoError(err).log());
+
+								if (allocatedCapacity) {
+									utils.shrinkReservedSpaceVolume(vpg._id, allocatedCapacity, reclaimDone);
+								} else {
+									volumeCollection.findOne({ _id: vpg._id, isReserved: true }, (err, reservedVol) => {
+										if (err || !reservedVol)
+											return reclaimDone(err || new SystemMessage(systemMessages.VPG_RESERVED_VOLUME_NOT_FOUND));
+
+										utils.forceDeleteVolume(reservedVol, zone, null, reclaimDone);
+									});
+								}
+							}
+						);
+					});
+				});
+			}
+		], () => eachCallback());
+	}, () => mainCallback(messages));
+};
+
+function updateVPGCapacityFromReservedVolume(vpgId, user, cb) {
+	const db = app.get('db');
+	const vpgCollection = db.collection('volumeProvisioningGroup');
+	const volumeCollection = db.collection('volume');
+
+	volumeCollection.findOne({ _id: vpgId, isReserved: true }, { projection: { capacity: 1 } }, (err, reservedVol) => {
+		if (err)
+			return cb(new MongoError(err).log());
+
+		const newCapacity = reservedVol ? reservedVol.capacity : 0;
+		vpgCollection.updateOne(
+			{ _id: vpgId },
+			{ $set: { capacity: newCapacity, modifiedBy: user.email, dateModified: new Date() } },
+			(err) => {
+				if (err)
+					return cb(new MongoError(err).log());
+				cb();
+			}
+		);
+	});
+}
 
 scope.updateVPGs = (vpgs, user, mainCallback) => {
 	var db = app.get('db');
