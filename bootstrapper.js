@@ -35,6 +35,10 @@ var errorModule = require('./modules/error.js');
 var logModule = require('./modules/log.js');
 var sanityAndRecover = require('./modules/sanityAndRecover.js');
 var volumeEncryptionModule = require('./modules/volumeEncryption.js');
+const upgradeModule = require('./modules/upgrade.js');
+var cdvTomaAutoAttach = require('./modules/cdvTomaAutoAttach.js');
+
+
 var scope = {};
 
 function setCounter(eventName, alarm, critical, total) {
@@ -702,6 +706,14 @@ scope.afterModulesLoaded = function(callback) {
 	callback();
 };
 
+scope.reconcileCDVTomaAttachments = (cb) => {
+	// Non-blocking: release the bootstrap series immediately, run reconciliation in background.
+	if (cb) cb();
+	cdvTomaAutoAttach.reconcileAllCDVs().catch(err =>
+		logger.sysDEBUG(`Bootstrap: CDV TOMA attachment reconciliation failed: ${err}`)
+	);
+};
+
 scope.bootstrap = function(callback) {
 	async.series([
 		logSystemInfo,
@@ -718,6 +730,7 @@ scope.bootstrap = function(callback) {
 		diskModule.startMissingDriveCheckupInterval,
 		utils.sendStatsPeriodically,
 		zoneModule.dispatchAllZonesHardwareConfiguration,
+		scope.reconcileCDVTomaAttachments,
 		scope.removeOldMessages
 	], function(err) {
 		callback(err);

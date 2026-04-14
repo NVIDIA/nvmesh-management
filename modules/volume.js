@@ -1113,6 +1113,11 @@ function updatePRaidSegmentsInDrives(segments, callback) {
 }
 
 scope.handleSegmentChangeInPRaid = function(reportPRaid, volume, user, lockedZones, callback) {
+	const isCDVFirstPRaid = volume.volumeClass === consts.volumeClass.CDV &&
+		volume.chunks && volume.chunks[0] &&
+		volume.chunks[0].pRaids.some(pr => pr.uuid === reportPRaid.uuid);
+	const oldNodeIds = isCDVFirstPRaid ? cdvTomaAutoAttach._firstPRaidNodeIds(volume) : null;
+
 	async.parallel([
 		function(callback) {
 			var startDT3 = new Date();
@@ -1135,6 +1140,11 @@ scope.handleSegmentChangeInPRaid = function(reportPRaid, volume, user, lockedZon
 			});
 		}
 	], function() {
+		if (isCDVFirstPRaid) {
+			cdvTomaAutoAttach.reconcileFirstPRaidAttachments(volume, oldNodeIds).catch(err =>
+				logger.sysDEBUG(`handleSegmentChangeInPRaid: cdvTomaAutoAttach reconcile failed for CDV ${volume._id}: ${err}`)
+			);
+		}
 		callback();
 	});
 };
@@ -3031,6 +3041,7 @@ scope.saveVolumes = (requestVolumes, user, cb) => {
 
 	const tpvVolumes = requestVolumes.filter(v => v.volumeClass === consts.volumeClass.TPV);
 	const otherVolumes = requestVolumes.filter(v => v.volumeClass !== consts.volumeClass.TPV);
+	const cdvNames = otherVolumes.filter(v => v.volumeClass === consts.volumeClass.CDV).map(v => v.name);
 
 	otherVolumes.forEach(volume => {
 		if (volume.volumeClass === consts.volumeClass.CDV) {
@@ -3059,6 +3070,24 @@ scope.saveVolumes = (requestVolumes, user, cb) => {
 				otherVolumes,
 				msgs => { messages.push(...msgs); cb(); }
 			);
+		},
+		cb => {
+			if (!cdvNames.length) return cb();
+			const db = app.get('db');
+			db.collection('volume').find(
+				{ _id: { $in: cdvNames }, volumeClass: consts.volumeClass.CDV, chunks: { $exists: true, $not: { $size: 0 } } }
+			).toArray((err, cdvDocs) => {
+				if (err) {
+					logger.sysDEBUG(`saveVolumes: failed to fetch CDVs for TOMA auto-attach: ${err}`);
+					return cb();
+				}
+				Promise.all(cdvDocs.map(cdv => cdvTomaAutoAttach.attachCDVToAllTomaNodes(cdv)))
+					.then(() => cb())
+					.catch(err => {
+						logger.sysDEBUG(`saveVolumes: cdvTomaAutoAttach.attachCDVToAllTomaNodes failed: ${err}`);
+						cb();
+					});
+			});
 		},
 	], () => cb(messages));
 };

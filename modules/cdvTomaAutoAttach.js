@@ -10,13 +10,23 @@ const logger = require('../logger');
 const { MongoError } = require('./error');
 
 // Manages the automatic attachment of CDV volumes to TOMA nodes that host
-// RW-enabled disk segments of the CDV's first pRAID.  A TOMA node needs the CDV
-// attached (non-hidden, SHARED_RW) so its allocator process can perform direct
-// block I/O to the allocator area (first allocatorSizeGB of the CDV).
+// disk segments in the CDV's first pRAID.  A TOMA node needs the CDV attached
+// (non-hidden, SHARED_RW) so its allocator process can perform direct block I/O
+// to the allocator area (first allocatorSizeGB of the CDV).
 //
-// Attachment lifetime is tracked via the `toma:<cdvUUID>` referenceID on the
-// client attachment.  The CDV is detached from a node only when BOTH the
-// toma:* and all tpv:* referenceIDs are gone (handled by detachVolumes ref logic).
+// Two independent reasons can keep a CDV attached to a given node:
+//   1. TOMA reason  — the node has a disk segment in the CDV's first pRAID
+//      (tracked via `toma:<cdvUUID>` referenceID).
+//   2. TPV reason   — a TPV on that client uses this CDV
+//      (tracked via `tpv:<tpvUUID>` referenceID, managed by attachTPV/detachTPV).
+//
+// The CDV is detached from a node only when BOTH reference classes are empty
+// (handled by detachVolumes ref logic).
+//
+// The `toma:` referenceID lifecycle is independent of TPV state:
+//   - Added at CDV creation (all first-pRAID nodes) and on topology additions.
+//   - Removed on topology removals or CDV deletion.
+//   - NOT removed when TPVs detach — that only clears `tpv:` refs.
 
 class CDVTomaAutoAttach {
 	// Lazy require to avoid circular dependency (client.js ↔ volume.js ↔ cdvTomaAutoAttach.js).
@@ -24,14 +34,14 @@ class CDVTomaAutoAttach {
 		return require('./client');
 	}
 
-	// Returns node_id values of all RW-enabled disk segments in the CDV's first pRAID chunk.
+	// Returns node_id values of all nodes that have any disk segment in the CDV's first pRAID chunk,
+	// regardless of segment status.
 	_firstPRaidNodeIds(cdv) {
 		if (!cdv.chunks || !cdv.chunks[0]) return [];
 		const firstChunk = cdv.chunks[0];
 		return [...new Set(
 			firstChunk.pRaids
 				.flatMap(pRaid => pRaid.diskSegments)
-				.filter(seg => seg.status === consts.diskSegmentStatuses.NORMAL)
 				.map(seg => seg.node_id)
 		)];
 	}
@@ -39,34 +49,10 @@ class CDVTomaAutoAttach {
 	// Attaches the CDV to all first-pRAID TOMA nodes (potential allocators).
 	// Idempotent: attachVolumes handles the case where the CDV is already attached
 	// (adds the toma: referenceID without creating a duplicate attachment).
-	// Called when the first TPV on a CDV is attached to any client, and on topology additions.
+	// Called at CDV creation time and whenever nodes are added to the first pRAID.
 	async attachCDVToAllTomaNodes(cdv) {
 		const nodeIds = this._firstPRaidNodeIds(cdv);
 		await Promise.all(nodeIds.map(nodeId => this.attachCDVToNode(cdv, nodeId)));
-	}
-
-	// Called after a TPV is fully detached (exclusiveClient already cleared in DB).
-	// If no other TPVs on this CDV remain actively attached, removes the toma: referenceID
-	// from all first-pRAID nodes, allowing detachVolumes to send a full DetachVolumes message
-	// when no other refs (tpv:*) are present.
-	async onTPVDetached(cdv) {
-		const db = app.get('db');
-		const volumeCollection = db.collection('volume');
-
-		const remainingCount = await volumeCollection.countDocuments({
-			volumeClass: consts.volumeClass.TPV,
-			'tpvConfig.cdvUUID': cdv.uuid,
-			'tpvConfig.exclusiveClient': { $ne: null }
-		});
-
-		if (remainingCount > 0) {
-			logger.sysDEBUG(`cdvTomaAutoAttach.onTPVDetached: CDV ${cdv._id} still has ${remainingCount} active TPV(s); keeping TOMA attachment`);
-			return;
-		}
-
-		logger.sysDEBUG(`cdvTomaAutoAttach.onTPVDetached: last active TPV detached from CDV ${cdv._id}; removing TOMA attachments`);
-		const nodeIds = this._firstPRaidNodeIds(cdv);
-		await Promise.all(nodeIds.map(nodeId => this.maybeDetachCDVFromNode(cdv, nodeId)));
 	}
 
 	// Removes the toma: referenceID from all first-pRAID nodes. Used during CDV deletion
@@ -121,6 +107,43 @@ class CDVTomaAutoAttach {
 				}], () => resolve());
 			});
 		});
+	}
+
+	// Queries all CDVs with allocated chunks and calls attachCDVToAllTomaNodes for each.
+	// Run once at startup to recover from any missed creation-time attaches (e.g. management
+	// restart, code update) without requiring manual intervention.
+	async reconcileAllCDVs() {
+		const db = app.get('db');
+		const volumeCollection = db.collection('volume');
+
+		logger.sysDEBUG('cdvTomaAutoAttach.reconcileAllCDVs: starting CDV TOMA attachment reconciliation');
+
+		const cdvs = await volumeCollection.find(
+			{ volumeClass: consts.volumeClass.CDV, chunks: { $exists: true, $not: { $size: 0 } } }
+		).toArray();
+
+		logger.sysDEBUG(`cdvTomaAutoAttach.reconcileAllCDVs: found ${cdvs.length} CDV(s) to reconcile`);
+
+		await Promise.all(cdvs.map(cdv => this.attachCDVToAllTomaNodes(cdv)));
+
+		logger.sysDEBUG('cdvTomaAutoAttach.reconcileAllCDVs: reconciliation complete');
+	}
+
+	// Computes the delta between previousNodeIds and the current first-pRAID node IDs on cdv,
+	// then attaches newly-added nodes and detaches removed nodes.  Used after a pRAID segment
+	// change to keep TOMA attachment in sync with the actual disk segment topology.
+	async reconcileFirstPRaidAttachments(cdv, previousNodeIds) {
+		const currentNodeIds = this._firstPRaidNodeIds(cdv);
+		const prevSet = new Set(previousNodeIds);
+		const currSet = new Set(currentNodeIds);
+		const addedNodeIds = currentNodeIds.filter(id => !prevSet.has(id));
+		const removedNodeIds = previousNodeIds.filter(id => !currSet.has(id));
+		if (!addedNodeIds.length && !removedNodeIds.length) return;
+		logger.sysDEBUG(`cdvTomaAutoAttach.reconcileFirstPRaidAttachments: CDV ${cdv._id} added=[${addedNodeIds}] removed=[${removedNodeIds}]`);
+		await Promise.all([
+			...addedNodeIds.map(nodeId => this.attachCDVToNode(cdv, nodeId)),
+			...removedNodeIds.map(nodeId => this.maybeDetachCDVFromNode(cdv, nodeId))
+		]);
 	}
 
 	// Removes the toma:<cdvUUID> referenceID from the CDV attachment on nodeId.
