@@ -3226,7 +3226,7 @@ scope.attachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 					const addRefIDsPipeline = getAddRefIDsPipeline(requestedVolumesWithRefID);
 
 					clientCollection.findOneAndUpdate(
-						{ _id: clientID, client_status: { $ne: consts.clientStatus.INITIALIZING } },
+						{ _id: clientID },
 						addRefIDsPipeline,
 						{ returnDocument: consts.mongoReturnDocument.AFTER },
 						(err, updatedClient) => {
@@ -3344,10 +3344,7 @@ scope.attachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 			});
 			const attachmentsUpdatePipeline = getUpdatePendingAttachmentsPipeline(attachments);
 			clientCollection.findOneAndUpdate(
-				{
-					_id: clientID,
-					client_status: { $ne: consts.clientStatus.INITIALIZING }
-				},
+				{ _id: clientID },
 				attachmentsUpdatePipeline,
 				{ returnDocument: consts.mongoReturnDocument.BEFORE, projection: { attachments: 1 } },
 				(err, originalClient) => {
