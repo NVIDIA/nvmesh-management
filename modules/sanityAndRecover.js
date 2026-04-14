@@ -171,6 +171,8 @@ scope.run = cb => {
 		scope.checkAndRemovePendingVolumes,
 		scope.checkAndRemoveToBeExtendedVolumes,
 		scope.checkAndRemoveOrphanDiskSegments,
+		scope.checkAndRecoverReclaimingReservedVolumes,
+		scope.checkVPGReservedVolumeCapacitySync,
 		scope.checkForZeroedLargestSegmentAvailable,
 		scope.checkServerDiskSegments,
 		scope.checkVolumesDiskSegments,
@@ -955,7 +957,7 @@ scope.checkAndRemovePendingUpgrades = function(cb) {
 			callback
 		) {
 			const defaultQuery = upgrade => ({ _id: upgrade._id, isPending: true });
-			const query = getDeleteStaleEntitiesQuery(
+			const query = getStaleEntitiesQuery(
 				defaultQuery,
 				upgradesToDeleteCreatedByMgmtInPrevBoot,
 				upgradesToDeleteCreatedByOtherDeadMgmt
@@ -1005,7 +1007,7 @@ scope.checkAndResumeStuckUpgrades = function(cb) {
 		function getStaleConfVersion(confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt, callback) {
 			const defaultQuery = confVersion => ({ _id: confVersion._id, runningUpgrade: { $exists: true } });
 			const getHandledBy = entity => entity.runningUpgrade.createdBy;
-			const query = getDeleteStaleEntitiesQuery(
+			const query = getStaleEntitiesQuery(
 				defaultQuery, confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt,
 				'runningUpgrade.createdBy', getHandledBy
 			);
@@ -1089,7 +1091,7 @@ scope.checkAndRemovePendingVolumes = function(cb) {
 				status: consts.volumeStatuses.PENDING
 			});
 
-			const query = getDeleteStaleEntitiesQuery(
+			const query = getStaleEntitiesQuery(
 				defaultQuery,
 				volumesToDeleteCreatedByMgmtInPrevBoot,
 				volumesToDeleteCreatedByOtherDeadMgmt
@@ -1108,7 +1110,7 @@ scope.checkAndRemovePendingVolumes = function(cb) {
 	], err => cb(err));
 };
 
-function getDeleteStaleEntitiesQuery(
+function getStaleEntitiesQuery(
 	defaultQuery,
 	entitiesToDeleteCreatedByMgmtInPrevBoot,
 	entitiesToDeleteCreatedByOtherDeadMgmt,
@@ -1230,7 +1232,7 @@ scope.checkAndRemoveToBeExtendedVolumes = function(cb) {
 						isExtension: true
 					});
 
-					const query = getDeleteStaleEntitiesQuery(
+					const query = getStaleEntitiesQuery(
 						defaultQuery,
 						volumesToDeleteCreatedByMgmtInPrevBoot,
 						volumesToDeleteCreatedByOtherDeadMgmt
@@ -1936,7 +1938,7 @@ function getIncompleteSnapshots(initialMatchQuery, pipeline, cb) {
 				...initialMatchQuery
 			});
 
-			const query = getDeleteStaleEntitiesQuery(
+			const query = getStaleEntitiesQuery(
 				defaultQuery,
 				volumesToDeleteCreatedByMgmtInPrevBoot,
 				volumesToDeleteCreatedByOtherDeadMgmt
@@ -2747,6 +2749,262 @@ scope.verifySegmentStatusAfterEvict = (callback) => {
 				}
 			], err => lockModule.releaseLockByZone(zone, () => nextZone(err)));
 		}, callback);
+	});
+};
+
+// Recovers reserved volumes left in IN_PROGRESS or COMMITTING state by a crashed management.
+// Path 1 (COMMITTING): volume was updated but pending disk changes weren't applied. Complete them.
+// Path 2 (IN_PROGRESS): volume was NOT updated, disk has pending flags only. Roll back by clearing flags.
+scope.checkAndRecoverReclaimingReservedVolumes = function(cb) {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	const serverCollection = db.collection('server');
+
+	async.series([
+		function commitPendingReclaims(callback) {
+			findAndRecoverStaleVolumes(consts.reservedVolumeReclaimActions.COMMITTING, commitPendingForVPG, callback);
+		},
+		function rollbackPendingReclaims(callback) {
+			findAndRecoverStaleVolumes(consts.reservedVolumeReclaimActions.IN_PROGRESS, rollbackPendingForVPG, callback);
+		}
+	], () => cb());
+
+	function findAndRecoverStaleVolumes(reclaimAction, recoverFn, done) {
+		async.waterfall([
+			function findVolumes(callback) {
+				volumeCollection.find(
+					{ isReserved: true, reclaimAction },
+					{ projection: { handledBy: 1, uuid: 1, _id: 1 } }
+				).toArray((err, volumes) => {
+					if (err)
+						return callback(new MongoError(err).log());
+
+					callback(null, volumes);
+				});
+			},
+			function categorize(volumes, callback) {
+				if (!volumes.length)
+					return callback(true);
+
+				categorizeStaleEntities(volumes,
+					(byMgmtInPrevBoot, byOtherDeadMgmt) => {
+						callback(null, byMgmtInPrevBoot, byOtherDeadMgmt);
+					});
+			},
+			function buildQueryAndRecover(byMgmtInPrevBoot, byOtherDeadMgmt, callback) {
+				const defaultQuery = volume => ({
+					_id: volume._id,
+					isReserved: true,
+					reclaimAction
+				});
+
+				const query = getStaleEntitiesQuery(defaultQuery, byMgmtInPrevBoot, byOtherDeadMgmt);
+				if (!query)
+					return callback(true);
+
+				volumeCollection.find(query).toArray((err, staleVolumes) => {
+					if (err)
+						return callback(new MongoError(err).log());
+
+					if (!staleVolumes.length)
+						return callback(true);
+
+					async.eachSeries(staleVolumes, (volume, nextVolume) => {
+						new SystemMessage(systemMessages.SANITY_RECLAIMING_RESERVED_VOLUME_FOUND)
+							.addInfo(Entities.VPG.ID, volume._id).log();
+
+						let zone;
+						async.series([
+							function acquireLock(next) {
+								lockModule.acquireLockByVPG(volume._id, (err, lockedZone) => {
+									if (err)
+										return next(err);
+
+									zone = lockedZone;
+									next();
+								});
+							},
+							function recover(next) {
+								recoverFn(volume, next);
+							}
+						], (err) => {
+							if (err && err !== true)
+								new SystemMessage(systemMessages.SANITY_RECLAIMING_RESERVED_VOLUME_RECOVERY_FAILED)
+									.addInfo(Entities.VPG.ID, volume._id)
+									.addInfo(Entities.Error, err).log();
+
+
+							lockModule.releaseLockByZone(zone, nextVolume);
+						});
+					}, callback);
+				});
+			}
+		], () => done());
+	}
+
+
+	function commitPendingForVPG(reservedVolume, callback) {
+		const vpgId = reservedVolume._id;
+		serverCollection.aggregate([
+			{ $unwind: '$disks' },
+			{ $unwind: '$disks.diskSegments' },
+			{ $match: { 'disks.diskSegments.pendingReclaim.vpgId': vpgId } },
+			{ $project: { diskID: '$disks.diskID', diskSegment: '$disks.diskSegments' } }
+		]).toArray((err, results) => {
+			if (err)
+				return callback(new MongoError(err).log());
+
+			const steps = [];
+
+			if (results.length) {
+				const removalSegments = results
+					.filter(r => r.diskSegment.pendingReclaim.type === consts.segmentPendingReclaimTypes.REMOVAL)
+					.map(r => r.diskSegment);
+
+				const replacementItems = results
+					.filter(r => r.diskSegment.pendingReclaim.type === consts.segmentPendingReclaimTypes.REPLACE)
+					.map(r => ({
+						diskID: r.diskID,
+						originalDiskSegmentID: r.diskSegment._id,
+						replacements: r.diskSegment.pendingReclaim.replacements,
+						freedBlocks: r.diskSegment.pendingReclaim.freedBlocks
+					}));
+
+				const affectedDiskIds = [...new Set(results.map(r => r.diskID))];
+
+				steps.push(
+					cb => utils.commitReclaimRemovals(removalSegments, cb),
+					cb => utils.commitReclaimReplacements(replacementItems, cb),
+					cb => utils.recalculateLargestSegmentForDisks(affectedDiskIds, cb)
+				);
+			}
+
+			if (reservedVolume.reclaimUUIDMap)
+				steps.push(cb => utils.updateReservedUUIDsOnDerivedVolumes(vpgId, reservedVolume.reclaimUUIDMap, cb));
+
+			steps.push(cb => clearReclaimAction(vpgId, cb));
+
+			async.series(steps, (err) => {
+				if (!err)
+					new SystemMessage(systemMessages.SANITY_RECLAIMING_RESERVED_VOLUME_RECOVERED)
+						.addInfo(Entities.VPG.ID, vpgId).log();
+
+				callback(err);
+			});
+		});
+	}
+
+	// Rollback pending flags for a VPG whose reserved volume was not yet updated (IN_PROGRESS)
+	function rollbackPendingForVPG(reservedVolume, callback) {
+		const vpgId = reservedVolume._id;
+		async.series([
+			function clearPendingFlags(cb) {
+				// Find all segments with pending flags, then clear each one individually
+				serverCollection.aggregate([
+					{ $unwind: '$disks' },
+					{ $unwind: '$disks.diskSegments' },
+					{ $match: { 'disks.diskSegments.pendingReclaim.vpgId': vpgId } },
+					{ $project: { diskID: '$disks.diskID', segmentId: '$disks.diskSegments._id' } }
+				]).toArray((err, diskSegments) => {
+					if (err)
+						return cb(new MongoError(err).log());
+
+					async.eachSeries(diskSegments, (diskSegment, next) => {
+						serverCollection.updateOne(
+							{ 'disks.diskID': diskSegment.diskID },
+							{ $unset: { 'disks.$.diskSegments.$[seg].pendingReclaim': 1 } },
+							{ arrayFilters: [{ 'seg._id': diskSegment.segmentId }] },
+							(err) => {
+								if (err)
+									new MongoError(err).log();
+								next();
+							}
+						);
+					}, cb);
+				});
+			},
+			cb => clearReclaimAction(vpgId, cb)
+		], (err) => {
+			if (!err)
+				new SystemMessage(systemMessages.SANITY_RECLAIMING_RESERVED_VOLUME_ROLLED_BACK)
+					.addInfo(Entities.VPG.ID, vpgId).log();
+
+			callback(err);
+		});
+	}
+
+	function clearReclaimAction(vpgId, cb) {
+		volumeCollection.updateOne(
+			{ _id: vpgId, isReserved: true },
+			{ $unset: { reclaimAction: 1, reclaimUUIDMap: 1 } },
+			(err) => {
+				if (err)
+					return cb(new MongoError(err).log());
+
+				cb();
+			}
+		);
+	}
+};
+
+// Detects VPGs whose capacity is out of sync with their reserved volume
+// (management crashed after shrinkReservedSpaceVolume completed but before updateVPGCapacity ran in reclaimVPGs).
+// Syncs the VPG capacity to match the reserved volume, which is the source of truth.
+scope.checkVPGReservedVolumeCapacitySync = function(cb) {
+	const db = app.get('db');
+	const vpgCollection = db.collection('volumeProvisioningGroup');
+
+	vpgCollection.aggregate([
+		{ $match: { capacity: { $gt: 0 } } },
+		{
+			$lookup: {
+				from: 'volume',
+				let: { vpgId: '$_id' },
+				pipeline: [
+					{ $match: { $expr: { $and: [{ $eq: ['$_id', '$$vpgId'] }, { $eq: ['$isReserved', true] }] } } },
+					{ $project: { capacity: 1 } }
+				],
+				as: 'reservedVolume'
+			}
+		},
+		{ $unwind: { path: '$reservedVolume', preserveNullAndEmptyArrays: true } },
+		{
+			$match: {
+				$expr: {
+					$and: [
+						{ $ne: [{ $ifNull: ['$reservedVolume', null] }, null] },
+						{ $ne: ['$capacity', '$reservedVolume.capacity'] }
+					]
+				}
+			}
+		},
+		{ $project: { vpgCapacity: '$capacity', reservedVolumeCapacity: '$reservedVolume.capacity' } }
+	]).toArray((err, mismatches) => {
+		if (err) {
+			new MongoError(err).log();
+			return cb();
+		}
+
+		if (!mismatches.length)
+			return cb();
+
+		async.eachSeries(mismatches, (mismatch, eachCb) => {
+			new SystemMessage(systemMessages.SANITY_VPG_CAPACITY_MISMATCH_FIXED)
+				.addInfo(Entities.VPG.ID, mismatch._id)
+				.addInfo(Entities.VPG.capacity, mismatch.reservedVolumeCapacity)
+				.log();
+
+			vpgCollection.updateOne(
+				{ _id: mismatch._id },
+				{ $set: { capacity: mismatch.reservedVolumeCapacity } },
+				(err) => {
+					if (err)
+						new MongoError(err).log();
+
+					eachCb();
+				}
+			);
+		}, cb);
 	});
 };
 
