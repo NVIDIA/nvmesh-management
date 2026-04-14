@@ -1379,6 +1379,24 @@ scope.calculateAndUpdateVolumeStatus = function(volumeID, volume, callback) {
 				cb(err, result);
 			});
 		},
+		function fetchParentCDVStatusForTPV(volume, cb) {
+			if (volume.volumeClass !== consts.volumeClass.TPV)
+				return cb(null, volume);
+
+			var cdvId = volume.tpvConfig && volume.tpvConfig.cdvId;
+			if (!cdvId) {
+				volume._parentCDVStatus = consts.volumeStatuses.UNAVAILABLE;
+				return cb(null, volume);
+			}
+
+			volumeCollection.findOne({ _id: cdvId, volumeClass: consts.volumeClass.CDV }, { projection: { status: 1 } }, function(err, cdv) {
+				if (err)
+					err = new MongoError(err);
+
+				volume._parentCDVStatus = (cdv && cdv.status) || consts.volumeStatuses.UNAVAILABLE;
+				cb(err, volume);
+			});
+		},
 		function calculateStatus(volume, cb) {
 			var calcResult = scope.calculateVolumeStatus(volume);
 			logger.sysDEBUG('volumeStatus::calculateVolumeStatus volume ' + volumeID + ' returned: ', calcResult);
@@ -1867,6 +1885,47 @@ scope.calculateVolumeStatus = function(volume) {
 	var newStatus, newAction, newHealth;
 
 	var eventsToEmit = [];
+
+	// TPVs have no chunks/pRAIDs — derive status from parent CDV + attachment state
+	if (volume.volumeClass === consts.volumeClass.TPV) {
+		var cdvStatus = volume._parentCDVStatus || consts.volumeStatuses.UNAVAILABLE;
+		var hasClient = !!(volume.tpvConfig && volume.tpvConfig.exclusiveClient);
+
+		if (oldAction === consts.volumeActions.MARKED_FOR_DELETION || oldAction === consts.volumeActions.DELETING) {
+			newStatus = oldStatus;
+			newAction = oldAction;
+		} else if (cdvStatus !== consts.volumeStatuses.ONLINE) {
+			// Parent CDV is not healthy — TPV inherits its status
+			newStatus = cdvStatus;
+			newAction = consts.volumeActions.NONE;
+		} else if (hasClient) {
+			newStatus = consts.volumeStatuses.ONLINE;
+			newAction = consts.volumeActions.NONE;
+		} else {
+			newStatus = consts.volumeStatuses.UNAVAILABLE;
+			newAction = consts.volumeActions.NONE;
+		}
+
+		newHealth = getVolumeHealth(newStatus, newAction);
+
+		return {
+			newStatus: newStatus,
+			newAction: newAction,
+			newHealth: newHealth,
+			oldStatus: oldStatus,
+			oldAction: oldAction,
+			oldHealth: oldHealth,
+			changedStatus: !!newStatus && newStatus != oldStatus,
+			changedAction: newAction != oldAction,
+			changedHealth: newHealth != oldHealth,
+			eventsToEmit: (function() {
+				if (newHealth != oldHealth) { eventsToEmit.push(getHealthEvent(newHealth).name); volume.health_old = oldHealth; }
+				if (newStatus && newStatus != oldStatus) eventsToEmit.push(objectNotifier.events.volumeStatusChangeEvent.name);
+				if (newAction != oldAction) eventsToEmit.push(objectNotifier.events.volumeActionChangeEvent.name);
+				return eventsToEmit;
+			})()
+		};
+	}
 
 	var pRaidsStatusAction = getPRaidStatusesAndActions(volume);
 	var groupBy = groupPRaidsByStatusAndAction(pRaidsStatusAction);

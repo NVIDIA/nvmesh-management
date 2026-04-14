@@ -4792,6 +4792,9 @@ scope.attachTPV = (clientID, clientUUID, tpvName, callback) => {
 					cb();
 				}
 			);
+		},
+		function recalcTPVStatus(cb) {
+			volumeModule.calculateAndUpdateVolumeStatus(tpvName, null, () => cb());
 		}
 	], callback);
 };
@@ -4837,6 +4840,9 @@ scope.detachTPV = (clientID, clientUUID, tpvName, callback) => {
 					cb();
 				}
 			);
+		},
+		function recalcTPVStatus(cb) {
+			volumeModule.calculateAndUpdateVolumeStatus(tpvName, null, () => cb());
 		}
 	], callback);
 };
@@ -4869,6 +4875,9 @@ function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
 							{ $unset: { 'tpvConfig.exclusiveClient': 1 } },
 							err => { if (err) new MongoError(err).log(); cb(); }
 						);
+					},
+					function recalcTPVStatus(cb) {
+						volumeModule.calculateAndUpdateVolumeStatus(tpv._id, null, () => cb());
 					},
 					function removeCDVReference(cb) {
 						if (!tpv.tpvConfig?.cdvUUID) return cb();
