@@ -37,7 +37,7 @@ export const passphraseCommandToTitle = (commandName) => {
 	return titles[commandName] || commandName;
 };
 
-const actionToClass = (action) => {
+export const actionToClass = (action) => {
 	if (action === consts.volumeActions.BOOTING) {
 		return 'bg-red';
 	}
@@ -47,7 +47,7 @@ const actionToClass = (action) => {
 	return 'bg-primary';
 };
 
-const actionToCaption = (action) => {
+export const actionToCaption = (action) => {
 	const captions = {
 		[consts.volumeActions.EXTENDING]: 'Extending',
 		[consts.volumeActions.MARKED_FOR_DELETION]: 'Marked For Deletion',

@@ -9,16 +9,19 @@ import FiltSortTable from '../../filtsort-table/FiltSortTable.jsx';
 import { useAlerts } from '../../core/Alert.jsx';
 import { useConfirmationDialog } from '../../shared/ConfirmationDialog.jsx';
 import { VolumesService } from '../../services/api/volumes.service.js';
-import { extractErrorMsg, extractResults } from '../../utils.js';
+import { extractErrorMsg, extractResults, ellipsis } from '../../utils.js';
 import NewButton from '../../shared/NewButton.jsx';
 import CreateEditVolumeModal from '../volumes/createEditModal/CreateEditVolumeModal.jsx';
 import { useAppContext } from '../../App.jsx';
 import CapacityService from '../../services/capacity.service.js';
+import { AllocationService } from '../../services/allocation.service.js';
 import { events, SocketService } from '../../services/socket.service.js';
+import { statusToHealth, statusToCaption, actionToClass, actionToCaption } from '../volumes/Volumes.jsx';
 
 const { useRef, useState, useEffect, useMemo } = React;
 
 const CDV_FILTER = { volumeClass: consts.volumeClass.CDV };
+const hiddenVolumeTypes = { [consts.RAIDLevel.JBOD]: true };
 
 const isRebuildDisabled = (cdv) => {
 	const chunks = cdv.chunks || [];
@@ -93,6 +96,7 @@ const CDVs = () => {
 				errorAlert(`Failed to create CDV ${editedCDV.name} - ${extractErrorMsg(responses[0].error)}`);
 			}
 		} else {
+			// eslint-disable-next-line no-unused-vars
 			const { capacity, chunks, ...cdvToUpdate } = editedCDV;
 			const responses = await VolumesService.update([cdvToUpdate]);
 			if (responses[0].success) {
@@ -159,7 +163,12 @@ const CDVs = () => {
 			name: 'Name',
 			field: 'name',
 			placeholder: 'Search by Name',
-			sort: 'asc',
+		},
+		{
+			name: 'Description',
+			field: 'description',
+			placeholder: 'Search by Description',
+			value: cdvRow => ellipsis(cdvRow.description),
 		},
 		{
 			name: 'Capacity',
@@ -167,17 +176,12 @@ const CDVs = () => {
 			filterable: false,
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
-			value: cdvRow => CapacityService.toBiggestUnit(cdvRow.capacity, unitType),
-		},
-		{
-			name: 'TPVs',
-			field: 'tpvCount',
-			filterable: false,
-			className: 'fixed-size-column sx-column',
-			rowClassName: 'fixed-size-column',
-			value: cdvRow => cdvRow.cdvConfig
-				? `${cdvRow.tpvCount || 0} / ${cdvRow.cdvConfig.maxTPVs}`
-				: '—',
+			value: cdvRow => {
+				const capacity = cdvRow.capacity === consts.volumeCapacity.MAX && cdvRow.blocks && cdvRow.blockSize ?
+					cdvRow.blocks * cdvRow.blockSize :
+					cdvRow.capacity;
+				return CapacityService.toBiggestUnit(capacity, unitType);
+			},
 		},
 		{
 			name: 'Extent Size',
@@ -190,12 +194,86 @@ const CDVs = () => {
 				: '—',
 		},
 		{
+			name: 'RAID Level',
+			field: 'RAIDLevel',
+			placeholder: 'Search by RAID Level',
+			type: 'choice',
+			choices: Object.values(consts.RAIDLevel).filter(raidLevel => !hiddenVolumeTypes[raidLevel])
+		},
+		{
+			name: 'Stripe Width',
+			field: 'stripeWidth',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+		},
+		{
+			name: 'Data Blocks',
+			field: 'dataBlocks',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: cdvRow => cdvRow.dataBlocks || '1',
+		},
+		{
+			name: 'Parity Blocks',
+			field: 'parityBlocks',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: cdvRow => {
+				if (AllocationService.isMirrored(cdvRow.RAIDLevel)) {
+					return cdvRow.numberOfMirrors;
+				}
+				if (AllocationService.isEC(cdvRow.RAIDLevel)) {
+					return cdvRow.parityBlocks;
+				}
+				return 0;
+			},
+		},
+		{
+			name: 'Last Modified By',
+			field: 'modifiedBy',
+			placeholder: 'Search by Last Modifier',
+			rowClassName: 'fixed-size-column',
+		},
+		{
+			name: 'Last Date Modified',
+			field: 'dateModified',
+			placeholder: 'Search by Last Date Modified',
+			type: 'dateRange',
+			className: 'md-column',
+			rowClassName: 'fixed-size-column',
+		},
+		{
+			name: 'TPVs',
+			field: 'tpvCount',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: cdvRow => cdvRow.cdvConfig
+				? `${cdvRow.tpvCount || 0} / ${cdvRow.cdvConfig.maxTPVs}`
+				: '—',
+		},
+		{
+			name: 'Action',
+			field: 'action',
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			sort: 'desc',
+			value: cdvRow => cdvRow.action !== consts.volumeActions.NONE && (
+				<label className={`label ${actionToClass(cdvRow.action)}`}>
+					{cdvRow.action === 'rebuilding' || cdvRow.action === 'deleting' && <span><i className="fa fa-cog fa-spin"></i>&nbsp;</span>}
+					{actionToCaption(cdvRow.action)}
+				</label>),
+		},
+		{
 			name: 'Status',
 			field: 'status',
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
-			value: cdvRow => <label className={`label bg-${cdvRow.status === consts.volumeStatuses.ONLINE ? 'green' : 'gray'}`}>
-				{cdvRow.status || '—'}
+			value: cdvRow => <label className={`label bg-${statusToHealth(cdvRow.status)}`}>
+				{statusToCaption(cdvRow.status)}
 			</label>,
 		},
 		{
