@@ -87,7 +87,7 @@ const CreateEditVolume = ({
 	const [totalSpace, setTotalSpace] = useState(0);
 	const [allocatedSpace, setAllocatedSpace] = useState(0);
 	const [availableMirrors, setAvailableMirrors] = useState(0);
-	const [isCDV, setIsCDV] = useState(volume.volumeClass === consts.volumeClass.CDV);
+	const isCDV = volume.volumeClass === consts.volumeClass.CDV;
 	const formData = watch();
 
 	const VPGsByType = groupBy(VPGs, vpg => vpg.type === consts.volumeTypes.METADATA_VOLUME ? 'metadata' : 'normal');
@@ -451,21 +451,6 @@ const CreateEditVolume = ({
 								})}
 							/>
 						</FormControl>
-
-						{!isCreate && volume.volumeClass === consts.volumeClass.CDV && (
-							<div className="alert alert-info">This volume is a Carrier Direct Volume (CDV).</div>
-						)}
-
-						{isCreate && (
-							<FormControl name="isCDV" label="CDV Mode">
-								<Toggle
-									id="isCDV-toggle"
-									isChecked={isCDV}
-									onChange={checked => setIsCDV(checked)}
-								/>
-								<small className="text-muted">Create as Carrier Direct Volume (CDV) — hosts thin-provisioned volumes</small>
-							</FormControl>
-						)}
 
 						{isCDV && (
 							<>
@@ -995,6 +980,8 @@ const CreateEditVolumeModal = ({
 	onSubmit = _ => { }
 }) => {
 	const isCreate = !volume._id;
+	const isCDV = volume.volumeClass === consts.volumeClass.CDV;
+	const entityName = isCDV ? 'CDV' : 'Volume';
 
 	return (
 		<Modal
@@ -1002,7 +989,7 @@ const CreateEditVolumeModal = ({
 			disableBackdropClose
 			onClose={() => handleCancel()}
 			className="large-modal"
-			title={isCreate ? 'Create Volume' : 'Edit Volume'}>
+			title={isCreate ? `Create ${entityName}` : `Edit ${entityName}`}>
 
 			<CreateEditVolume
 				handleCancel={handleCancel}
