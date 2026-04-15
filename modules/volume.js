@@ -3533,7 +3533,7 @@ scope.handleCDVAllocatorStats = (message, callback) => {
 			'runtimeStats.allocatedExtents': message.allocatedExtents,
 			'runtimeStats.totalDataExtents': message.totalDataExtents,
 			'runtimeStats.lastUpdated': new Date(),
-		}},
+		} },
 		() => {}
 	);
 
@@ -3555,7 +3555,7 @@ scope.handleTPVStats = (message, callback) => {
 				'runtimeStats.tpvExtentsInUse': entry.tpvExtentsInUse,
 				'runtimeStats.tpvExtentsTotal': entry.tpvExtentsTotal,
 				'runtimeStats.lastUpdated': now,
-			}},
+			} },
 			() => {}
 		);
 	}
