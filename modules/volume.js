@@ -3186,9 +3186,9 @@ function prepareCDVForCreate(volume) {
 	// remains correct if consts.GB is ever changed to GiB.
 	if (volume.blocks && volume.cdvConfig.cdvExtentSizeMB > 0) {
 		const extentBytes = volume.cdvConfig.cdvExtentSizeMB * consts.MiB;
-		const allocBytes  = volume.cdvConfig.allocatorSizeGB * consts.GiB;
-		const totalBytes  = volume.blocks * consts.BLOCK_SIZE;
-		const dataBytes   = totalBytes > allocBytes ? totalBytes - allocBytes : 0;
+		const allocBytes = volume.cdvConfig.allocatorSizeGB * consts.GiB;
+		const totalBytes = volume.blocks * consts.BLOCK_SIZE;
+		const dataBytes = totalBytes > allocBytes ? totalBytes - allocBytes : 0;
 		const fullExtents = Math.floor(dataBytes / extentBytes);
 		volume.blocks = Math.floor((allocBytes + fullExtents * extentBytes) / consts.BLOCK_SIZE);
 	}
