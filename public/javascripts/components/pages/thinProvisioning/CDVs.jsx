@@ -194,6 +194,43 @@ const CDVs = () => {
 				: '—',
 		},
 		{
+			name: 'Allocated Extents',
+			field: 'runtimeStats.allocatedExtents',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: cdvRow => cdvRow.runtimeStats?.allocatedExtents != null
+				? cdvRow.runtimeStats.allocatedExtents
+				: '—',
+		},
+		{
+			name: 'Free Extents',
+			filterable: false,
+			sortable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: cdvRow => {
+				const { allocatedExtents, totalDataExtents } = cdvRow.runtimeStats || {};
+				return (allocatedExtents != null && totalDataExtents != null)
+					? totalDataExtents - allocatedExtents
+					: '—';
+			},
+		},
+		{
+			name: 'Max Additional',
+			filterable: false,
+			sortable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: cdvRow => {
+				const { totalDataExtents } = cdvRow.runtimeStats || {};
+				const { allocatorSizeGB } = cdvRow.cdvConfig || {};
+				if (totalDataExtents == null || allocatorSizeGB == null) return '—';
+				const maxAddressable = Math.floor(allocatorSizeGB * 1024 * 1024 * 1024 / 4096) - 1;
+				return maxAddressable - totalDataExtents;
+			},
+		},
+		{
 			name: 'RAID Level',
 			field: 'RAIDLevel',
 			placeholder: 'Search by RAID Level',
