@@ -956,6 +956,8 @@ consts.connectionEntities = {
 };
 
 consts.GB = Math.pow(1000, 3);
+consts.GiB = Math.pow(2, 30);
+consts.MiB = Math.pow(2, 20);
 consts.DECIMAL_BINARY_G_FACTOR = 0.931323;
 consts.INITIAL_ATTACHMENTS_VERSION = 0;
 

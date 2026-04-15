@@ -3178,6 +3178,20 @@ function prepareCDVForCreate(volume) {
 		maxTPVs: cfg.maxTPVs != null ? cfg.maxTPVs : 512,
 	};
 	delete volume.tpvConfig;
+
+	// Trim blocks so the data region is an exact multiple of cdvExtentSizeMB.
+	// Management allocates using decimal GB but the kernel measures allocator and
+	// extent sizes in binary GiB/MiB, so a raw allocation often ends with a
+	// fractional extent.  Use explicit binary constants here so the calculation
+	// remains correct if consts.GB is ever changed to GiB.
+	if (volume.blocks && volume.cdvConfig.cdvExtentSizeMB > 0) {
+		const extentBytes = volume.cdvConfig.cdvExtentSizeMB * consts.MiB;
+		const allocBytes  = volume.cdvConfig.allocatorSizeGB * consts.GiB;
+		const totalBytes  = volume.blocks * consts.BLOCK_SIZE;
+		const dataBytes   = totalBytes > allocBytes ? totalBytes - allocBytes : 0;
+		const fullExtents = Math.floor(dataBytes / extentBytes);
+		volume.blocks = Math.floor((allocBytes + fullExtents * extentBytes) / consts.BLOCK_SIZE);
+	}
 }
 
 function createTPV(volume, user, cb) {
