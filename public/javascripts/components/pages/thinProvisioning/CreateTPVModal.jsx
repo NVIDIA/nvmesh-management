@@ -10,6 +10,8 @@ import FormControl from '../../core/FormControl.jsx';
 import Input from '../../core/Input.jsx';
 import Select from '../../core/Select.jsx';
 import { VolumesService } from '../../services/api/volumes.service.js';
+import CapacityService from '../../services/capacity.service.js';
+import { useAppContext } from '../../App.jsx';
 
 const { useForm, Controller } = ReactHookForm;
 const { useState, useEffect } = React;
@@ -22,6 +24,8 @@ const CreateTPVModal = ({
 	onSubmit = _ => {}
 }) => {
 	const isCreate = !tpv._id;
+	const { unitType } = useAppContext();
+	const unitLabel = unitType === consts.unitType.BINARY ? 'GiB' : 'GB';
 	const { register, handleSubmit, formState, control, watch } = useForm({ mode: 'all' });
 	const [cdvs, setCDVs] = useState([]);
 	const selectedCdvId = watch('cdvId', tpv.tpvConfig?.cdvId || null);
@@ -53,10 +57,10 @@ const CreateTPVModal = ({
 		onSubmit(payload);
 	};
 
-	const cdvOptions = cdvs.map(cdv => ({
-		text: `${cdv.name} (${cdv.cdvConfig?.maxTPVs ? (cdv.tpvCount || 0) + '/' + cdv.cdvConfig.maxTPVs + ' TPVs, ' : ''}${cdv.capacity} GB)`,
-		value: cdv._id,
-	}));
+	const cdvOptions = cdvs.map(cdv => {
+		const tpvUsage = cdv.cdvConfig?.maxTPVs ? `${cdv.tpvCount || 0}/${cdv.cdvConfig.maxTPVs} TPVs, ` : '';
+		return { text: `${cdv.name} (${tpvUsage}${CapacityService.toBiggestUnit(cdv.capacity, unitType)})`, value: cdv._id };
+	});
 
 	const maxExtentKB = selectedCdv ? selectedCdv.cdvConfig?.cdvExtentSizeMB * 1024 : Infinity;
 	const extentSizeOptions = consts.tpvExtentSizeKBValues
@@ -175,10 +179,10 @@ const CreateTPVModal = ({
 
 						<FormControl
 							name="virtualSizeGB"
-							label="Virtual Size (GB)"
+							label={`Virtual Size (${unitLabel})`}
 							errorMessage={formState.errors?.virtualSizeGB?.message}
 							topHint={selectedCdv
-								? <i className="text-muted">CDV capacity: {selectedCdv.capacity} GB</i>
+								? <i className="text-muted">CDV capacity: {CapacityService.toBiggestUnit(selectedCdv.capacity, unitType)}</i>
 								: undefined}
 						>
 							<Input
@@ -189,7 +193,7 @@ const CreateTPVModal = ({
 								{...register('virtualSizeGB', {
 									value: tpv.tpvConfig?.virtualSizeGB,
 									required: 'Virtual size is required',
-									min: { value: 1, message: 'Minimum size is 1 GB' },
+									min: { value: 1, message: `Minimum size is 1 ${unitLabel}` },
 									valueAsNumber: true,
 								})}
 							/>
