@@ -3526,12 +3526,13 @@ scope.handleCDVCapacityWarning = (message, callback) => {
 scope.handleCDVAllocatorStats = (message, callback) => {
 	var db = app.get('db');
 	var volumeCollection = db.collection('volume');
+	const { cdvUUID, allocatedExtents, totalDataExtents } = message.payload;
 
 	volumeCollection.updateOne(
-		{ uuid: message.cdvUUID, volumeClass: consts.volumeClass.CDV },
+		{ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV },
 		{ $set: {
-			'runtimeStats.allocatedExtents': message.allocatedExtents,
-			'runtimeStats.totalDataExtents': message.totalDataExtents,
+			'runtimeStats.allocatedExtents': allocatedExtents,
+			'runtimeStats.totalDataExtents': totalDataExtents,
 			'runtimeStats.lastUpdated': new Date(),
 		} },
 		() => {}
@@ -3547,7 +3548,7 @@ scope.handleTPVStats = (message, callback) => {
 	var volumeCollection = db.collection('volume');
 	const now = new Date();
 
-	for (const entry of message.tpvs) {
+	for (const entry of (message.payload.tpvs || [])) {
 		volumeCollection.updateOne(
 			{ uuid: entry.tpvUUID, volumeClass: consts.volumeClass.TPV },
 			{ $set: {

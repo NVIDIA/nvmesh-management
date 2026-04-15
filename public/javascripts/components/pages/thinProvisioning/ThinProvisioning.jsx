@@ -75,6 +75,20 @@ const ThinProvisioning = () => {
 				: '—',
 		},
 		{
+			name: 'Extent Size',
+			field: 'tpvConfig.tpvExtentSizeKB',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: tpvRow => {
+				const kb = tpvRow.tpvConfig?.tpvExtentSizeKB;
+				if (kb == null) return '—';
+				if (kb >= 1024 * 1024) return `${kb / (1024 * 1024)} GB`;
+				if (kb >= 1024) return `${kb / 1024} MB`;
+				return `${kb} KB`;
+			},
+		},
+		{
 			name: 'CDV Extents',
 			filterable: false,
 			sortable: false,
