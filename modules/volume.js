@@ -3264,10 +3264,10 @@ function createTPV(volume, user, cb) {
 				// mdvUUID is repurposed to carry the parent CDV's UUID so the kernel
 				// can look it up in the attached volumes list.
 				mdvUUID: cdv.uuid,
-				// sourceUUID is unused for TPVs.  The CDV allocator TOMA identity
-				// is determined by TOMA via RAFT and delivered to clients exclusively
-				// through the CDV topology push — no management hint needed.
-				sourceUUID: '',
+				// sourceUUID is repurposed for TPVs to carry the L1 flush mode.
+				// 'sync_flush' = flush L1 metadata before forwarding data bios
+				// (default, safe); '' = deferred background flush (fast, risky).
+				sourceUUID: 'sync_flush',
 				chunks: [], // TPV has no physical disk chunks; backed by CDV
 				capacity: virtualSizeGB,
 				createdBy: user.email,

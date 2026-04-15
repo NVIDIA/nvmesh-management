@@ -26,6 +26,7 @@ const CreateAttachDetach = ({
 	const [volumesToAttach, setVolumesToAttach] = useState(new Set([]));
 	const [volumesToDetach, setVolumesToDetach] = useState({});
 	const [updatedVolumes, setUpdatedVolumes] = useState({});
+	const [syncFlushMap, setSyncFlushMap] = useState({});
 
 	const [confirm] = useConfirmationDialog();
 
@@ -214,6 +215,27 @@ const CreateAttachDetach = ({
 				: '',
 		},
 		{
+			name: 'Sync Flush',
+			field: 'syncFlush',
+			filterable: false,
+			sortable: false,
+			className: 'fixed-size-column',
+			rowClassName: 'fixed-size-column',
+			value: volume => {
+				if (volume.volumeClass !== consts.volumeClass.TPV) return '';
+				const isAlreadyAttached = initiallySelectedRowsNames.has(volume.name);
+				const checked = syncFlushMap[volume.name] !== undefined
+					? syncFlushMap[volume.name]
+					: true;
+				return <Checkbox
+					id={`check-sync-flush-${volume.name}`}
+					checked={checked}
+					disabled={isAlreadyAttached}
+					onChange={e => setSyncFlushMap(prev => ({ ...prev, [volume.name]: e.target.checked }))}
+				/>;
+			}
+		},
+		{
 			name: 'Reservation Mode',
 			field: 'reservationModeName',
 			filterable: false,
@@ -380,7 +402,14 @@ const CreateAttachDetach = ({
 		const { refIdAttachments, refIdDetachments } = populateAttachmentsAndDetachmentsForRefIDs(attachDetachRefIDs, attachmentsMap);
 
 		const attachments = [...Object.values(attachmentsMap), ...refIdAttachments];
-		attachments.forEach(setDefaultReservation);
+		attachments.forEach(attachment => {
+			setDefaultReservation(attachment);
+			if (attachment.volumeClass === consts.volumeClass.TPV) {
+				attachment.syncFlush = syncFlushMap[attachment.name] !== undefined
+					? syncFlushMap[attachment.name]
+					: true;
+			}
+		});
 		const detachments = [...Object.values(volumesToDetach), ...refIdDetachments];
 
 		onSubmit({ attachments, detachments });

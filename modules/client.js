@@ -3649,7 +3649,7 @@ scope.attach = (clientID, clientUUID, requestedVolumes, cb) => {
 			next => {
 				if (!tpvVolumes.length) return next();
 				async.each(tpvVolumes, (vol, eachCb) => {
-					scope.attachTPV(clientID, clientUUID, vol.name, attachErr => {
+					scope.attachTPV(clientID, clientUUID, vol.name, { syncFlush: vol.syncFlush }, attachErr => {
 						const msg = attachErr
 							? new SystemAdminMessage(systemMessages.BUILD_RESPONSES_ERROR)
 								.addInfo(Entities.Volume.ID, vol.name)
@@ -4737,12 +4737,25 @@ scope.fetchClientByID = function(clientID, cb) {
 
 // ─── Thin Provisioning ───────────────────────────────────────────────────────
 
-scope.attachTPV = (clientID, clientUUID, tpvName, callback) => {
+scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
+	if (typeof options === 'function') { callback = options; options = {}; }
+	const syncFlush = options.syncFlush !== false;
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
 	let tpv, cdv;
 
 	async.series([
+		function applySyncFlush(cb) {
+			const sourceUUID = syncFlush ? 'sync_flush' : '';
+			volumeCollection.updateOne(
+				{ _id: tpvName, volumeClass: consts.volumeClass.TPV },
+				{ $set: { sourceUUID: sourceUUID } },
+				err => {
+					if (err) new MongoError(err).log();
+					cb();
+				}
+			);
+		},
 		function loadTPVAndCDV(cb) {
 			volumeCollection.findOne({ _id: tpvName, volumeClass: consts.volumeClass.TPV }, (err, tpvDoc) => {
 				if (err) return cb(new MongoError(err).log());
