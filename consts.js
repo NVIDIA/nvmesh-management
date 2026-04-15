@@ -872,6 +872,7 @@ consts.kafkaMessageTypes = {
 		configProfileUpdated: 'configProfileUpdated',
 		updateConfigProfileUserOverride: 'updateConfigProfileUserOverride',
 		updateKeys: 'updateKeys',
+		tpvStats: 'tpvStats',
 	},
 	ClientToManagement: {
 		keepalive: 'keepalive',
@@ -880,7 +881,6 @@ consts.kafkaMessageTypes = {
 		updateLog: 'updateLog',
 		ackLog: 'ackLog',
 		getTargetNICs: 'getTargetNICs',
-		tpvStats: 'tpvStats',
 	},
 	UpgradeAgentToManagement: {
 		keepalive: 'keepalive',

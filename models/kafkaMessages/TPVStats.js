@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-const { MessageFromClient } = require('./MessageFromClient');
+const { MessageFromAgent } = require('./MessageFromAgent');
 const { kafkaMessageTypes } = require('../../consts');
 
-// Received client management agent → management once per keepalive cycle.
-// Carries per-TPV allocator statistics read from /proc/nvmeibc/tpv/*/allocator.
-exports.TPVStats = class TPVStats extends MessageFromClient {
+// Received management agent → management once per keepalive cycle.
+// Carries per-TPV allocator statistics read from /proc/nvmeibc/tpv/*/status.
+exports.TPVStats = class TPVStats extends MessageFromAgent {
 	constructor(rawMsg) {
-		super(kafkaMessageTypes.ClientToManagement.tpvStats, 1, rawMsg);
+		super(kafkaMessageTypes.AgentToManagement.tpvStats, 1, rawMsg);
 	}
 
 	// payload shape: { tpvs: [{ tpvUUID, cdvExtents, tpvExtentsInUse, tpvExtentsTotal }] }

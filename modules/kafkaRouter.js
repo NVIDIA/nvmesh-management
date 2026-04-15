@@ -99,6 +99,10 @@ function routeAgentMessage(message, callback) {
 			clientModule.updateClientKeys(message.payload.keys, message.clientID, callback);
 			break;
 		}
+		case msgType.tpvStats: {
+			volumeModule.handleTPVStats(message, callback);
+			break;
+		}
 		default: {
 			new SystemMessage(systemMessages.KAFKA_UNKNOWN_MESSAGE_TYPE)
 				.addInfo(Entities.KafkaMessage.messageType, message.type)
@@ -139,10 +143,6 @@ function routeClientMessage(message, callback) {
 		}
 		case msgType.getTargetNICs: {
 			clientModule.handleGetTargetNICs(message, callback);
-			break;
-		}
-		case msgType.tpvStats: {
-			volumeModule.handleTPVStats(message, callback);
 			break;
 		}
 		default: {
