@@ -167,11 +167,14 @@ function getUsedDomainsBySegments(segments, domain, cb) {
 
 	async.each(diskIDs, (diskID, callback) => {
 		getDiskProtectionIdentifierByDomain(diskID, domain, (err, results) => {
-			usedDomains.push(results._id);
+			if (err)
+				return callback(err);
+			if (results)
+				usedDomains.push(results._id);
 			callback();
 		});
-	}, () => {
-		cb(usedDomains);
+	}, (err) => {
+		cb(err, usedDomains);
 	});
 }
 
@@ -243,7 +246,9 @@ function subtituteDiskSegment(volume, chunk, pRaid, diskSegment, cb) {
 				if (!volume.domain)
 					return callback();
 
-				getUsedDomainsBySegments(getDisksThatWeShouldNotUseForReplacement(pRaid), volume.domain, (results) => {
+				getUsedDomainsBySegments(getDisksThatWeShouldNotUseForReplacement(pRaid), volume.domain, (err, results) => {
+					if (err)
+						return callback(err);
 					identifiersInUse = results;
 					callback();
 				});
