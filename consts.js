@@ -879,7 +879,8 @@ consts.kafkaMessageTypes = {
 		log: 'log',
 		updateLog: 'updateLog',
 		ackLog: 'ackLog',
-		getTargetNICs: 'getTargetNICs'
+		getTargetNICs: 'getTargetNICs',
+		tpvStats: 'tpvStats',
 	},
 	UpgradeAgentToManagement: {
 		keepalive: 'keepalive',
@@ -925,6 +926,7 @@ consts.kafkaMessageTypes = {
 	},
 	TOMAToManagement_TP: {
 		cdvCapacityWarning: 'cdvCapacityWarning',
+		cdvAllocatorStats: 'cdvAllocatorStats',
 	}
 };
 

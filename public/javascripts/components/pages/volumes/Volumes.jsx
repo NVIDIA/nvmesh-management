@@ -216,6 +216,45 @@ const Volumes = () => {
 			},
 		},
 		{
+			name: 'Allocated Extents',
+			field: 'runtimeStats.allocatedExtents',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: volume => volume.volumeClass === consts.volumeClass.CDV && volume.runtimeStats?.allocatedExtents != null
+				? volume.runtimeStats.allocatedExtents
+				: '—',
+		},
+		{
+			name: 'Free Extents',
+			field: 'runtimeStats.totalDataExtents',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: volume => {
+				if (volume.volumeClass !== consts.volumeClass.CDV || !volume.runtimeStats) return '—';
+				const { totalDataExtents, allocatedExtents } = volume.runtimeStats;
+				return (totalDataExtents != null && allocatedExtents != null)
+					? totalDataExtents - allocatedExtents
+					: '—';
+			},
+		},
+		{
+			name: 'Max Additional',
+			filterable: false,
+			sortable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: volume => {
+				if (volume.volumeClass !== consts.volumeClass.CDV || !volume.runtimeStats || !volume.cdvConfig) return '—';
+				const { totalDataExtents } = volume.runtimeStats;
+				const { allocatorSizeGB } = volume.cdvConfig;
+				if (totalDataExtents == null || allocatorSizeGB == null) return '—';
+				const maxAddressable = Math.floor(allocatorSizeGB * 1024 * 1024 * 1024 / 4096) - 1;
+				return maxAddressable - totalDataExtents;
+			},
+		},
+		{
 			name: 'RAID Level',
 			field: 'RAIDLevel',
 			placeholder: 'Search by RAID Level',

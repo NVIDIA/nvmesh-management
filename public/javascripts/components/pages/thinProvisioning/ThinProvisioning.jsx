@@ -75,6 +75,30 @@ const ThinProvisioning = () => {
 				: '—',
 		},
 		{
+			name: 'CDV Extents',
+			filterable: false,
+			sortable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: tpvRow => tpvRow.runtimeStats?.cdvExtents != null
+				? tpvRow.runtimeStats.cdvExtents
+				: '—',
+		},
+		{
+			name: 'TPV Extents In Use',
+			filterable: false,
+			sortable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: tpvRow => {
+				const stats = tpvRow.runtimeStats;
+				if (!stats || stats.tpvExtentsInUse == null) return '—';
+				return stats.tpvExtentsTotal != null
+					? `${stats.tpvExtentsInUse} / ${stats.tpvExtentsTotal}`
+					: stats.tpvExtentsInUse;
+			},
+		},
+		{
 			name: 'Client',
 			field: 'tpvConfig.exclusiveClient',
 			placeholder: 'Search by Client',

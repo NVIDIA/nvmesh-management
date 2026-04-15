@@ -141,6 +141,10 @@ function routeClientMessage(message, callback) {
 			clientModule.handleGetTargetNICs(message, callback);
 			break;
 		}
+		case msgType.tpvStats: {
+			volumeModule.handleTPVStats(message, callback);
+			break;
+		}
 		default: {
 			new SystemMessage(systemMessages.KAFKA_UNKNOWN_MESSAGE_TYPE)
 				.addInfo(Entities.KafkaMessage.messageType, message.type)
@@ -196,6 +200,10 @@ function routeTOMAMessage(message, callback) {
 
 		case consts.kafkaMessageTypes.TOMAToManagement_TP.cdvCapacityWarning:
 			volumeModule.handleCDVCapacityWarning(message, callback);
+			break;
+
+		case consts.kafkaMessageTypes.TOMAToManagement_TP.cdvAllocatorStats:
+			volumeModule.handleCDVAllocatorStats(message, callback);
 			break;
 
 		default:

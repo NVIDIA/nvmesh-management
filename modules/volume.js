@@ -3521,6 +3521,50 @@ scope.handleCDVCapacityWarning = (message, callback) => {
 	callback();
 };
 
+// Called by kafkaRouter when TOMA reports current CDV allocation counters
+// (published after every CDV_ALLOC_EXTENT and CDV_FREE_EXTENT).
+scope.handleCDVAllocatorStats = (message, callback) => {
+	var db = app.get('db');
+	var volumeCollection = db.collection('volume');
+
+	volumeCollection.updateOne(
+		{ uuid: message.cdvUUID, volumeClass: consts.volumeClass.CDV },
+		{ $set: {
+			'runtimeStats.allocatedExtents': message.allocatedExtents,
+			'runtimeStats.totalDataExtents': message.totalDataExtents,
+			'runtimeStats.lastUpdated': new Date(),
+		}},
+		() => {}
+	);
+
+	callback();
+};
+
+// Called by kafkaRouter when a client management agent reports per-TPV allocator
+// statistics read from /proc/nvmeibc/tpv/*/allocator.
+scope.handleTPVStats = (message, callback) => {
+	var db = app.get('db');
+	var volumeCollection = db.collection('volume');
+	const now = new Date();
+
+	for (const entry of message.tpvs) {
+		volumeCollection.updateOne(
+			{ uuid: entry.tpvUUID, volumeClass: consts.volumeClass.TPV },
+			{ $set: {
+				'runtimeStats.cdvExtents': entry.cdvExtents,
+				'runtimeStats.tpvExtentsInUse': entry.tpvExtentsInUse,
+				'runtimeStats.tpvExtentsTotal': entry.tpvExtentsTotal,
+				'runtimeStats.lastUpdated': now,
+			}},
+			() => {}
+		);
+	}
+
+	callback();
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 scope.fetchVolumeVersionByUUID = function fetchVolumeVersionByUUID(uuid, cb) {
 	var db = app.get('db');
 	var volumeCollection = db.collection('volume');
