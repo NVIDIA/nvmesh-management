@@ -71,7 +71,7 @@ const ThinProvisioning = () => {
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
 			value: tpvRow => tpvRow.tpvConfig?.virtualSizeGB != null
-				? CapacityService.toBiggestUnit(tpvRow.tpvConfig.virtualSizeGB, unitType)
+				? CapacityService.toBiggestUnit(tpvRow.tpvConfig.virtualSizeGB * consts.GiB, unitType, { fromBytes: true })
 				: '—',
 		},
 		{
