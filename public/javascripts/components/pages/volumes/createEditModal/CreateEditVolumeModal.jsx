@@ -329,7 +329,7 @@ const CreateEditVolume = ({
 		if (isCDV) {
 			toSubmit.volumeClass = consts.volumeClass.CDV;
 			toSubmit.cdvConfig = {
-				cdvExtentSizeMB: data.cdvExtentSizeMB || 1024,
+				cdvExtentSizeMB: Number(data.cdvExtentSizeMB) || 1024,
 				allocatorSizeGB: data.allocatorSizeGB || 1,
 				maxTPVs: data.maxTPVs || 512,
 			};
