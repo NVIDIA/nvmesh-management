@@ -7,12 +7,15 @@ const { KafkaMessage } = require('./KafkaMessage');
 const { kafkaMessageTypes } = require('../../consts');
 
 // Sent management → TOMA when a TPV is deleted.
-// Instructs the CDV.allocator to reclaim all CDV_extents owned by the given TPV UUID.
+// Instructs the CDV allocator to reclaim all CDV_extents owned by the given TPV UUID
+// and zero CDV_extent[0] (the flat-L1 tree) so the next TPV on this CDV starts clean.
 exports.CDVAllocatorFreeAll = class CDVAllocatorFreeAll extends KafkaMessage {
-	constructor(cdvUUID, tpvUUID) {
+	constructor(cdvUUID, tpvUUID, allocatorSizeGB, cdvExtentSizeMB) {
 		super(kafkaMessageTypes.ManagementToTOMA.cdvAllocatorFreeAll, 1);
 		this.cdvUUID = cdvUUID;
 		this.tpvUUID = tpvUUID;
+		this.allocatorSizeGB = allocatorSizeGB;
+		this.cdvExtentSizeMB = cdvExtentSizeMB;
 	}
 
 	toJSON() {
@@ -20,6 +23,8 @@ exports.CDVAllocatorFreeAll = class CDVAllocatorFreeAll extends KafkaMessage {
 		json['payload'] = {
 			cdvUUID: this.cdvUUID,
 			tpvUUID: this.tpvUUID,
+			allocatorSizeGB: this.allocatorSizeGB,
+			cdvExtentSizeMB: this.cdvExtentSizeMB,
 		};
 		return json;
 	}
