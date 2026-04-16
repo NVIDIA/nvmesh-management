@@ -2164,6 +2164,15 @@ scope.doAfterVolumeStatusChanged = function(volume, calcResult, user, lockedZone
 		}
 	}
 
+	if (calcResult.changedStatus && volume.volumeClass === consts.volumeClass.CDV) {
+		var volumeCollection = app.get('db').collection('volume');
+		volumeCollection.find({ 'tpvConfig.cdvId': volume._id }, { projection: { _id: 1 } }).toArray((err, tpvs) => {
+			if (err || !tpvs || !tpvs.length) return callback(null);
+			async.each(tpvs, (tpv, eachCB) => scope.calculateAndUpdateVolumeStatus(tpv._id, null, eachCB), () => callback(null));
+		});
+		return;
+	}
+
 	callback(null);
 };
 
