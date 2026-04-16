@@ -1245,6 +1245,13 @@ consts.FEATURE_REQUIREMENTS = {
 		[consts.FEATURE_COMPATIBILITY_TYPES.TARGET]: '1',
 		[consts.FEATURE_COMPATIBILITY_TYPES.CLIENT]: '2',
 	},
+	STRIPED_EC: {
+		displayName: 'Striped Erasure Coding',
+		[consts.FEATURE_COMPATIBILITY_TYPES.MANAGEMENT]: '2',
+		[consts.FEATURE_COMPATIBILITY_TYPES.LEADER]: '1',
+		[consts.FEATURE_COMPATIBILITY_TYPES.TARGET]: '1',
+		[consts.FEATURE_COMPATIBILITY_TYPES.CLIENT]: '2',
+	},
 };
 
 const fcvField = 'featureCompatibilityVersion';

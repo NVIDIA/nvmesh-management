@@ -45,8 +45,7 @@ scope.saveVPGs = (vpgs, user, mainCallback) => {
 	let messages = [];
 	let vpgsToRemove = [];
 
-	const isAnyVpgUsingTwoMirrors = vpgs.some(vpg => consts.mirroredRaidLevels.includes(vpg.RAIDLevel) && vpg.numberOfMirrors === 2);
-	utils.validateMultiMirrorFeatureCompatibility(isAnyVpgUsingTwoMirrors ? 2 : null, (err) => {
+	utils.validateVolumesFeatureCompatibility(vpgs, (err) => {
 		if (err)
 			return mainCallback([new SystemAdminMessage(systemMessages.VPG_SAVE_FAILURE).addInfo(Entities.Error, err)]);
 

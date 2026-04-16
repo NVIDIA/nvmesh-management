@@ -2071,7 +2071,7 @@ scope.saveVolume = function(volume, shouldUpdateConfiguration, user, mainCallbac
 			return allocationCallback(null, false, err);
 		}
 
-		scope.validateMultiMirrorFeatureCompatibility(volume.numberOfMirrors, (err) => {
+		scope.validateVolumesFeatureCompatibility([volume], (err) => {
 			if (err)
 				return allocationCallback(null, false, err);
 
@@ -3277,11 +3277,20 @@ scope.validateFeatureCompatibility = (featureRequirements, callback) => {
 	}, callback);
 };
 
-scope.validateMultiMirrorFeatureCompatibility = (numberOfMirrors, callback) => {
-	if (numberOfMirrors === 2)
-		return scope.validateFeatureCompatibility(consts.FEATURE_REQUIREMENTS.NUMBER_OF_MIRRORS_2, callback);
+scope.validateVolumesFeatureCompatibility = (volumes, callback) => {
+	const validateFeatureCondition = (condition, featureRequirements, cb) => {
+		if (condition)
+			return scope.validateFeatureCompatibility(featureRequirements, cb);
 
-	callback();
+		cb();
+	};
+
+	async.each(volumes, (volume, eachCb) => {
+		async.parallel([
+			cb => validateFeatureCondition(volume.numberOfMirrors === 2, consts.FEATURE_REQUIREMENTS.NUMBER_OF_MIRRORS_2, cb),
+			cb => validateFeatureCondition(volume.RAIDLevel === consts.RAIDLevel.STRIPED_ERASURE_CODING, consts.FEATURE_REQUIREMENTS.STRIPED_EC, cb)
+		], eachCb);
+	}, callback);
 };
 
 scope.validateAllocationOnOfflineDrives = function(entity, updateObj, callback) {
