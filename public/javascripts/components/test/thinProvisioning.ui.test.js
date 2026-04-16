@@ -190,10 +190,10 @@ describe('CreateTPVModal.jsx — TPV payload builder', () => {
 			name: data.name,
 			description: data.description || '',
 			volumeClass: consts.volumeClass.TPV,
+			capacity: Number(data.capacity),
 			tpvConfig: {
 				cdvId: data.cdvId,
 				tpvExtentSizeKB: data.tpvExtentSizeKB,
-				virtualSizeGB: Number(data.virtualSizeGB),
 			},
 		};
 		if (!isCreate) {
@@ -207,7 +207,7 @@ describe('CreateTPVModal.jsx — TPV payload builder', () => {
 		name: 'my-tpv',
 		cdvId: 'cdv-1',
 		tpvExtentSizeKB: 1024,
-		virtualSizeGB: 50,
+		capacity: 50,
 	};
 
 	it('sets volumeClass to TPV', async() => {
@@ -215,10 +215,10 @@ describe('CreateTPVModal.jsx — TPV payload builder', () => {
 		assert.strictEqual(payload.volumeClass, consts.volumeClass.TPV);
 	});
 
-	it('passes virtualSizeGB as a number', async() => {
-		const payload = buildTPVPayload({ ...baseFormData, virtualSizeGB: '50' });
-		assert.strictEqual(typeof payload.tpvConfig.virtualSizeGB, 'number');
-		assert.strictEqual(payload.tpvConfig.virtualSizeGB, 50);
+	it('passes capacity as a number', async() => {
+		const payload = buildTPVPayload({ ...baseFormData, capacity: '50' });
+		assert.strictEqual(typeof payload.capacity, 'number');
+		assert.strictEqual(payload.capacity, 50);
 	});
 
 	it('description defaults to empty string when not supplied', async() => {

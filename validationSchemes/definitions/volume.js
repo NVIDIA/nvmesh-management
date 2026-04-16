@@ -56,7 +56,6 @@ const tpvConfigScheme = {
 		cdvId: { type: 'string', minLength: 1 },
 		cdvUUID: { type: 'string' },
 		tpvExtentSizeKB: { type: 'integer', enum: consts.tpvExtentSizeKBValues },
-		virtualSizeGB: { type: 'number', exclusiveMinimum: 0 },
 		exclusiveClient: { type: ['string', 'null'], default: null },
 		exclusiveClientUUID: { type: ['string', 'null'], default: null },
 	},
@@ -109,9 +108,8 @@ const scheme = {
 		},
 		encryptionPropertiesConditions,
 		{
-			// capacity required for REGULAR and CDV; TPV capacity is derived from tpvConfig.virtualSizeGB by the backend
-			if: { not: isTPV },
-			then: { required: ['capacity'] }
+			// capacity required for all volume types (TPVs use it as virtual size)
+			required: ['capacity']
 		},
 		{
 			// RAIDLevel required when not using VPG, except for TPV (which inherits RAID from its CDV)
@@ -127,11 +125,11 @@ const scheme = {
 			}
 		},
 		{
-			// TPV: tpvConfig required; cdvId, tpvExtentSizeKB, virtualSizeGB required within it
+			// TPV: tpvConfig required; cdvId and tpvExtentSizeKB required within it
 			if: isTPV,
 			then: {
 				required: ['tpvConfig'],
-				properties: { tpvConfig: { required: ['cdvId', 'tpvExtentSizeKB', 'virtualSizeGB'] } }
+				properties: { tpvConfig: { required: ['cdvId', 'tpvExtentSizeKB'] } }
 			}
 		},
 	],

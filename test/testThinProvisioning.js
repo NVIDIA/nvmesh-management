@@ -62,11 +62,12 @@ function makeCDV(name, capacityGB = 10) {
 }
 
 /** Build a minimal TPV volume object referencing an existing CDV. */
-function makeTPV(name, cdvId, virtualSizeGB = 5) {
+function makeTPV(name, cdvId, capacity = 5) {
 	return {
 		name,
 		volumeClass: consts.volumeClass.TPV,
-		tpvConfig: { cdvId, tpvExtentSizeKB: 1024, virtualSizeGB },
+		capacity,
+		tpvConfig: { cdvId, tpvExtentSizeKB: 1024 },
 	};
 }
 
@@ -193,14 +194,14 @@ describe('Thin Provisioning', () => {
 					});
 			});
 
-			it('TPV should have correct tpvConfig stored', () => {
+			it('TPV should have correct config stored', () => {
 				return getVolumeFromDB('tpv-create-ok')
 					.then(doc => {
 						assert(doc.tpvConfig, 'tpvConfig should be present');
 						assert.strictEqual(doc.tpvConfig.cdvId, cdv.name);
-						assert.strictEqual(doc.tpvConfig.virtualSizeGB, 5);
 						assert.strictEqual(doc.tpvConfig.tpvExtentSizeKB, 1024);
 						assert.strictEqual(doc.tpvConfig.exclusiveClient, null);
+						assert.strictEqual(doc.capacity, 5);
 					});
 			});
 
@@ -221,7 +222,7 @@ describe('Thin Provisioning', () => {
 			});
 		});
 
-		describe('#Create — virtualSizeGB exceeds CDV capacity', () => {
+		describe('#Create — TPV capacity exceeds CDV capacity', () => {
 			let cdv;
 
 			before(() => setup.newSetup()
@@ -232,7 +233,7 @@ describe('Thin Provisioning', () => {
 				})
 			);
 
-			it('Should fail when virtualSizeGB > CDV capacity', () => {
+			it('Should fail when TPV capacity > CDV capacity', () => {
 				return saveVolume(makeTPV('tpv-too-big', cdv.name, 99, 200))
 					.then(res => assert(!res.success, 'Expected failure but got success'));
 			});
@@ -368,7 +369,7 @@ describe('Thin Provisioning', () => {
 				.then(() => saveVolume(makeTPV(tpvName, cdv.name, 5, 50)))
 			);
 
-			it('Should extend TPV virtualSizeGB to a larger value', () => {
+			it('Should extend TPV capacity to a larger value', () => {
 				return new Promise((resolve, reject) => {
 					extendTPV({ tpvId: tpvName, newSizeGB: 20 }, TEST_USER, msg => {
 						const res = msg.createApiResponse(Entities.Volume.ID);
@@ -376,12 +377,11 @@ describe('Thin Provisioning', () => {
 					});
 				}).then(() => getVolumeFromDB(tpvName))
 					.then(doc => {
-						assert.strictEqual(doc.tpvConfig.virtualSizeGB, 20);
 						assert.strictEqual(doc.capacity, 20);
 					});
 			});
 
-			it('Should fail when newSizeGB is equal to current virtualSizeGB', () => {
+			it('Should fail when newSizeGB is equal to current capacity', () => {
 				return new Promise(resolve => {
 					extendTPV({ tpvId: tpvName, newSizeGB: 20 }, TEST_USER, msg => {
 						resolve(msg.createApiResponse(Entities.Volume.ID));
@@ -389,7 +389,7 @@ describe('Thin Provisioning', () => {
 				}).then(res => assert(!res.success, 'Expected failure: same size'));
 			});
 
-			it('Should fail when newSizeGB is less than current virtualSizeGB', () => {
+			it('Should fail when newSizeGB is less than current capacity', () => {
 				return new Promise(resolve => {
 					extendTPV({ tpvId: tpvName, newSizeGB: 1 }, TEST_USER, msg => {
 						resolve(msg.createApiResponse(Entities.Volume.ID));

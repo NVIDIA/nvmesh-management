@@ -66,12 +66,12 @@ const ThinProvisioning = () => {
 		},
 		{
 			name: 'Virtual Size',
-			field: 'tpvConfig.virtualSizeGB',
+			field: 'capacity',
 			filterable: false,
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
-			value: tpvRow => tpvRow.tpvConfig?.virtualSizeGB != null
-				? CapacityService.toBiggestUnit(tpvRow.tpvConfig.virtualSizeGB * consts.GiB, unitType, { fromBytes: true })
+			value: tpvRow => tpvRow.capacity != null
+				? CapacityService.toBiggestUnit(tpvRow.capacity * consts.GiB, unitType, { fromBytes: true })
 				: '—',
 		},
 		{
@@ -186,8 +186,8 @@ const ThinProvisioning = () => {
 				errorAlert(`Failed to create TPV ${editedTPV.name} — ${extractErrorMsg(responses[0]?.error)}`);
 			}
 		} else {
-			const newSizeGB = editedTPV.tpvConfig?.virtualSizeGB;
-			const sizeChanged = newSizeGB != null && newSizeGB !== tpv.tpvConfig?.virtualSizeGB;
+			const newSizeGB = editedTPV.capacity;
+			const sizeChanged = newSizeGB != null && newSizeGB !== tpv.capacity;
 
 			if (sizeChanged) {
 				const extendRes = await VolumesService.extendTPV({ tpvId: editedTPV._id, newSizeGB });

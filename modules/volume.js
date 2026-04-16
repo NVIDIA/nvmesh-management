@@ -3200,7 +3200,8 @@ function createTPV(volume, user, cb) {
 	var message;
 	var cdv;
 
-	const { cdvId, tpvExtentSizeKB, virtualSizeGB } = volume.tpvConfig || {};
+	const { cdvId, tpvExtentSizeKB } = volume.tpvConfig || {};
+	const { capacity } = volume;
 
 	async.series([
 		function fetchAndValidateCDV(next) {
@@ -3223,10 +3224,10 @@ function createTPV(volume, user, cb) {
 						.addInfo(Entities.Error, `CDV is at capacity (${doc.cdvConfig.maxTPVs} TPVs)`);
 					return next(true);
 				}
-				if (virtualSizeGB > doc.capacity) {
+				if (capacity > doc.capacity) {
 					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
 						.addInfo(Entities.Volume.name, volume.name)
-						.addInfo(Entities.Error, 'virtualSizeGB cannot exceed parent CDV capacity');
+						.addInfo(Entities.Error, 'TPV capacity cannot exceed parent CDV capacity');
 					return next(true);
 				}
 				if (tpvExtentSizeKB > doc.cdvConfig.cdvExtentSizeMB * 1024) {
@@ -3258,7 +3259,7 @@ function createTPV(volume, user, cb) {
 				// protocol has no dedicated TPV fields yet.
 				blockSize: consts.BLOCK_SIZE,
 				// Virtual size in 4 KiB management blocks (matches kernel MGMT2CLNT_SHIFT).
-				blocks: Math.floor(virtualSizeGB * 1024 * 1024 * 1024 / 4096),
+				blocks: Math.floor(capacity * 1024 * 1024 * 1024 / 4096),
 				RAIDLevel: consts.RAIDLevel.CONCATENATED,
 				numberOfMirrors: 0,
 				stripeWidth: 1,
@@ -3283,7 +3284,7 @@ function createTPV(volume, user, cb) {
 				// (default, safe); '' = deferred background flush (fast, risky).
 				sourceUUID: 'sync_flush',
 				chunks: [], // TPV has no physical disk chunks; backed by CDV
-				capacity: virtualSizeGB,
+				capacity,
 				createdBy: user.email,
 				modifiedBy: user.email,
 				dateCreated: volume.dateCreated || new Date(),
@@ -3299,7 +3300,6 @@ function createTPV(volume, user, cb) {
 					cdvId: cdvId,
 					cdvUUID: cdv.uuid,
 					tpvExtentSizeKB: tpvExtentSizeKB,
-					virtualSizeGB: virtualSizeGB,
 					exclusiveClient: null,
 					exclusiveClientUUID: null,
 				},
@@ -3479,15 +3479,14 @@ scope.extendTPV = ({ tpvId, newSizeGB }, user, cb) => {
 			return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
 				.addInfo(Entities.Volume.ID, tpvId));
 
-		if (newSizeGB <= tpv.tpvConfig.virtualSizeGB)
+		if (newSizeGB <= tpv.capacity)
 			return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
 				.addInfo(Entities.Volume.ID, tpvId)
-				.addInfo(Entities.Error, 'newSizeGB must be greater than current virtualSizeGB'));
+				.addInfo(Entities.Error, 'newSizeGB must be greater than current capacity'));
 
 		const $set = {
 			capacity: newSizeGB,
 			blocks: Math.floor(newSizeGB * 1024 * 1024 * 1024 / 4096),
-			'tpvConfig.virtualSizeGB': newSizeGB,
 			modifiedBy: user.email,
 			dateModified: new Date(),
 		};

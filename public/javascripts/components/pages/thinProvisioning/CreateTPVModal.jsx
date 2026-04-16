@@ -42,10 +42,10 @@ const CreateTPVModal = ({
 			name: data.name,
 			description: data.description || '',
 			volumeClass: consts.volumeClass.TPV,
+			capacity: Number(data.capacity),
 			tpvConfig: {
 				cdvId: data.cdvId,
 				tpvExtentSizeKB: Number(data.tpvExtentSizeKB),
-				virtualSizeGB: Number(data.virtualSizeGB),
 			},
 		};
 
@@ -178,21 +178,21 @@ const CreateTPVModal = ({
 						</FormControl>
 
 						<FormControl
-							name="virtualSizeGB"
-							label={`Virtual Size (${unitLabel})`}
-							errorMessage={formState.errors?.virtualSizeGB?.message}
+							name="capacity"
+							label={`TPV Capacity (Virtual Size) (${unitLabel})`}
+							errorMessage={formState.errors?.capacity?.message}
 							topHint={selectedCdv
 								? <i className="text-muted">CDV capacity: {CapacityService.toBiggestUnit(selectedCdv.capacity, unitType)}</i>
 								: undefined}
 						>
 							<Input
-								name="virtualSizeGB"
+								name="capacity"
 								type="number"
 								className="form-control"
 								placeholder="e.g. 100"
-								{...register('virtualSizeGB', {
-									value: tpv.tpvConfig?.virtualSizeGB,
-									required: 'Virtual size is required',
+								{...register('capacity', {
+									value: tpv.capacity,
+									required: 'Capacity is required',
 									min: { value: 1, message: `Minimum size is 1 ${unitLabel}` },
 									valueAsNumber: true,
 								})}
