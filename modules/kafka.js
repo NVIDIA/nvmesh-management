@@ -315,15 +315,8 @@ async function shouldRetryToSendMessages(topic, ex) {
 }
 
 function toggleForceSanityAndRecoverIfNeeded() {
-	const db = app.get('db');
-	const configurationVersionCollection = db.collection('configurationVersion');
-
-	configurationVersionCollection.updateOne({ _id: consts.CONFIG_VER_CLUSTER_ID }, { $set: { forceSanityAndRecover: true } }, (err) => {
-		if (err)
-			new MongoError(err).log();
-		else
-			logger.sysDEBUG('Detected a failure while trying to send message to Kafka, toggling forceSanityAndRecover to true');
-	});
+	utils.toggleForceSanityAndRecover();
+	logger.sysDEBUG('Detected a failure while trying to send message to Kafka, toggling forceSanityAndRecover to true');
 }
 
 scope.sendMessages = (topicOrGetterFn, messages, callback = () => {}) => {

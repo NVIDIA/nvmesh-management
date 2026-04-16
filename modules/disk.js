@@ -31,6 +31,7 @@ var scope = {};
 scope.afterModuleLoaded = () => {
 	events = require('../events.js');
 	logger = require('../logger.js');
+	volumeModule = require('./volume.js');
 	({ Entities, SystemMessage, MongoError, SystemAdminMessage, getDriveID } = require('./error.js'));
 };
 
@@ -364,6 +365,13 @@ scope.handleFormatDone = function(disk, newDisk, calcDelta) {
 	scope.setDiskInfo.bind(calcDelta)(disk, false);
 
 	if (disk.diskSegments && disk.diskSegments.length) {
+		const hasPendingReinstateSegments = disk.diskSegments.some(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
+
+		if (hasPendingReinstateSegments) {
+			scope.resumeReinstateAfterFormat(disk);
+			return true;
+		}
+
 		var volumeSegments = disk.diskSegments.filter(function(seg) {
 			return !seg.owner || (seg.owner === consts.segmentOwners.NVMESH && seg.type !== consts.segmentTypes.EXCELERO_METADATA);
 		});
@@ -385,6 +393,50 @@ scope.handleFormatDone = function(disk, newDisk, calcDelta) {
 	}
 
 	return true;
+};
+
+scope.resumeReinstateAfterFormat = (disk, callback = () => {}, retryCount = 0) => {
+	const driveID = disk.diskID;
+	const driveUUID = disk.uuid;
+	const serverQuery = { 'disks.diskID': driveID, 'disks.uuid': driveUUID };
+	let zoneLocked;
+
+	logger.sysDEBUG(`Drive SN ${driveID} format done with pending reinstate segments, resuming reinstate`);
+
+	async.series([
+		cb => enrichServerQuery(serverQuery, cb),
+		cb => {
+			lockModule.acquireLockByZone(serverQuery.zone, (err) => {
+				if (err)
+					return cb(err);
+
+				zoneLocked = serverQuery.zone;
+				cb();
+			});
+		},
+		cb => executeInPlaceSegmentReplacement(serverQuery, consts.diskSegmentStatuses.MARKED_FOR_REBUILD, cb)
+	], (err) => {
+		function done() {
+			if (shouldRetryReinstate(err, retryCount)) {
+				logger.sysDEBUG(`Retrying reinstate resume for drive ${driveID} (attempt ${retryCount + 1}/${consts.MAX_REINSTATE_RETRIES})`);
+				return scope.resumeReinstateAfterFormat(disk, callback, retryCount + 1);
+			}
+
+			if (err)
+				new SystemMessage(systemMessages.DRIVE_REINSTATE_FAILED)
+					.addInfo(Entities.Drive.ID, driveID)
+					.addInfo(Entities.Drive.UUID, driveUUID)
+					.addInfo(Entities.Error, err)
+					.log();
+
+			callback(err);
+		}
+
+		if (zoneLocked)
+			return lockModule.releaseLockByZone(zoneLocked, done);
+
+		done();
+	});
 };
 
 // handles GPT partitions, for now allowing only metadata partitions (returns an error when system partition appears on gpt or partition size changed)
@@ -721,9 +773,19 @@ scope.formatDiskByIDsAndUUIDs = function(disks, requestedFormatType, isAutoForma
 			}
 
 			if (serverDisk.diskSegments) {
-				var volumeSegments = serverDisk.diskSegments.filter(function(seg) { return seg.type !== consts.segmentTypes.EXCELERO_METADATA; });
-				if (volumeSegments.length) {
-					logAndAddResult(new SystemMessage(systemMessages.DRIVE_FORMAT_CANT_FORMAT_DRIVE_WITH_VOLUMES));
+				const activeVolumeSegments = serverDisk.diskSegments.filter(seg =>
+					seg.type !== consts.segmentTypes.EXCELERO_METADATA && seg.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
+
+				if (activeVolumeSegments.length) {
+					const hasPendingReinstateSegments = serverDisk.diskSegments.some(seg =>
+						seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
+
+					if (hasPendingReinstateSegments)
+						// there are still disk segments not cleaned up after reinstate - we should have only markedForRebuild_pending segments left
+						logAndAddResult(new SystemMessage(systemMessages.DRIVE_REINSTATE_IN_PROGRESS));
+					else
+						logAndAddResult(new SystemMessage(systemMessages.DRIVE_FORMAT_CANT_FORMAT_DRIVE_WITH_VOLUMES));
+
 					return callback();
 				}
 			}
@@ -1401,9 +1463,14 @@ scope.getAndValidateSegmentsForRemapOnEvict = function(disk, isAutoEvict, cb) {
 						case consts.RAIDLevel.STRIPED_ERASURE_CODING:
 							err = scope.checkRedundancyViolationOnEvict(volume, segment, isAutoEvict);
 							if (!err) {
-								if (segment.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD ||
-									!volume.chunks.pRaids.diskSegments.filter(
-										(s) => s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD && s.pRaidIndex === segment.pRaidIndex).length)
+								const hasRebuildOldSiblingInSamePRaid = volume.chunks.pRaids.diskSegments.some((s) =>
+									s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD &&
+									s.pRaidIndex === segment.pRaidIndex);
+								const isActiveRebuildInProgress =
+									(segment.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD && hasRebuildOldSiblingInSamePRaid) ||
+									segment.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING;
+
+								if (!isActiveRebuildInProgress)
 									raidSegmentsIdsToRemap.push(segment._id);
 								else if (!isAutoEvict)
 									err = consts.evictFailureReasons.MARKED_FOR_REBUILD_SEG_FOUND;
@@ -1429,7 +1496,7 @@ scope.checkRedundancyViolationOnEvict = function(volume, segmentToEvict, isAutoE
 	const isHealthySegment = seg => seg.status === consts.diskSegmentStatuses.NORMAL && !seg.isDead;
 	const isRelevantSegment = seg => seg._id !== segmentToEvict._id &&
 		seg.type === consts.segmentTypes.DATA &&
-		seg.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD; // MARKED_FOR_REBUILD_OLD segments should not be counted as a segment in the pRaid
+		volumeModule.isEffectiveSegmentInPRaidStatus(seg.status);
 	const segmentByHealth = volume.chunks.pRaids.diskSegments.reduce((acc, segment) => {
 		if (!isRelevantSegment(segment))
 			return acc;
@@ -1528,6 +1595,294 @@ scope.startMissingDriveCheckupInterval = function(callback) {
 	}
 
 	setTimeout(intervalFunc, consts.missingDriveCheckupInterval);
+};
+
+function validateDriveToReinstate(drive, callback) {
+	if (!drive)
+		return callback(new SystemMessage(systemMessages.DRIVE_NOT_FOUND));
+
+	if (!drive.isOutOfService)
+		return callback(new SystemMessage(systemMessages.DRIVE_REINSTATE_NOT_OUT_OF_SERVICE));
+
+	if (drive.diskSegments.some(seg => seg.type === consts.segmentTypes.DATA && !utils.hasRedundancy(seg)))
+		return callback(new SystemMessage(systemMessages.DRIVE_REINSTATE_NON_PROTECTED_SEGMENTS));
+
+	utils.validateFeatureCompatibility(consts.FEATURE_REQUIREMENTS.REINSTATE, callback);
+}
+
+function applyReinstateSegmentPairsToVolume(segmentsPairs, volume){
+	segmentsPairs.forEach(({ oldSegment, newSegment }) => {
+		volume.chunks.forEach(chunk => {
+			chunk.pRaids.forEach(pRaid => {
+				pRaid.diskSegments.forEach(segment => {
+					if (segment._id === oldSegment._id)
+						segment.status = consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD;
+				});
+
+				if (pRaid.uuid === newSegment.pRaidUUID) {
+					const alreadyExists = pRaid.diskSegments.some(seg => seg._id === newSegment._id && seg.status === newSegment.status);
+					if (!alreadyExists)
+						pRaid.diskSegments.push(newSegment);
+				}
+			});
+		});
+	});
+}
+
+scope.updateVolumesAfterReinstate = (segmentPairsByVolume, callback) => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+
+	async.eachSeries(Object.keys(segmentPairsByVolume), (volumeName, cb) => {
+		const segmentsPairs = segmentPairsByVolume[volumeName];
+
+		async.waterfall([
+			function fetchVolume(cb) {
+				volumeCollection.findOne({ _id: volumeName }, (err, volume) => {
+					if (err)
+						return cb(new MongoError(err));
+
+					if (!volume) {
+						logger.sysDEBUG(`Volume ${volumeName} not found during reinstate`);
+						return cb();
+					}
+
+					cb(null, volume);
+				});
+			},
+			function updateVolume(volume, cb) {
+				if (!volume)
+					return cb();
+
+				applyReinstateSegmentPairsToVolume(segmentsPairs, volume);
+				const calcResult = volumeModule.calculateVolumeStatus(volume);
+
+				const query = {
+					_id: volumeName,
+					version: volume.version
+				};
+
+				const update = {
+					$currentDate: { dateModified: true },
+					$inc: { version: 1 },
+					$set: {
+						status: calcResult.newStatus,
+						action: calcResult.newAction,
+						health: calcResult.newHealth,
+						chunks: volume.chunks
+					}
+				};
+
+				volumeCollection.findOneAndUpdate(query, update, { returnDocument: consts.mongoReturnDocument.AFTER }, (err, result) => {
+					if (err)
+						return cb(new MongoError(err));
+
+					if (!result) {
+						logger.sysDEBUG(`Volume ${volumeName} version conflict during reinstate, sanity will recover`);
+						return cb();
+					}
+
+					calcResult.eventsToEmit.forEach((eventName) =>
+						events.emitEvent([events.getVolumeID(result.name)], objectNotifier.events[eventName], result));
+
+					volumeModule.sendVolumeUpdateToTomaByVolume(result);
+					cb();
+				});
+			}
+		], (err) => {
+			if (err) {
+				new SystemMessage(systemMessages.DRIVE_REINSTATE_VOLUME_UPDATE_FAILED)
+					.addInfo(Entities.Volume.ID, volumeName)
+					.addInfo(Entities.Error, err)
+					.log();
+				utils.toggleForceSanityAndRecover();
+			}
+			cb();
+		});
+	}, callback);
+};
+
+function buildSegmentReplacementPairsByVolume(server, newDiskSegmentStatus) {
+	const segmentPairsByVolume = {};
+
+	for (const oldSegment of server.disks.diskSegments) {
+		if (oldSegment.type !== consts.segmentTypes.DATA)
+			continue;
+
+		if (!segmentPairsByVolume[oldSegment.volumeName])
+			segmentPairsByVolume[oldSegment.volumeName] = [];
+
+		oldSegment.status = consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD;
+
+		const segmentsPair = {
+			oldSegment,
+			newSegment: utils.extend(true, {}, oldSegment, { status: newDiskSegmentStatus, diskUUID: server.disks.uuid })
+		};
+
+		segmentPairsByVolume[oldSegment.volumeName].push(segmentsPair);
+	}
+
+	return segmentPairsByVolume;
+}
+
+function executeInPlaceSegmentReplacement(serverQuery, newDiskSegmentStatus, callback = () => {}, preReplaceValidation) {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+
+	async.waterfall([
+		function fetchDrive(cb) {
+			const pipeline = [
+				{ $match: serverQuery },
+				{ $unwind: '$disks' },
+				{ $match: serverQuery },
+			];
+
+			serverCollection.aggregate(pipeline).toArray((err, result) => {
+				if (err)
+					return cb(new MongoError(err));
+
+				if (!result.length)
+					return cb(new SystemMessage(systemMessages.DRIVE_REINSTATE_SERVER_VERSION_CONFLICT));
+
+				cb(null, result[0]);
+			});
+		},
+		function runPreReplaceValidation(server, cb) {
+			if (!preReplaceValidation)
+				return cb(null, server);
+
+			preReplaceValidation(server.disks, (err) => cb(err, server));
+		},
+		function updateDrive(server, cb) {
+			const query = {
+				...serverQuery,
+				'disks.version': server.disks.version,
+			};
+
+			const segmentPairsByVolume = buildSegmentReplacementPairsByVolume(server, newDiskSegmentStatus);
+			const flatNewSegments = Object.values(segmentPairsByVolume).flatMap(volume => volume.map(pair => pair.newSegment));
+
+			const drivePath = 'disks.$';
+			const update = {
+				$currentDate: { dateModified: true },
+				$inc: { [`${drivePath}.version`]: 1 },
+				$set: { [`${drivePath}.diskSegments`]: server.disks.diskSegments.concat(flatNewSegments) }
+			};
+
+			serverCollection.updateOne(query, update, (err, result) => {
+				if (err)
+					return cb(new MongoError(err));
+
+				if (result.modifiedCount === 0)
+					return cb(new SystemMessage(systemMessages.DRIVE_REINSTATE_SERVER_VERSION_CONFLICT));
+
+				events.emitEvent(
+					[events.getDiskID(server.disks.diskID), events.getTargetID(server.node_id)],
+					objectNotifier.events.diskReinstateEvent,
+					server.disks
+				);
+
+				utils.incZonesConfigurationVersion([server.zone], () =>
+					zoneModule.dispatchZonesHardwareConfigurationByZones([server.zone], () =>
+						cb(null, segmentPairsByVolume)));
+			});
+		},
+		function updateVolumes(segmentPairsByVolume, cb) {
+			scope.updateVolumesAfterReinstate(segmentPairsByVolume, cb);
+		}
+	], callback);
+}
+
+function enrichServerQuery(serverQuery, callback) {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+
+	const projection = {
+		zone: 1,
+		[`kafkaMessageSequence.${consts.kafkaMessageTypes.TOMAToManagament.reportTarget}`]: 1,
+		'disks.diskID': 1,
+		'disks.uuid': 1,
+		'disks.isOutOfService': 1,
+		'disks.diskSegments.type': 1,
+		'disks.diskSegments.redundancyRatio': 1
+	};
+
+	serverCollection.findOne(serverQuery, { projection }, (err, server) => {
+		if (err)
+			return callback(new MongoError(err));
+
+		if (!server)
+			return callback(new SystemMessage(systemMessages.DRIVE_NOT_FOUND));
+
+		const reportTargetMsgType = consts.kafkaMessageTypes.TOMAToManagament.reportTarget;
+		serverQuery._id = server._id;
+		serverQuery.zone = server.zone;
+		serverQuery[`kafkaMessageSequence.${reportTargetMsgType}`] = server.kafkaMessageSequence[reportTargetMsgType];
+
+		callback(null, server);
+	});
+}
+
+function shouldRetryReinstate(err, retryCount) {
+	return err &&
+		err.systemMessage &&
+		err.systemMessage.id === systemMessages.DRIVE_REINSTATE_SERVER_VERSION_CONFLICT.id &&
+		retryCount < consts.MAX_REINSTATE_RETRIES;
+}
+
+function reinstateDrive(drive, callback, retryCount = 0) {
+	const { _id: driveID, uuid: driveUUID } = drive;
+	const serverQuery = { 'disks.diskID': driveID, 'disks.uuid': driveUUID };
+	const preReplaceValidation = (disk, cb) => validateDriveToReinstate(disk, cb);
+
+	let zoneLocked;
+
+	async.series([
+		cb => {
+			enrichServerQuery(serverQuery, (err, server) => {
+				if (err)
+					return cb(err);
+
+				const drive = server.disks.find(d => d.diskID === driveID);
+				validateDriveToReinstate(drive, cb);
+			});
+		},
+		cb => {
+			lockModule.acquireLockByZone(serverQuery.zone, (err) => {
+				if (err)
+					return cb(err);
+
+				zoneLocked = serverQuery.zone;
+				cb();
+			});
+		},
+		cb => executeInPlaceSegmentReplacement(serverQuery, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, cb, preReplaceValidation)
+	], (err) => {
+		function done() {
+			if (shouldRetryReinstate(err, retryCount)) {
+				logger.sysDEBUG(`Retrying reinstate for drive ${driveID} (attempt ${retryCount + 1}/${consts.MAX_REINSTATE_RETRIES})`);
+				return reinstateDrive(drive, callback, retryCount + 1);
+			}
+
+			const message = new SystemAdminMessage(err ? systemMessages.DRIVE_REINSTATE_FAILED : systemMessages.DRIVE_REINSTATED)
+				.addInfo(Entities.Drive.ID, driveID)
+				.addInfo(Entities.Drive.UUID, driveUUID);
+
+			if (err)
+				message.addInfo(Entities.Error, err);
+
+			callback(null, message);
+		}
+
+		if (zoneLocked)
+			return lockModule.releaseLockByZone(zoneLocked, done);
+
+		done();
+	});
+}
+
+scope.reinstateDrives = (drives, callback) => {
+	async.mapSeries(drives, reinstateDrive, (_, messages) => callback(messages));
 };
 
 module.exports = scope;

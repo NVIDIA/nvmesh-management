@@ -104,6 +104,10 @@ exports.isTopicExists = function(topic) {
 	return topic in kafkaQueues;
 };
 
+exports.clearAllQueues = function() {
+	Object.values(kafkaQueues).forEach(q => q.clear());
+};
+
 exports.resetKafkaQueues = function() {
 	for (var topic in kafkaQueues) {
 		exports.resetKafkaQueue(topic);
@@ -202,7 +206,9 @@ exports.mockKafkaModule = function() {
 			callback([
 				'<ZONE>.TOMA.hardwareConfiguration.1.0.0',
 				'<HOSTNAME>.TOMA.commands.1.0.0'
-			].map(topicName => topicName.replace(consts.TOPIC_NAME_PLACEHOLDERS.HOSTNAME, hostname)));
+			].map(topicName => topicName
+				.replace(consts.TOPIC_NAME_PLACEHOLDERS.HOSTNAME, hostname)
+				.replace(consts.TOPIC_NAME_PLACEHOLDERS.ZONE, kafkaModule.getZonePrefix(zone))));
 	};
 
 	kafkaModule.recycleConsumer = callback => {

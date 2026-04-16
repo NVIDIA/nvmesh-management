@@ -40,6 +40,7 @@ var scope = {};
 scope.afterModuleLoaded = function() {
 	lastMessageLog = require('./lastMessageLog.js');
 	clientModule = require('./client.js');
+	diskModule = require('./disk.js');
 	events = require('../events.js');
 	logger = require('../logger.js');
 	diskModule = require('./disk.js');

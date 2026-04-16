@@ -4,7 +4,7 @@
  */
 
 const { KafkaMessage } = require('./KafkaMessage');
-
+const consts = require('../../consts');
 exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 	constructor(type, version, confObj) {
 		super(type, version, confObj);
@@ -55,7 +55,7 @@ exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 					pRaidIndex: d.pRaidIndex,
 					pRaidTypeIndex: d.pRaidTypeIndex,
 					status: d.status,
-					diskUUID: d.diskUUID
+					diskUUID: d.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING ? consts.REINSTATE_FAKE_DRIVE_UUID : d.diskUUID
 				}))
 			}))
 		}));

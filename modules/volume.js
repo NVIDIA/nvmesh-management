@@ -19,6 +19,7 @@ var logModule = require('./log.js');
 var lockModule = require('./lock.js');
 var zoneModule = require('./zone.js');
 var kafkaModule = require('./kafka.js');
+var diskModule = require('./disk.js');
 
 var { MongoError, SystemAdminMessage, Entities, SystemMessage } = require('./error.js');
 var systemMessages = require('../systemMessages.js');
@@ -33,6 +34,7 @@ scope.volumeCalculationInProgress = {};
 
 scope.afterModuleLoaded = function() {
 	logModule = require('./log.js');
+	diskModule = require('./disk.js');
 	logger = require('../logger.js');
 	events = require('../events.js');
 	({ MongoError, SystemAdminMessage, Entities, SystemMessage } = require('./error.js'));
@@ -1011,6 +1013,21 @@ function getPRaidUpdateQuery(pRaidToUpdate) {
 	return chunksPraidMatcher;
 }
 
+function checkAndAutoFormatAfterReinstate(disk) {
+	if (!disk?.diskSegments?.length)
+		return;
+
+	const hasPendingSegments = disk.diskSegments.some(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
+	const hasNonPendingDataSegments = disk.diskSegments.some(seg =>
+		seg.type === consts.segmentTypes.DATA &&
+		seg.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
+
+	if (hasPendingSegments && !hasNonPendingDataSegments) {
+		logger.sysDEBUG(`All markedForRebuild_old segments deprecated on drive ${disk.diskID}, auto-triggering format`);
+		diskModule.formatDiskByIDsAndUUIDs([{ _id: disk.diskID, uuid: disk.uuid }], null, true, () => {});
+	}
+}
+
 function fetchDriveBySegmentID(segment, callback) {
 	var db = app.get('db');
 	var serverCollection = db.collection('server');
@@ -1022,6 +1039,7 @@ function fetchDriveBySegmentID(segment, callback) {
 		{ $project: {
 			'node_id': 1,
 			'zone': 1,
+			'disks.uuid': 1,
 			'disks.usableBlocks': 1,
 			'disks.block_size': 1,
 			'disks.diskID': 1,
@@ -1067,8 +1085,8 @@ function updatePRaidSegmentsInDrives(segments, callback) {
 
 				var serverDisk = serverDisks[0];
 				var disk = serverDisk.disks;
-				var segmentsWithoutDeprecations = disk.diskSegments.filter(function(e) { return e._id !== segment.segmentID; });
-				var deprecatedSegment = disk.diskSegments.filter(function(e) { return e._id === segment.segmentID; })[0];
+				var segmentsWithoutDeprecations = disk.diskSegments.filter(e => !isSegmentEligibleForRemoval(e, segment.segmentID, disk.diskSegments));
+				var deprecatedSegment = disk.diskSegments.find(e => isSegmentEligibleForRemoval(e, segment.segmentID, disk.diskSegments));
 
 				deprecatedSegment.status = consts.diskSegmentStatuses.DEPRECATED;
 				deprecatedSegment.isDead = false;
@@ -1093,6 +1111,7 @@ function updatePRaidSegmentsInDrives(segments, callback) {
 						else {
 							segmentsToUpdate.push(deprecatedSegment);
 							zoneModule.decSegmentFromZone(serverDisk.zone);
+							checkAndAutoFormatAfterReinstate(disk);
 						}
 
 						callback(err);
@@ -1402,12 +1421,6 @@ scope.calculateAndUpdateVolumeStatus = function(volumeID, volume, callback) {
 
 			var $unset = {};
 
-			var persistentSegmentStatuses = [
-				consts.diskSegmentStatuses.REMAP,
-				consts.diskSegmentStatuses.MARKED_FOR_REBUILD,
-				consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD
-			];
-			var isPersistentSegmentStatus = (status) => persistentSegmentStatuses.includes(status);
 			var isTransitionFromMarkedForRebuildToUnderRecovery = (status, pendingStatus) =>
 				status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD && pendingStatus === consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA;
 
@@ -1714,26 +1727,25 @@ scope.getPRaidStatusAndAction = function(volume, pRaid) {
 		};
 	}
 
-	// MARKED_FOR_REBUILD_OLD segments should not be counted as a segment in the pRaid
-	var effectiveSegments = pRaid.diskSegments.filter(s=>s.status != consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+	const effectiveSegments = pRaid.diskSegments
+		.filter(segment => scope.isEffectiveSegmentInPRaidStatus(segment.status))
+		.map(s => {
+			// save original pending status and status since we are manipulating the volume object
+			s.original = {
+				status: s.status,
+				isDead: s.isDead
+			};
 
-	effectiveSegments = effectiveSegments.map(s => {
-		// save original pending status and status since we are manipulating the volume object
-		s.original = {
-			status: s.status,
-			isDead: s.isDead
-		};
+			if (s.pending) {
+				s.originalPending = { ...s.pending };
 
-		if (s.pending) {
-			s.originalPending = { ...s.pending };
+				s.status = s.pending.status;
+				s.isDead = s.pending.isDead;
+			}
 
-			s.status = s.pending.status;
-			s.isDead = s.pending.isDead;
-		}
-
-		delete s.pending;
-		return s;
-	});
+			delete s.pending;
+			return s;
+		});
 
 	const nonFunctionalSegmentsCount = effectiveSegments.filter((seg) => {
 		const nonFunctionalStatuses = [
@@ -1958,18 +1970,10 @@ scope.updatePRaidDiskSegments = function(volume, pRaidToUpdate, user, lockedZone
 			return;
 		}
 
-		const persistentSegmentStatuses = [
-			consts.diskSegmentStatuses.REMAP,
-			consts.diskSegmentStatuses.MARKED_FOR_REBUILD,
-			consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD
-		];
-
 		if (reportSegment.status === consts.diskSegmentStatuses.DEPRECATED) {
-			dbPRaid.diskSegments = dbPRaid.diskSegments.filter((segment) => { return segment._id !== reportSegment.segmentID; });
+			dbPRaid.diskSegments = dbPRaid.diskSegments.filter(seg => !isSegmentEligibleForRemoval(seg, reportSegment.segmentID, dbPRaid.diskSegments));
 			shouldIncVolumeVersion = true;
 		} else if (reportSegment.status != consts.diskSegmentStatuses.DEAD) {
-			// this logic is a duplication of the logic in calculateAndUpdateVolumeStatus
-			const isPersistentSegmentStatus = (status) => persistentSegmentStatuses.includes(status);
 			const isTransitionFromMarkedForRebuildToUnderRecovery = (status, pendingStatus) =>
 				status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD && pendingStatus === consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA;
 				// update segment status with status from reported segment
@@ -2227,7 +2231,7 @@ scope.updateVolumeDiskSegmentsAfterEvict = function(diskSegments, user, lockedZo
 									if (segment.status === consts.diskSegmentStatuses.REMAP)
 										seg.status = consts.diskSegmentStatuses.REMAP;
 								} else {
-									if (seg.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD) {
+									if (scope.isEffectiveSegmentInPRaidStatus(seg.status)) {
 										seg.status = segment.status;
 									}
 
@@ -2236,9 +2240,11 @@ scope.updateVolumeDiskSegmentsAfterEvict = function(diskSegments, user, lockedZo
 								}
 							}
 						});
-					} else
+					} else {
 						//Take all the segments but the deprecated one.
-						matchedSegmentPRaid.diskSegments = matchedSegmentPRaid.diskSegments.filter(function(s) { return s._id !== segment._id; });
+						const segs = matchedSegmentPRaid.diskSegments;
+						matchedSegmentPRaid.diskSegments = segs.filter(s => !isSegmentEligibleForRemoval(s, segment._id, segs));
+					}
 
 					var calcResult = scope.calculateVolumeStatus(volume);
 
@@ -3018,5 +3024,46 @@ scope.fetchVolumeVersionByUUID = function fetchVolumeVersionByUUID(uuid, cb) {
 scope.fetchVolumeByID = function(id, cb) {
 	utils.fetchEntityByID('volume', id, false, {}, systemMessages.VOLUME_NOT_FOUND, cb);
 };
+
+const isPersistentSegmentStatus = (status) => {
+	const persistentSegmentStatuses = [
+		consts.diskSegmentStatuses.REMAP,
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD,
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD,
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING,
+	];
+
+	return persistentSegmentStatuses.includes(status);
+};
+
+scope.isEffectiveSegmentInPRaidStatus = (status) => {
+	const ineffectiveSegmentStatuses = [
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD,
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING,
+	];
+
+	return !ineffectiveSegmentStatuses.includes(status);
+};
+
+// During reinstate, old and new segment pairs share the same _id.
+// When the old segment is deprecated, the new one must not be removed:
+//   1st replacement: markedForRebuild_pending + markedForRebuild_old share _id — always protect pending.
+//   2nd replacement: markedForRebuild + markedForRebuild_old share _id — protect markedForRebuild only
+//            when an old twin is present (otherwise it's a normal rebuild and removal is allowed).
+function isSegmentEligibleForRemoval(segment, segmentIdToRemove, allSegments) {
+	if (segment._id !== segmentIdToRemove)
+		return false;
+
+	if (segment.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
+		return false;
+
+	if (segment.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD) {
+		const hasReinstateOldTwin = allSegments.some(s => s._id === segmentIdToRemove && s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+		if (hasReinstateOldTwin)
+			return false;
+	}
+
+	return true;
+}
 
 module.exports = scope;

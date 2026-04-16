@@ -170,6 +170,7 @@ scope.run = cb => {
 		scope.checkAndRemovePendingUpgrades,
 		scope.checkAndRemovePendingVolumes,
 		scope.checkAndRemoveToBeExtendedVolumes,
+		scope.checkAndResumeStuckReinstate,
 		scope.checkAndRemoveOrphanDiskSegments,
 		scope.checkAndRecoverReclaimingReservedVolumes,
 		scope.checkVPGReservedVolumeCapacitySync,
@@ -2530,7 +2531,11 @@ scope.checkLastEmulationAttachmentsVersionSentToClient = cb => {
 };
 
 const getVerifySegmentStatusAfterEvictByZonePipeline = (zone) => {
-	const validDiskSegmentStatusesAfterEvict = [consts.diskSegmentStatuses.REMAP, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD];
+	const validDiskSegmentStatusesAfterEvict = [
+		consts.diskSegmentStatuses.REMAP,
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD,
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING
+	];
 	const redundantRaidLevels = [
 		consts.RAIDLevel.MIRRORED_RAID_1,
 		consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10,
@@ -3052,6 +3057,142 @@ scope.checkForResendReport = (cb) => {
 			} else
 				return cb();
 		});
+};
+
+scope.checkAndResumeStuckReinstate = function(callback) {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+	const volumeCollection = db.collection('volume');
+
+	const interestDiskSegmentsStatuses = [
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING,
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD
+	];
+
+	const pipeline = [
+		{ $match: { 'disks.diskSegments.status': consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING } },
+		{ $unwind: '$disks' },
+		{ $match: { 'disks.diskSegments.status': consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING } },
+		{
+			$project: {
+				node_id: '$_id',
+				zone: 1,
+				'disks.diskID': 1,
+				'disks.uuid': 1,
+				'disks.isOutOfService': 1,
+				'disks.diskSegments': {
+					$filter: {
+						input: '$disks.diskSegments',
+						as: 'seg',
+						cond: { $in: ['$$seg.status', interestDiskSegmentsStatuses] }
+					}
+				}
+			}
+		}
+	];
+
+	serverCollection.aggregate(pipeline).toArray((err, results) => {
+		if (err)
+			return callback(new MongoError(err));
+
+		if (!results || !results.length)
+			return callback();
+
+		logger.sysDEBUG(`checkAndResumeStuckReinstate: found ${results.length} disks with pending reinstate segments`);
+
+		async.eachSeries(results, (server, cb) => {
+			const disk = server.disks;
+			const pendingSegments = disk.diskSegments.filter(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
+			const oldSegments = disk.diskSegments.filter(seg =>
+				seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD
+				&& seg.type === consts.segmentTypes.DATA);
+
+			if (disk.isOutOfService && oldSegments.length)
+				return handleReinstateStuckBeforeFormat(disk, pendingSegments, oldSegments, cb);
+			else if (disk.isOutOfService && !oldSegments.length)
+				return handleReinstateReadyForFormat(disk, cb);
+			else if (!disk.isOutOfService)
+				return handleReinstateStuckAfterFormat(disk, cb);
+
+			cb();
+		}, callback);
+	});
+
+	function handleReinstateStuckBeforeFormat(disk, pendingSegments, oldSegments, callback) {
+		logger.sysDEBUG(`checkAndResumeStuckReinstate: disk ${disk.diskID} has pending + old segments, checking volume sync`);
+
+		const isMatchingOldSegment = (old, pending) => old.lbs === pending.lbs && old.lbe === pending.lbe;
+		const segmentPairsByVolume = pendingSegments.reduce((acc, pendingSegment) => {
+			const matchingOld = oldSegments.find(oldSegment => isMatchingOldSegment(oldSegment, pendingSegment));
+			if (matchingOld) {
+				if (!acc[pendingSegment.volumeName])
+					acc[pendingSegment.volumeName] = [];
+
+				acc[pendingSegment.volumeName].push({ oldSegment: matchingOld, newSegment: pendingSegment });
+			}
+
+			return acc;
+		}, {});
+
+		if (!Object.keys(segmentPairsByVolume).length)
+			return callback();
+
+		const missingPairsByVolume = {};
+
+		async.eachSeries(Object.keys(segmentPairsByVolume), (volumeName, cb) => {
+			volumeCollection.findOne({ _id: volumeName }, (err, volume) => {
+				if (err)
+					return cb(new MongoError(err));
+
+				if (!volume)
+					return cb();
+
+				const volumePendingIds = new Set();
+				volume.chunks.forEach(chunk =>
+					chunk.pRaids.forEach(pRaid =>
+						pRaid.diskSegments
+							.filter(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
+							.forEach(seg => volumePendingIds.add(seg._id))));
+
+				const missingPairs = segmentPairsByVolume[volumeName].filter(pair => !volumePendingIds.has(pair.newSegment._id));
+				if (missingPairs.length)
+					missingPairsByVolume[volumeName] = missingPairs;
+
+				cb();
+			});
+		}, (err) => {
+			if (err)
+				return callback(err);
+
+			if (!Object.keys(missingPairsByVolume).length)
+				return callback();
+
+			const missingVolumeNames = Object.keys(missingPairsByVolume);
+			const missingSegmentCount = Object.values(missingPairsByVolume).reduce((sum, pairs) => sum + pairs.length, 0);
+
+			logger.sysDEBUG(`checkAndResumeStuckReinstate: disk ${disk.diskID} (uuid: ${disk.uuid}) ` +
+				`completing volume update for ${missingSegmentCount} pending segments ` +
+				`missing from ${missingVolumeNames.length} volumes: ${missingVolumeNames.join(', ')}`);
+
+			diskModule.updateVolumesAfterReinstate(missingPairsByVolume, callback);
+		});
+	}
+
+	function handleReinstateReadyForFormat(disk, callback) {
+		const pendingCount = disk.diskSegments.filter(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING).length;
+		logger.sysDEBUG(`checkAndResumeStuckReinstate: disk ${disk.diskID} (uuid: ${disk.uuid}) ` +
+			`has ${pendingCount} pending segments, no old segments, auto-triggering format`);
+
+		diskModule.formatDiskByIDsAndUUIDs([{ _id: disk.diskID, uuid: disk.uuid }], null, true, () => callback());
+	}
+
+	function handleReinstateStuckAfterFormat(disk, callback) {
+		const pendingCount = disk.diskSegments.filter(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING).length;
+		logger.sysDEBUG(`checkAndResumeStuckReinstate: disk ${disk.diskID} (uuid: ${disk.uuid}) ` +
+			`has ${pendingCount} pending segments after format, resuming reinstate`);
+
+		diskModule.resumeReinstateAfterFormat(disk, () => callback());
+	}
 };
 
 module.exports = scope;

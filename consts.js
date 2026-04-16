@@ -34,6 +34,10 @@ consts.MAGIC_CONFIG_UPDATE_TOKEN = 'F0AAAAAAAAAAAAA';
 // Use config to update/attach allow changing type of existing.
 consts.MAGIC_CONFIG_FORCE_TOKEN = 'FAAAAAAAAAAAAAA';
 
+// TOMA cannot handle the real (evicted) driveUUID during reinstate
+consts.REINSTATE_FAKE_DRIVE_UUID = '11111111-1111-1111-1111-111111111111';
+consts.MAX_REINSTATE_RETRIES = 10;
+
 consts.SHIFT_KEY_CODE = 16;
 consts.NUMBER_OF_EC_MARKERS = 3;
 consts.SYSLOG_ID = 'nvmeshmgr';
@@ -676,6 +680,7 @@ consts.diskSegmentStatuses = {
 	DEPRECATED: 'deprecated',
 	REPLACEMENT: 'replacement',
 	DEAD: 'dead',
+	MARKED_FOR_REBUILD_PENDING: 'markedForRebuild_pending',
 	MARKED_FOR_REBUILD_OLD: 'markedForRebuild_old',
 	MARKED_FOR_REBUILD: 'markedForRebuild',
 	ZEROING: 'zeroing',
@@ -1047,7 +1052,8 @@ consts.operation = {
 	markAsCompleted: 'Mark As Completed',
 	skipFailedMachine: 'Skip Failed Machine',
 	provision: 'Provision',
-	reclaim: 'Reclaim'
+	reclaim: 'Reclaim',
+	reinstate: 'Reinstate',
 };
 
 consts.componentsPages = {
@@ -1265,6 +1271,13 @@ consts.FEATURE_COMPATIBILITY_TYPES = {
 };
 
 consts.FEATURE_REQUIREMENTS = {
+	REINSTATE: {
+		displayName: 'Drive reinstate',
+		[consts.FEATURE_COMPATIBILITY_TYPES.MANAGEMENT]: '2',
+		[consts.FEATURE_COMPATIBILITY_TYPES.LEADER]: '1',
+		[consts.FEATURE_COMPATIBILITY_TYPES.TARGET]: '1',
+		[consts.FEATURE_COMPATIBILITY_TYPES.CLIENT]: '2',
+	},
 	NUMBER_OF_MIRRORS_2: {
 		displayName: 'numberOfMirrors = 2',
 		[consts.FEATURE_COMPATIBILITY_TYPES.MANAGEMENT]: '2',

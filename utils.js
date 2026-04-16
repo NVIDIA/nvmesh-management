@@ -2532,6 +2532,10 @@ scope.getRedundancyRatio = (volume) => {
 	}
 };
 
+// redundancyRatio is set by getRedundancyToTotalRatio
+scope.hasRedundancy = ({ redundancyRatio }) => {
+	return redundancyRatio > 0;
+};
 
 scope.allocateBlocks = function(lockedZone, volume, blocks, zonesToIgnore, allocationCB) {
 	const isMaxAllocation = getIsMaxAllocation(volume);
@@ -5090,6 +5094,16 @@ scope.parseDatetime = function(jsonObj) {
 	}
 
 	return jsonObj;
+};
+
+scope.toggleForceSanityAndRecover = function() {
+	const db = app.get('db');
+	const configurationVersionCollection = db.collection('configurationVersion');
+
+	configurationVersionCollection.updateOne({ _id: consts.CONFIG_VER_CLUSTER_ID }, { $set: { forceSanityAndRecover: true } }, (err) => {
+		if (err)
+			new MongoError(err).log();
+	});
 };
 
 scope.incZonesConfigurationVersion = function(zones, cb) {

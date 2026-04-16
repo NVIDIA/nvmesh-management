@@ -45,7 +45,13 @@ exports.Disk = class Disk extends Entity {
 		this.writeCounter = 193349197846.0;
 		this.Critical_Warning = '0x0';
 		this.Power_On_Hours = '0x416b';
-		this.formatOptions = null;
+		this.formatOptions = [{
+			dataBS: 4096,
+			metaBS: 0
+		}, {
+			dataBS: 4096,
+			metaBS: 8
+		}];
 		this.Number_of_Error_Information_Log_Entries = '0xae';
 		this.Media_Errors = '0x0';
 		this.Unsafe_Shutdowns = '0x54';

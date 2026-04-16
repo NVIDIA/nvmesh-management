@@ -6,7 +6,7 @@
 
 const consts = require('../../consts.js');
 const assert = require('assert');
-const { PRaidReport, UpdatePRaidReportBuilder } = require('../kafkaMessages/fromTOMA/tomaMessageBuilders.js');
+const { PRaidReport, SegmentReport, UpdatePRaidReportBuilder } = require('../kafkaMessages/fromTOMA/tomaMessageBuilders.js');
 const volumeModule = require('../../modules/volume.js');
 const utils = require('../../utils.js');
 
@@ -69,6 +69,72 @@ exports.reportAllSegmentsOnline = async function(dbVolume, leader) {
 	});
 
 	return exports.sendPRaidUpdate(reports, leader);
+};
+
+exports.getAllVolumeSegments = function(dbVolume) {
+	return dbVolume.chunks.flatMap(c => c.pRaids.flatMap(p => p.diskSegments));
+};
+
+exports.getSegmentsByStatus = function(segments, status) {
+	return segments.filter(seg => seg.status === status);
+};
+
+exports.sendPRaidReportWithStatuses = function(dbVolume, statusMapper, target) {
+	dbVolume.chunks.forEach(chunk => {
+		chunk.pRaids.forEach(pRaid => {
+			pRaid.diskSegments.forEach(seg => {
+				seg.status = statusMapper(seg);
+			});
+		});
+	});
+
+	const msg = UpdatePRaidReportBuilder.fromVolume(dbVolume, target).build();
+	return new Promise(resolve => volumeModule.handlePRaidStatusMessage(msg, resolve));
+};
+
+exports.sendDeprecationReport = function(dbVolume, segmentsToDeprecate, target) {
+	const deprecateIds = new Set(segmentsToDeprecate.map(s => s._id));
+	const builder = UpdatePRaidReportBuilder.fromTarget(target);
+
+	dbVolume.chunks.forEach(chunk => {
+		chunk.pRaids.forEach(pRaid => {
+			const report = new PRaidReport(pRaid.uuid)
+				.setVersion(pRaid.version.major, pRaid.version.minor)
+				.setRaftTerm(pRaid.tomaLeaderRaftTerm);
+
+			pRaid.diskSegments.forEach(seg => {
+				const segReport = new SegmentReport(seg.uuid);
+
+				if (deprecateIds.has(seg._id) && seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD)
+					segReport.setStatus(consts.diskSegmentStatuses.DEPRECATED);
+				// TOMA reports conf_corrupted for segments on a non-existent drive UUID (e.g. reinstate fake UUID)
+				else if (seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
+					segReport.setStatus('conf_corrupted');
+				else
+					segReport.setStatus(seg.status).setVitality(seg.vitality);
+
+				report.addSegment(segReport);
+			});
+
+			builder.addPRaidReport(report);
+		});
+	});
+
+	return new Promise(resolve => volumeModule.handlePRaidStatusMessage(builder.build(), resolve));
+};
+
+exports.assertVolumeStatusAndAction = function(dbVolume, expectedStatus, expectedAction) {
+	assert.strictEqual(dbVolume.status, expectedStatus, `Expected volume status ${expectedStatus}, got ${dbVolume.status}`);
+	assert.strictEqual(dbVolume.action, expectedAction, `Expected volume action ${expectedAction}, got ${dbVolume.action}`);
+};
+
+exports.assertSegmentCount = function(segments, status, expectedCount) {
+	const actual = exports.getSegmentsByStatus(segments, status).length;
+	assert.strictEqual(actual, expectedCount, `Expected ${expectedCount} segments with status ${status}, got ${actual}`);
+};
+
+exports.assertHasSegments = function(segments, status) {
+	assert(exports.getSegmentsByStatus(segments, status).length, `Expected at least one segment with status ${status}`);
 };
 
 exports.sendPRaidUpdate = function(pRaidReports, leader) {

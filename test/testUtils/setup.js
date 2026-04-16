@@ -56,6 +56,23 @@ scope.newSetup = async function(options) {
 	await mockKafkaModule();
 };
 
+scope.ensureClusterConfigDoc = function() {
+	const db = app.get('db');
+	return db.collection('configurationVersion').findOneAndUpdate(
+		{ _id: consts.CONFIG_VER_CLUSTER_ID },
+		{
+			$setOnInsert: {
+				_id: consts.CONFIG_VER_CLUSTER_ID,
+				dbUUID: app.get('dbUUID'),
+				protocolVersion: 1,
+				supportedMCSVersions: ['1.0'],
+				managements: {}
+			}
+		},
+		{ upsert: true }
+	);
+};
+
 scope.afterModulesLoaded = function() {
 	return new Promise(resolve => {
 		bootstrapper.afterModulesLoaded(() => {
@@ -200,7 +217,8 @@ scope.populateDB = function() {
 scope.resetDB = function() {
 	return scope.dropDB()
 		.then(() => scope.initDB())
-		.then(() => scope.populateDB());
+		.then(() => scope.populateDB())
+		.then(() => scope.ensureClusterConfigDoc());
 };
 
 scope.saveTargets = function(targets) {

@@ -12,7 +12,7 @@ const targetModule = require('../../modules/target.js');
 const { Entity } = require('./entity.js');
 const { sendMessageToManagement } = require('../kafkaMessages/sendMessage.js');
 const { ReportTargetBuilder, TomaKeepAliveBuilder, LeaderKeepAliveBuilder } = require('../kafkaMessages/fromTOMA/tomaMessageBuilders.js');
-const { getIncrementalTargetUpdatesTopic } = require('../../modules/kafka.js');
+const { getIncrementalTargetUpdatesTopic, getIncrementalUpdatesTopic } = require('../../modules/kafka.js');
 const { getOrCreateQueue } = require('../testUtils/mockKafkaModule.js');
 const systemMessages = require('../../systemMessages.js');
 const { LastMessageLog } = require('./lastMessageLog.js');
@@ -21,6 +21,10 @@ const { handleTimedOutComponent } = require('../../modules/lastMessageLog.js');
 const { delay } = require('../testUtils/common.js');
 
 exports.Target = class Target extends Entity {
+	static getFromDB(nodeID) {
+		return app.get('db').collection('server').findOne({ _id: nodeID });
+	}
+
 	constructor(nodeID, disks, nics) {
 		super();
 		this._id = nodeID;
@@ -95,15 +99,38 @@ exports.Target = class Target extends Entity {
 	}
 
 	async readMessageFromCommandsTopic() {
-		let { topics } = await app.get('db').collection('server').findOne({ _id: this._id }, { topics: 1 });
-		let msg = await getOrCreateQueue(topics[consts.topicSuffix.TOMA_COMMANDS]).readMessageOrWait();
+		const { topics } = await Target.getFromDB(this._id);
+		return getOrCreateQueue(topics[consts.topicSuffix.TOMA_COMMANDS]).readMessageOrWait();
+	}
+
+	async readMessageFromIncrementalTargetUpdatesTopic() {
+		let topic = await new Promise(resolve => getIncrementalTargetUpdatesTopic(this.zone, resolve));
+		let msg = await getOrCreateQueue(topic).readMessageOrWait();
 		return msg;
 	}
 
 	async readMessageFromIncrementalUpdatesTopic() {
-		let topic = await new Promise(resolve => getIncrementalTargetUpdatesTopic(this.zone, resolve));
-		let msg = await getOrCreateQueue(topic).readMessageOrWait();
-		return msg;
+		let topic = await new Promise(resolve => getIncrementalUpdatesTopic(this.zone, resolve));
+		return await getOrCreateQueue(topic).readMessageOrWait();
+	}
+
+	async readMessageFromHWConfigTopic() {
+		const { topics } = await Target.getFromDB(this._id);
+		return getOrCreateQueue(topics[consts.topicSuffix.TOMA_HARDWARE_CONF]).readMessageOrWait();
+	}
+
+	async clearQueues(includeZoneTopics = true) {
+		const server = await Target.getFromDB(this._id);
+		if (server?.topics?.[consts.topicSuffix.TOMA_COMMANDS])
+			getOrCreateQueue(server.topics[consts.topicSuffix.TOMA_COMMANDS]).clear();
+
+		if (includeZoneTopics) {
+			const incrementalTopic = await new Promise(resolve => getIncrementalUpdatesTopic(this.zone, resolve));
+			getOrCreateQueue(incrementalTopic).clear();
+
+			const incrementalTargetTopic = await new Promise(resolve => getIncrementalTargetUpdatesTopic(this.zone, resolve));
+			getOrCreateQueue(incrementalTargetTopic).clear();
+		}
 	}
 
 	async save() {
@@ -132,7 +159,7 @@ exports.Target = class Target extends Entity {
 	}
 
 	async _waitForAddTargetMessageFromMgmt() {
-		let msg = await this.readMessageFromIncrementalUpdatesTopic();
+		let msg = await this.readMessageFromIncrementalTargetUpdatesTopic();
 		if (msg.type == 'addTarget') {
 			return msg;
 		} else {
@@ -181,7 +208,7 @@ exports.Target = class Target extends Entity {
 		const RETRY_DELAY_MS = 50;
 
 		while (retries <= MAX_RETRIES) {
-			let result = await app.get('db').collection('server').findOne({ _id: this._id }, { uuid: 1 });
+			let result = await Target.getFromDB(this._id);
 			if (result && result.uuid) {
 				this.uuid = result.uuid;
 				return;

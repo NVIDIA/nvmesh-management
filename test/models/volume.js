@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/* global app */
+
 const consts = require('../../consts');
 const { Entities } = require('../../modules/error');
 const { markVolumesForDeletion, saveVolumes } = require('../../modules/volume');
@@ -35,6 +37,10 @@ class Volume extends Entity {
 		this.version = 1;
 		this.isReserved = false;
 		this.chunks = [];
+	}
+
+	static getFromDB(volumeName) {
+		return app.get('db').collection('volume').findOne({ _id: volumeName });
 	}
 
 	save() {

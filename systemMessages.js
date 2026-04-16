@@ -2202,6 +2202,45 @@ var systemMessages = {
 		logLevel: consts.loggingLevel.INFO,
 		sysLogLevel: consts.loggingLevel.INFO
 	},
+	DRIVE_REINSTATED: {
+		message: 'Drive reinstated successfully',
+		id: 16331,
+		header: 'Drive Reinstated',
+		logLevel: consts.loggingLevel.INFO,
+		sysLogLevel: consts.loggingLevel.INFO
+	},
+	DRIVE_REINSTATE_FAILED: {
+		message: 'Failed to reinstate Drive',
+		id: 16332,
+		header: 'Drive Reinstate Failed',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	DRIVE_REINSTATE_IN_PROGRESS: {
+		message: 'Drive reinstate is in progress',
+		id: 16333,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	DRIVE_REINSTATE_NOT_OUT_OF_SERVICE: {
+		message: 'Cannot reinstate drive: drive is not out of service',
+		id: 163331,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	DRIVE_REINSTATE_NON_PROTECTED_SEGMENTS: {
+		message: 'Cannot reinstate drive: drive has non-protected segments',
+		id: 163332,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	DRIVE_REINSTATE_SERVER_VERSION_CONFLICT: {
+		message: 'Drive changed during reinstate, retrying',
+		id: 16337,
+		sysLogLevel: consts.loggingLevel.DEBUG
+	},
+	DRIVE_REINSTATE_VOLUME_UPDATE_FAILED: {
+		message: 'Failed to update volume during reinstate, sanity will recover',
+		id: 16338,
+		sysLogLevel: consts.loggingLevel.DEBUG
+	},
 	GENERAL_SETTINGS_UPDATE_REQUEST: {
 		message: 'REST API Request: Update General Settings',
 		id: 1633,
