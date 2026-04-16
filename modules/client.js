@@ -1559,6 +1559,7 @@ scope.sendReservationModeChangeMessageToAllTargets = (volumes, cb) => {
 
 scope.getDetachUpdateForAttachment = (detachment, referenceID) => {
 	const pathToAttachment = `attachments.${detachment.uuid}`;
+	const msgType = consts.kafkaMessageTypes.ManagementToClient.updateReferenceIDs;
 
 	return {
 		setDetachments: {
@@ -1582,7 +1583,21 @@ scope.getDetachUpdateForAttachment = (detachment, referenceID) => {
 				}
 			}
 		},
-		incDetachmentVersion: { [`${pathToAttachment}.version`]: { $add: [`$${pathToAttachment}.version`, 1] } }
+		incDetachmentVersion: { [`${pathToAttachment}.version`]: { $add: [`$${pathToAttachment}.version`, 1] } },
+		setUpdateRefIDsMarker: {
+			[`${pathToAttachment}.lastMessageSentToClient.${msgType}`]: {
+				$cond: [
+					{ $gt: [{ $size: `$${pathToAttachment}.referenceIDs` }, 0] },
+					{},
+					{
+						$ifNull: [
+							`$${pathToAttachment}.lastMessageSentToClient.${msgType}`,
+							'$$REMOVE'
+						]
+					}
+				]
+			}
+		}
 	};
 };
 
@@ -1713,7 +1728,7 @@ scope.detachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 
 					async.each(attachmentsWithRemovedRefID, (attachment, nextAttachment) => {
 						dbClient.attachmentsVersion++;
-						sendUpdateReferenceIDsToClient(dbClient, attachment, dbClient.clientOriginID, err => {
+						scope.sendUpdateReferenceIDsToClient(dbClient, attachment, dbClient.clientOriginID, err => {
 							if (err)
 								err.log();
 
@@ -1869,6 +1884,7 @@ scope.detachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 								{ $set: update.filterDetachedReferenceID },
 								{ $set: update.setDetachments },
 								{ $set: update.incDetachmentVersion },
+								{ $set: update.setUpdateRefIDsMarker },
 								{ $unset: update.unsetPendingDetachments }
 							],
 							{ returnOriginal: true },
@@ -1928,7 +1944,7 @@ scope.detachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 									cb();
 								});
 						else
-							sendUpdateReferenceIDsToClient(dbClient, originalAttachment, dbClient.clientOriginID, err => {
+							scope.sendUpdateReferenceIDsToClient(dbClient, originalAttachment, dbClient.clientOriginID, err => {
 								if (err)
 									err.log();
 
@@ -1982,11 +1998,22 @@ function sendDetachVolumesToClient(clientID, topic, volumes, attachmentsVersion,
 	kafkaModule.sendMessages(topic, [message], callback);
 }
 
-function sendUpdateReferenceIDsToClient(client, attachment, originID, callback) {
-	logger.sysDEBUG(
-		`Sending a update referenceIDs message to ${client.clientID} attachmentsVersion: ${client.attachmentsVersion} attachment: ${JSON.stringify(attachment)}`
-	);
+function sendMessageToClientAndUpdateTracker(client, attachment, msgType, message, callback) {
+	const topic = client.topics[consts.topicSuffix.CLIENT_MAIN];
 
+	logger.sysDEBUG(`Sending ${msgType} to ${client._id || client.clientID} for ${attachment.name} ${attachment.uuid}`);
+
+	kafkaModule.sendMessages(topic, [message], err => {
+		if (err)
+			return callback(err);
+
+		const clientID = client._id || client.clientID;
+		scope.updateLastMessageSentToClientForType(clientID, attachment.uuid, msgType, attachment.version, topic, err => callback(err));
+	});
+}
+
+scope.sendUpdateReferenceIDsToClient = (client, attachment, originID, callback) => {
+	const msgType = consts.kafkaMessageTypes.ManagementToClient.updateReferenceIDs;
 	const message = new UpdateReferenceIDs(
 		attachment.referenceIDs,
 		attachment.uuid,
@@ -1996,8 +2023,39 @@ function sendUpdateReferenceIDsToClient(client, attachment, originID, callback) 
 		originID
 	);
 
-	kafkaModule.sendMessages(client.topics[consts.topicSuffix.CLIENT_MAIN], [message], callback);
-}
+	sendMessageToClientAndUpdateTracker(client, attachment, msgType, message, callback);
+};
+
+scope.sendUpdateVolumeEmulationToClient = (client, attachment, callback) => {
+	const msgType = consts.kafkaMessageTypes.ManagementToClient.updateVolumeEmulation;
+	const message = new UpdateVolumeEmulation(
+		attachment.emulation,
+		attachment.uuid,
+		attachment.name,
+		attachment.version,
+		client.attachments[attachment.uuid].attachmentsVersion,
+		client.clientOriginID
+	);
+
+	sendMessageToClientAndUpdateTracker(client, attachment, msgType, message, callback);
+};
+
+
+scope.updateLastMessageSentToClientForType = (clientID, volumeUUID, messageType, version, topic, callback) => {
+	const db = app.get('db');
+	const clientCollection = db.collection('client');
+
+	clientCollection.updateOne(
+		{ _id: clientID },
+		{ $set: { [`attachments.${volumeUUID}.lastMessageSentToClient.${messageType}`]: { version, topic } } },
+		err => {
+			if (err)
+				new MongoError(err).log();
+
+			callback(err);
+		}
+	);
+};
 
 scope.getClientConfigurationByVolumes = function(volumeReservationResult, cb, clientsGetConfUUID) {
 	var id = clientsGetConfUUID ? clientsGetConfUUID + '.getClientConfigurationByVolumes' : 'getClientConfigurationByVolumes';
@@ -3127,6 +3185,8 @@ function getAddRefIDsPipeline(requestedVolumesWithRefID) {
 }
 
 function getRemoveRefIDsPipeline(requestedVolumesWithRefID) {
+	const msgType = consts.kafkaMessageTypes.ManagementToClient.updateReferenceIDs;
+
 	return requestedVolumesWithRefID
 		.map(volume => {
 			const pathToAttachment = `attachments.${volume.uuid}`;
@@ -3148,6 +3208,18 @@ function getRemoveRefIDsPipeline(requestedVolumesWithRefID) {
 									}
 								},
 								`$${pathToAttachment}.referenceIDs`
+							]
+						},
+						[`${pathToAttachment}.lastMessageSentToClient.${msgType}`]: {
+							$cond: [
+								canRemoveRefID,
+								{},
+								{
+									$ifNull: [
+										`$${pathToAttachment}.lastMessageSentToClient.${msgType}`,
+										'$$REMOVE'
+									]
+								}
 							]
 						}
 					}
@@ -3637,6 +3709,7 @@ scope.setEmulationMode = (clientID, clientUUID, requestedVolumes, cb) => {
 };
 
 function getEmulationUpdatePipeline(volumes) {
+	const msgType = consts.kafkaMessageTypes.ManagementToClient.updateVolumeEmulation;
 	const isChangeEmulationAllowed = volume => ({
 		$and: [
 			{ $ifNull: [`$attachments.${volume.uuid}`, false] }, // Check if attachment exists
@@ -3650,12 +3723,18 @@ function getEmulationUpdatePipeline(volumes) {
 				[`attachments.${volume.uuid}`]: {
 					$cond: {
 						if: isChangeEmulationAllowed(volume),
-						then: { // Update the mode if both conditions are met
+						then: {
 							$mergeObjects: [
 								`$attachments.${volume.uuid}`,
 								{
 									emulation: { mode: volume.emulation.mode },
-									version: { $add: [`$attachments.${volume.uuid}.version`, 1] }
+									version: { $add: [`$attachments.${volume.uuid}.version`, 1] },
+									lastMessageSentToClient: {
+										$mergeObjects: [
+											{ $ifNull: [`$attachments.${volume.uuid}.lastMessageSentToClient`, {}] },
+											{ [msgType]: {} }
+										]
+									}
 								}
 							]
 						},
@@ -3668,46 +3747,6 @@ function getEmulationUpdatePipeline(volumes) {
 
 	return updatePipeline;
 }
-
-scope.sendUpdateVolumeEmulationMessagesToClient = (client, volumes, cb) => {
-	const messages = volumes.map(vol => (
-		new UpdateVolumeEmulation(
-			vol.emulation,
-			vol.uuid,
-			vol.name,
-			vol.version,
-			client.attachments[vol.uuid].attachmentsVersion,
-			client.clientOriginID
-		)
-	));
-
-	kafkaModule.sendMessages(client.topics[consts.topicSuffix.CLIENT_MAIN], messages, cb);
-};
-
-scope.updateLastMessageSentToClient = (client, topicName, volumes, cb) => {
-	const db = app.get('db');
-	const clientCollection = db.collection('client');
-
-	clientCollection.updateOne(
-		{ _id: client._id },
-		{
-			$set: volumes.reduce((acc, currVol) => (
-				{
-					...acc,
-					[`attachments.${currVol.uuid}.lastMessageSentToClient`]: {
-						version: currVol.version,
-						topic: topicName
-					}
-				}
-			), {})
-		},
-		err => {
-			if (err)
-				new MongoError(err).log();
-
-			cb();
-		});
-};
 
 scope.setEmulationModeOnAttachments = (clientID, clientUUID, requestedVolumes, cb) => {
 	const db = app.get('db');
@@ -3778,16 +3817,14 @@ scope.setEmulationModeOnAttachments = (clientID, clientUUID, requestedVolumes, c
 			if (!volumesForUpdateEmulationMessages.length)
 				return callback(true);
 
-			scope.sendUpdateVolumeEmulationMessagesToClient(originalClient, volumesForUpdateEmulationMessages, (err) => {
-				if (err) {
-					handleErrorsAndLogs(volumesForUpdateEmulationMessages, systemMessages.FAILED_TO_SET_EMULATION);
+			async.each(volumesForUpdateEmulationMessages, (vol, next) => {
+				scope.sendUpdateVolumeEmulationToClient(originalClient, vol, err => {
+					if (err)
+						handleErrorsAndLogs([vol], systemMessages.FAILED_TO_SET_EMULATION);
 
-					return callback(true);
-				}
-
-				const topic = originalClient.topics[consts.topicSuffix.CLIENT_MAIN];
-				scope.updateLastMessageSentToClient(originalClient, topic, volumesForUpdateEmulationMessages, callback);
-			});
+					next();
+				});
+			}, callback);
 		}
 	], () => {
 		handleErrorsAndLogs(missingAttachments, systemMessages.ATTACHMENT_NOT_EXISTS);

@@ -192,6 +192,7 @@ scope.run = cb => {
 		scope.checkPendingAttachments,
 		scope.checkLastReservationVersionSentToTOMA,
 		scope.checkLastEmulationAttachmentsVersionSentToClient,
+		scope.checkLastUpdateReferenceIDsSentToClient,
 		scope.checkAndResumeStuckUpgrades,
 		scope.checkForResendReport,
 		cleanupUnusedTopics,
@@ -2306,6 +2307,7 @@ function getRecoverPendingAttachmentsUpdatePipeline(pendingAttachmentsUUID, pend
 						{ $set: detachUpdate.filterDetachedReferenceID },
 						{ $set: detachUpdate.setDetachments },
 						{ $set: detachUpdate.incDetachmentVersion },
+						{ $set: detachUpdate.setUpdateRefIDsMarker },
 						{ $unset: detachUpdate.unsetPendingDetachments }
 					]
 				))
@@ -2509,40 +2511,90 @@ scope.checkAndRecoverNodeConfiguration = function(cb) {
 	});
 };
 
-scope.checkLastEmulationAttachmentsVersionSentToClient = cb => {
+function checkAndResendStaleMessagesToClients({ clientQuery, projection, getTracker, resend }, cb) {
 	const db = app.get('db');
 	const clientCollection = db.collection('client');
 
-	clientCollection.find({ isUmClient: 1 }, { attachments: 1, clientOriginID: 1, topics: 1 }).toArray((err, umClients) => {
+	clientCollection.find(clientQuery, { projection }).toArray((err, clients) => {
 		if (err) {
 			new MongoError(err).log();
 			return cb(err);
 		}
 
-		async.each(umClients, (umClient, nextClient) => {
-			const wishfulStateAttachments = Object.values(umClient.attachments);
-			if (!wishfulStateAttachments.length)
+		async.each(clients, (client, nextClient) => {
+			const currentTopicName = client.topics && client.topics[consts.topicSuffix.CLIENT_MAIN];
+			if (!currentTopicName)
 				return nextClient();
 
-			const currentTopicName = umClient.topics[consts.topicSuffix.CLIENT_MAIN];
-			const attachmentsForUpdateEmulationMessage = wishfulStateAttachments
-				.filter(attachment => attachment.lastMessageSentToClient &&
-					(attachment.lastMessageSentToClient.version < attachment.version ||
-							attachment.lastMessageSentToClient.topic !== currentTopicName));
+			const staleAttachments = Object.values(client.attachments || {}).filter(attachment => {
+				const tracker = getTracker(attachment);
+				if (!tracker)
+					return false;
 
-			if (!attachmentsForUpdateEmulationMessage.length)
-				return nextClient();
-
-			clientModule.sendUpdateVolumeEmulationMessagesToClient(umClient, attachmentsForUpdateEmulationMessage, (err) => {
-				if (err) {
-					new SystemAdminMessage(systemMessages.FAILED_UPDATE_EMULATION).addInfo(Entities.Client.ID, umClient._id).log();
-					return nextClient();
-				}
-
-				clientModule.updateLastMessageSentToClient(umClient, currentTopicName, attachmentsForUpdateEmulationMessage, nextClient);
+				return !tracker.version || tracker.version < attachment.version || tracker.topic !== currentTopicName;
 			});
+
+			if (!staleAttachments.length)
+				return nextClient();
+
+			resend(client, staleAttachments, currentTopicName, nextClient);
 		}, cb);
 	});
+}
+
+scope.checkLastEmulationAttachmentsVersionSentToClient = cb => {
+	const msgType = consts.kafkaMessageTypes.ManagementToClient.updateVolumeEmulation;
+
+	checkAndResendStaleMessagesToClients({
+		clientQuery: { isUmClient: 1 },
+		projection: { attachments: 1, clientOriginID: 1, topics: 1 },
+		getTracker: attachment => {
+			if (!attachment.lastMessageSentToClient)
+				return null;
+
+			return attachment.lastMessageSentToClient[msgType]
+				// old flat format migration: lastMessageSentToClient = { version, topic }
+				|| (attachment.lastMessageSentToClient.version !== undefined ? attachment.lastMessageSentToClient : null);
+		},
+		resend: (client, staleAttachments, currentTopicName, nextClient) => {
+			logger.sysDEBUG(`SanityAndRecover: resending ${msgType} for client ${client._id}, `
+				+ `${staleAttachments.length} attachment(s): ${staleAttachments.map(a => a.name)}`);
+
+			async.each(staleAttachments, (attachment, nextAttachment) => {
+				clientModule.sendUpdateVolumeEmulationToClient(client, attachment, err => {
+					if (err)
+						new SystemAdminMessage(systemMessages.FAILED_UPDATE_EMULATION).addInfo(Entities.Client.ID, client._id).log();
+
+					nextAttachment();
+				});
+			}, nextClient);
+		}
+	}, cb);
+};
+
+scope.checkLastUpdateReferenceIDsSentToClient = cb => {
+	const msgType = consts.kafkaMessageTypes.ManagementToClient.updateReferenceIDs;
+
+	checkAndResendStaleMessagesToClients({
+		clientQuery: { attachments: { $exists: true } },
+		projection: { attachments: 1, clientOriginID: 1, topics: 1, clientID: 1, attachmentsVersion: 1 },
+		getTracker: attachment => {
+			return attachment.lastMessageSentToClient && attachment.lastMessageSentToClient[msgType];
+		},
+		resend: (client, staleAttachments, currentTopicName, nextClient) => {
+			logger.sysDEBUG(`SanityAndRecover: resending ${msgType} for client ${client._id}, `
+				+ `${staleAttachments.length} attachment(s): ${staleAttachments.map(a => a.name)}`);
+
+			async.each(staleAttachments, (attachment, nextAttachment) => {
+				clientModule.sendUpdateReferenceIDsToClient(client, attachment, client.clientOriginID, err => {
+					if (err)
+						err.log();
+
+					nextAttachment();
+				});
+			}, nextClient);
+		}
+	}, cb);
 };
 
 const getVerifySegmentStatusAfterEvictByZonePipeline = (zone) => {

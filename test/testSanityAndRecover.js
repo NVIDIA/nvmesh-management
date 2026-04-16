@@ -16,8 +16,11 @@ const {
 	checkForSnapshotsWithoutMetadata, checkForSnapshotsMetadataWithNoData,
 	checkPendingAttachments,
 	checkAndRecoverReclaimingReservedVolumes,
-	checkVPGReservedVolumeCapacitySync
+	checkVPGReservedVolumeCapacitySync,
+	checkLastUpdateReferenceIDsSentToClient,
+	checkLastEmulationAttachmentsVersionSentToClient
 } = require('../modules/sanityAndRecover.js');
+const { kafkaQueues } = require('./testUtils/mockKafkaModule.js');
 const { VolumeConcatenated, VolumeRAID10 } = require('./models/volume.js');
 const { Snapshot } = require('./models/snapshot.js');
 const systemMessages = require('../systemMessages.js');
@@ -586,6 +589,183 @@ describe('Sanity And Recover', function() {
 					assert.strictEqual(vpg.capacity, 20, 'VPG capacity should be synced to 20');
 				});
 			});
+		});
+	});
+	describe('checkLastUpdateReferenceIDsSentToClient', function() {
+		let clientCollection;
+		const clientID = 'refid-recovery-client';
+		const volUUID = 'vol-uuid-1';
+		const volName = 'vol-1';
+		const topicName = `${ZONE_1}.${clientID}${consts.topicSuffix.CLIENT_MAIN}`;
+		const msgType = consts.kafkaMessageTypes.ManagementToClient.updateReferenceIDs;
+
+		before(async() => {
+			clientCollection = app.get('db').collection('client');
+			await setup.newSetup();
+			await generateAndSaveTargets(3, ZONE_1);
+			const clientObj = new Client(clientID);
+			await clientObj.save();
+			app.set('managementId', 'test');
+			app.set('bootVersion', 1);
+		});
+
+		async function setClientAttachment(attachment, overrides = {}) {
+			await clientCollection.findOneAndUpdate(
+				{ _id: clientID },
+				{ $set: {
+					[`attachments.${volUUID}`]: {
+						uuid: volUUID,
+						name: volName,
+						action: consts.volumeAttachmentActions.ATTACHING,
+						version: 3,
+						attachmentsVersion: 1,
+						referenceIDs: ['ref-1', 'ref-2'],
+						...attachment
+					},
+					...overrides
+				} }
+			);
+		}
+
+		function drainQueue() {
+			if (kafkaQueues[topicName]) {
+				while (kafkaQueues[topicName].readMessage()) { /* drain */ }
+			}
+		}
+
+		it('should resend updateReferenceIDs when tracker is empty (Kafka send failed)', async() => {
+			await setClientAttachment({
+				version: 3,
+				lastMessageSentToClient: { [msgType]: {} }
+			});
+			drainQueue();
+
+			await convertCallbackToPromise(checkLastUpdateReferenceIDsSentToClient);
+
+			const client = await clientCollection.findOne({ _id: clientID });
+			const tracker = client.attachments[volUUID].lastMessageSentToClient[msgType];
+			assert.strictEqual(tracker.version, 3);
+			assert.ok(tracker.topic);
+		});
+
+		it('should resend updateReferenceIDs when tracker version is stale', async() => {
+			await setClientAttachment({
+				version: 5,
+				lastMessageSentToClient: { [msgType]: { version: 3, topic: topicName } }
+			});
+			drainQueue();
+
+			await convertCallbackToPromise(checkLastUpdateReferenceIDsSentToClient);
+
+			const client = await clientCollection.findOne({ _id: clientID });
+			const tracker = client.attachments[volUUID].lastMessageSentToClient[msgType];
+			assert.strictEqual(tracker.version, 5);
+		});
+
+		it('should resend updateReferenceIDs when tracker topic changed', async() => {
+			await setClientAttachment({
+				version: 3,
+				lastMessageSentToClient: { [msgType]: { version: 3, topic: 'old-topic' } }
+			});
+			drainQueue();
+
+			await convertCallbackToPromise(checkLastUpdateReferenceIDsSentToClient);
+
+			const client = await clientCollection.findOne({ _id: clientID });
+			const tracker = client.attachments[volUUID].lastMessageSentToClient[msgType];
+			assert.strictEqual(tracker.version, 3);
+			assert.notStrictEqual(tracker.topic, 'old-topic');
+		});
+
+		it('should NOT resend when tracker is up to date', async() => {
+			await setClientAttachment({
+				version: 3,
+				lastMessageSentToClient: { [msgType]: { version: 3, topic: topicName } }
+			});
+			drainQueue();
+
+			await convertCallbackToPromise(checkLastUpdateReferenceIDsSentToClient);
+
+			const queue = kafkaQueues[topicName];
+			const msg = queue ? queue.readMessage() : null;
+			assert.strictEqual(msg, null);
+		});
+
+		it('should NOT resend when lastMessageSentToClient has no updateReferenceIDs key', async() => {
+			await setClientAttachment({
+				version: 3,
+				lastMessageSentToClient: {}
+			});
+			drainQueue();
+
+			await convertCallbackToPromise(checkLastUpdateReferenceIDsSentToClient);
+
+			const queue = kafkaQueues[topicName];
+			const msg = queue ? queue.readMessage() : null;
+			assert.strictEqual(msg, null);
+		});
+
+		it('should NOT resend when lastMessageSentToClient is absent', async() => {
+			await setClientAttachment({ version: 3 });
+			await clientCollection.updateOne(
+				{ _id: clientID },
+				{ $unset: { [`attachments.${volUUID}.lastMessageSentToClient`]: '' } }
+			);
+			drainQueue();
+
+			await convertCallbackToPromise(checkLastUpdateReferenceIDsSentToClient);
+
+			const queue = kafkaQueues[topicName];
+			const msg = queue ? queue.readMessage() : null;
+			assert.strictEqual(msg, null);
+		});
+	});
+
+	describe('checkLastEmulationAttachmentsVersionSentToClient - old format migration', function() {
+		let clientCollection;
+		const clientID = 'emulation-migration-client';
+		const volUUID = 'vol-uuid-emu';
+		const volName = 'vol-emu';
+		const topicName = `${ZONE_1}.${clientID}${consts.topicSuffix.CLIENT_MAIN}`;
+		const emulationMsgType = consts.kafkaMessageTypes.ManagementToClient.updateVolumeEmulation;
+
+		before(async() => {
+			clientCollection = app.get('db').collection('client');
+			await setup.newSetup();
+			await generateAndSaveTargets(3, ZONE_1);
+			const clientObj = new Client(clientID);
+			await clientObj.save();
+			app.set('managementId', 'test');
+			app.set('bootVersion', 1);
+		});
+
+		it('should resend and migrate old flat lastMessageSentToClient format', async() => {
+			await clientCollection.findOneAndUpdate(
+				{ _id: clientID },
+				{ $set: {
+					isUmClient: 1,
+					[`attachments.${volUUID}`]: {
+						uuid: volUUID,
+						name: volName,
+						action: consts.volumeAttachmentActions.ATTACHING,
+						version: 5,
+						attachmentsVersion: 1,
+						referenceIDs: ['ref-1'],
+						emulation: { mode: consts.emulationModes.STATIC },
+						lastMessageSentToClient: { version: 3, topic: topicName }
+					}
+				} }
+			);
+
+			if (kafkaQueues[topicName])
+				while (kafkaQueues[topicName].readMessage()) { /* drain */ }
+
+			await convertCallbackToPromise(checkLastEmulationAttachmentsVersionSentToClient);
+
+			const client = await clientCollection.findOne({ _id: clientID });
+			const tracker = client.attachments[volUUID].lastMessageSentToClient[emulationMsgType];
+			assert.ok(tracker, 'should have migrated to keyed format');
+			assert.strictEqual(tracker.version, 5);
 		});
 	});
 });
