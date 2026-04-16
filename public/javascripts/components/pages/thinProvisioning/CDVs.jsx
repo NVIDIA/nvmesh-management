@@ -17,6 +17,7 @@ import CapacityService from '../../services/capacity.service.js';
 import { AllocationService } from '../../services/allocation.service.js';
 import { events, SocketService } from '../../services/socket.service.js';
 import { statusToHealth, statusToCaption, actionToClass, actionToCaption } from '../volumes/Volumes.jsx';
+import VolumeDiagramModal from '../volumes/volumeDiagram/VolumeDiargramModal.jsx';
 
 const { useRef, useState, useEffect, useMemo } = React;
 
@@ -45,6 +46,8 @@ const CDVs = () => {
 	const [selectedCDVs, setSelectedCDVs] = useState([]);
 	const [showCreateEditModal, setShowCreateEditModal] = useState(false);
 	const [cdv, setCDV] = useState({});
+	const [showVolumeDiagramModal, setShowVolumeDiagramModal] = useState(false);
+	const [diagramCDVId, setDiagramCDVId] = useState();
 	const tableRef = useRef();
 
 	useEffect(() => {
@@ -158,11 +161,17 @@ const CDVs = () => {
 		});
 	};
 
+	const openVolumeDiagramModal = (cdvId) => {
+		setDiagramCDVId(cdvId);
+		setShowVolumeDiagramModal(true);
+	};
+
 	const columns = [
 		{
 			name: 'Name',
 			field: 'name',
 			placeholder: 'Search by Name',
+			value: cdvRow => <a onClick={() => openVolumeDiagramModal(cdvRow._id)}>{cdvRow.name}</a>,
 		},
 		{
 			name: 'Description',
@@ -342,6 +351,12 @@ const CDVs = () => {
 					onSubmit={handleSubmitCDV}
 				/>
 			), [showCreateEditModal, cdv])}
+
+			<VolumeDiagramModal
+				isOpen={showVolumeDiagramModal}
+				handleCancel={() => setShowVolumeDiagramModal(false)}
+				volumeId={diagramCDVId}
+			/>
 
 			<h1>CDVs</h1>
 
