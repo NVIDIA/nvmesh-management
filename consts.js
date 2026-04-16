@@ -341,6 +341,9 @@ consts.separationTypes = {
 	IGNORE: 'Ignore Separation'
 };
 
+// TODO: remove this post 3.5.0 - https://jirasw.nvidia.com/browse/NVMESH-8511
+consts.ecSeparationTypes = consts.separationTypes;
+
 consts.volumeAttachmentStatus = {
 	BUSY: 1,
 	DETACHED: 2,
