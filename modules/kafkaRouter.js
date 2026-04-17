@@ -206,6 +206,10 @@ function routeTOMAMessage(message, callback) {
 			volumeModule.handleCDVAllocatorStats(message, callback);
 			break;
 
+		case consts.kafkaMessageTypes.TOMAToManagement_TP.attachSatelliteRequest:
+			clientModule.handleAttachSatelliteRequest(message, callback);
+			break;
+
 		default:
 			new SystemMessage(systemMessages.KAFKA_UNKNOWN_MESSAGE_TYPE)
 				.addInfo(Entities.KafkaMessage.messageType, message.type)

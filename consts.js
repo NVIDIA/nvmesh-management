@@ -923,10 +923,12 @@ consts.kafkaMessageTypes = {
 		rotatePassphrase: 'rotatePassphrase',
 		requestEncryptionResponse: 'encryptionRequestResponse',
 		cdvAllocatorFreeAll: 'cdvAllocatorFreeAll',
+		attachSatelliteResponse: 'attachSatelliteResponse',
 	},
 	TOMAToManagement_TP: {
 		cdvCapacityWarning: 'cdvCapacityWarning',
 		cdvAllocatorStats: 'cdvAllocatorStats',
+		attachSatelliteRequest: 'attachSatelliteRequest',
 	}
 };
 

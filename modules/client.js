@@ -35,6 +35,7 @@ const { UpdateVolumes } = require('../models/kafkaMessages/UpdateVolumes.js');
 const { UpdateTargetNICs } = require('../models/kafkaMessages/UpdateTargetNICs');
 const { UpdateVolumeEmulation } = require('../models/kafkaMessages/UpdateVolumeEmulation');
 const { UpdateReferenceIDs } = require('../models/kafkaMessages/UpdateReferenceIDs.js');
+const { AttachSatelliteResponse, AttachSatelliteResponseStatus } = require('../models/kafkaMessages/AttachSatelliteResponse.js');
 
 var scope = {};
 
@@ -4765,6 +4766,162 @@ scope.fetchClientByID = function(clientID, cb) {
 
 // ─── Thin Provisioning ───────────────────────────────────────────────────────
 
+// Per-CDV LRU of recently-handled (requestId → response payload) pairs, used
+// for idempotent retries of AttachSatelliteRequest.  Bounded to keep memory
+// trivial; entries are evicted when the per-CDV map exceeds REQUEST_LRU_SIZE.
+// This is best-effort — Mongo state (CDV.allocatorGenerationLastAttached) is
+// the source of truth.  The cache only saves a duplicate attach from re-running.
+const REQUEST_LRU_SIZE = 32;
+const attachSatelliteRequestCache = new Map(); // cdvUUID → Map<requestId, response>
+
+function rememberSatelliteResponse(cdvUUID, requestId, response) {
+	let perCdv = attachSatelliteRequestCache.get(cdvUUID);
+	if (!perCdv) {
+		perCdv = new Map();
+		attachSatelliteRequestCache.set(cdvUUID, perCdv);
+	}
+	if (perCdv.size >= REQUEST_LRU_SIZE) {
+		const firstKey = perCdv.keys().next().value;
+		perCdv.delete(firstKey);
+	}
+	perCdv.set(requestId, response);
+}
+
+function recallSatelliteResponse(cdvUUID, requestId) {
+	const perCdv = attachSatelliteRequestCache.get(cdvUUID);
+	return perCdv ? perCdv.get(requestId) : undefined;
+}
+
+// Send an AttachSatelliteResponse to the requesting TOMA's TOMA_COMMANDS topic.
+// Best-effort: if the target server can't be located, log and drop — the TOMA
+// will retry with the same requestId (idempotent on our side).
+function sendSatelliteResponseToTOMA(tomaHostname, payload, cb) {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+	serverCollection.findOne(
+		{ $or: [{ node_id: tomaHostname }, { hostname: tomaHostname }] },
+		{ projection: { topics: 1, node_id: 1, hostname: 1 } },
+		(err, server) => {
+			if (err || !server || !server.topics) {
+				logger.sysDEBUG(`sendSatelliteResponseToTOMA: cannot locate TOMA ${tomaHostname} (err=${err})`);
+				return cb && cb();
+			}
+			const topic = server.topics[consts.topicSuffix.TOMA_COMMANDS];
+			if (!topic) {
+				logger.sysDEBUG(`sendSatelliteResponseToTOMA: TOMA ${tomaHostname} has no TOMA_COMMANDS topic`);
+				return cb && cb();
+			}
+			kafkaModule.sendMessages(topic, [new AttachSatelliteResponse(payload)], cb || (() => {}));
+		}
+	);
+}
+
+// Kafka entry point for AttachSatelliteRequest (TOMA → management).  See Phase 2
+// in nvmesh-kernel/design/SatelliteVolumeForCDVAlloc.md.
+//
+// Validates the request, runs the standard exclusive-preempt attach against the
+// CDV's satellite, persists (allocatorGenerationLastAttached, currentAllocatorTomaHostname)
+// on the CDV document, and replies with AttachSatelliteResponse on the requesting
+// TOMA's TOMA_COMMANDS topic.  Idempotent on (cdvUUID, requestId).
+scope.handleAttachSatelliteRequest = (message, callback) => {
+	const payload = message.payload || {};
+	const { cdvUUID, allocatorTomaHostname, allocatorGeneration, requestId } = payload;
+	const sender = message.hostname;
+
+	const finish = responsePayload => {
+		rememberSatelliteResponse(cdvUUID, requestId, responsePayload);
+		sendSatelliteResponseToTOMA(allocatorTomaHostname || sender, responsePayload, () => callback());
+	};
+
+	const respondError = (status, errMsg) => {
+		logger.sysDEBUG(`handleAttachSatelliteRequest: cdv=${cdvUUID} reqId=${requestId} status=${status}: ${errMsg}`);
+		finish({
+			cdvUUID,
+			requestId,
+			status,
+			satelliteUUID: null,
+			satelliteTargets: [],
+			reservationVersion: 0,
+			allocatorGeneration: allocatorGeneration || 0,
+		});
+	};
+
+	// Basic shape check.
+	if (!cdvUUID || !allocatorTomaHostname || allocatorGeneration == null || !requestId)
+		return respondError(AttachSatelliteResponseStatus.INTERNAL_ERR,
+			`malformed payload (cdv=${cdvUUID} toma=${allocatorTomaHostname} gen=${allocatorGeneration} reqId=${requestId})`);
+
+	// Sender hostname must match the claimed allocator hostname.  Prevents a
+	// rogue TOMA from requesting the satellite on behalf of another node.
+	if (sender && sender !== allocatorTomaHostname)
+		return respondError(AttachSatelliteResponseStatus.INTERNAL_ERR,
+			`sender hostname '${sender}' does not match allocatorTomaHostname '${allocatorTomaHostname}'`);
+
+	// Idempotent retry: if we already processed this (cdvUUID, requestId), reply with the cached response.
+	const cached = recallSatelliteResponse(cdvUUID, requestId);
+	if (cached) {
+		logger.sysDEBUG(`handleAttachSatelliteRequest: idempotent replay cdv=${cdvUUID} reqId=${requestId}`);
+		return sendSatelliteResponseToTOMA(allocatorTomaHostname, cached, () => callback());
+	}
+
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+
+	volumeCollection.findOne({ uuid: cdvUUID }, (err, cdv) => {
+		if (err) return respondError(AttachSatelliteResponseStatus.INTERNAL_ERR, new MongoError(err).log());
+		if (!cdv || cdv.volumeClass !== consts.volumeClass.CDV)
+			return respondError(AttachSatelliteResponseStatus.CDV_NOT_FOUND, `CDV ${cdvUUID} not found or not a CDV`);
+		if (cdv.action === consts.volumeActions.MARKED_FOR_DELETION)
+			return respondError(AttachSatelliteResponseStatus.CDV_BEING_DELETED, `CDV ${cdvUUID} is marked for deletion`);
+		if (!cdv.allocatorVolumeUUID)
+			return respondError(AttachSatelliteResponseStatus.INTERNAL_ERR, `CDV ${cdv._id} has no allocator-satellite link`);
+
+		// Monotonicity: a request from an older RAFT generation than the last
+		// successfully-attached one is stale (e.g., the requesting TOMA was
+		// elected, then RAFT re-elected someone newer before this Kafka request
+		// arrived).  Reject so the requester re-syncs from RAFT.
+		const lastGen = cdv.allocatorGenerationLastAttached || 0;
+		if (allocatorGeneration < lastGen)
+			return respondError(AttachSatelliteResponseStatus.STALE_GENERATION,
+				`request gen ${allocatorGeneration} < last attached gen ${lastGen}`);
+
+		scope.attachSatelliteForAllocator(cdvUUID, allocatorTomaHostname, allocatorGeneration, requestId,
+			(attachErr, result) => {
+				if (attachErr || !result) {
+					return respondError(AttachSatelliteResponseStatus.INTERNAL_ERR,
+						`attachSatelliteForAllocator failed: ${attachErr && attachErr.toString()}`);
+				}
+
+				// Persist the new allocator identity on the CDV document.  Best-effort —
+				// failure here is logged but does not invalidate the attach (the satellite
+				// is already exclusively held by the requesting TOMA at this point).
+				volumeCollection.updateOne(
+					{ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV },
+					{ $set: {
+						allocatorGenerationLastAttached: allocatorGeneration,
+						currentAllocatorTomaHostname: allocatorTomaHostname,
+					} },
+					updErr => {
+						if (updErr) {
+							new MongoError(updErr).log();
+							logger.sysERROR(`handleAttachSatelliteRequest: failed to persist allocator identity for CDV ${cdvUUID}: ${updErr}`);
+						}
+						finish({
+							cdvUUID,
+							requestId,
+							status: AttachSatelliteResponseStatus.OK,
+							satelliteUUID: result.satelliteUUID,
+							satelliteTargets: result.satelliteTargets,
+							reservationVersion: result.reservationVersion,
+							allocatorGeneration: allocatorGeneration,
+						});
+					}
+				);
+			}
+		);
+	});
+};
+
 // Internal entry point for the TOMA-driven satellite-volume attach.  Called
 // from the Kafka handler for `AttachSatelliteRequest` (Phase 2).  REST callers
 // cannot reach this — the user-facing /attach endpoint refuses CDV_MGMT.
@@ -4778,64 +4935,76 @@ scope.fetchClientByID = function(clientID, cb) {
 scope.attachSatelliteForAllocator = (cdvUUID, tomaHostname, allocatorGeneration, requestId, cb) => {
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
+	const clientCollection = db.collection('client');
 
 	logger.sysDEBUG(`attachSatelliteForAllocator: cdvUUID=${cdvUUID} toma=${tomaHostname} gen=${allocatorGeneration} reqId=${requestId}`);
 
-	volumeCollection.findOne({ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV }, (err, cdv) => {
-		if (err) return cb(new MongoError(err).log());
-		if (!cdv) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, cdvUUID));
-		if (!cdv.allocatorVolumeUUID)
-			return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Error, `CDV ${cdv._id} has no satellite link`));
+	// TOMAs register with management as 'clients' (same collection as TPV
+	// clients).  Look up the TOMA's client UUID first — attachVolumes needs it
+	// to anchor the attachment record.
+	clientCollection.findOne({ _id: tomaHostname }, { projection: { uuid: 1 } }, (errClient, tomaClient) => {
+		if (errClient) return cb(new MongoError(errClient).log());
+		if (!tomaClient)
+			return cb(new SystemMessage(systemMessages.CLIENT_NOT_FOUND).addInfo(Entities.Client.ID, tomaHostname));
 
-		volumeCollection.findOne({ uuid: cdv.allocatorVolumeUUID, volumeClass: consts.volumeClass.CDV_MGMT }, (err2, sat) => {
-			if (err2) return cb(new MongoError(err2).log());
-			if (!sat) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, cdv.allocatorVolumeUUID));
+		const tomaClientUUID = tomaClient.uuid;
 
-			const requestedVolumes = [{
-				name: sat._id,
-				uuid: sat.uuid,
-				reservation: {
-					mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE,
-					preempt: true,
-					isDetachOthers: true,
-				},
-				referenceID: `allocator:${cdvUUID}`,
-			}];
+		volumeCollection.findOne({ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV }, (err, cdv) => {
+			if (err) return cb(new MongoError(err).log());
+			if (!cdv) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, cdvUUID));
+			if (!cdv.allocatorVolumeUUID)
+				return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Error, `CDV ${cdv._id} has no satellite link`));
 
-			scope.attachVolumes(tomaHostname, tomaHostname, requestedVolumes, msgs => {
+			volumeCollection.findOne({ uuid: cdv.allocatorVolumeUUID, volumeClass: consts.volumeClass.CDV_MGMT }, (err2, sat) => {
+				if (err2) return cb(new MongoError(err2).log());
+				if (!sat) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, cdv.allocatorVolumeUUID));
+
+				const requestedVolumes = [{
+					name: sat._id,
+					uuid: sat.uuid,
+					reservation: {
+						mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE,
+						preempt: true,
+						isDetachOthers: true,
+					},
+					referenceID: `allocator:${cdvUUID}`,
+				}];
+
+				scope.attachVolumes(tomaHostname, tomaClientUUID, requestedVolumes, msgs => {
 				// scope.attachVolumes does not directly return success/failure data;
 				// poll the satellite document to obtain the new reservation.version.
-				volumeCollection.findOne({ uuid: sat.uuid }, (err3, satAfter) => {
-					if (err3) return cb(new MongoError(err3).log());
-					if (!satAfter) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, sat.uuid));
+					volumeCollection.findOne({ uuid: sat.uuid }, (err3, satAfter) => {
+						if (err3) return cb(new MongoError(err3).log());
+						if (!satAfter) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, sat.uuid));
 
-					const isHeld = satAfter.reservation
+						const isHeld = satAfter.reservation
 						&& satAfter.reservation.mode === consts.reservationModes.EXCLUSIVE_READ_WRITE
 						&& satAfter.reservation.reservedBy === tomaHostname;
 
-					if (!isHeld) {
-						const heldBy = satAfter.reservation && satAfter.reservation.reservedBy;
-						const errMsg = `Satellite attach for ${tomaHostname} did not result in exclusive hold (current reservedBy=${heldBy})`;
-						logger.sysDEBUG(`attachSatelliteForAllocator: ${errMsg}`);
-						return cb(new SystemMessage(systemMessages.BUILD_RESPONSES_ERROR).addInfo(Entities.Error, errMsg));
-					}
+						if (!isHeld) {
+							const heldBy = satAfter.reservation && satAfter.reservation.reservedBy;
+							const errMsg = `Satellite attach for ${tomaHostname} did not result in exclusive hold (current reservedBy=${heldBy})`;
+							logger.sysDEBUG(`attachSatelliteForAllocator: ${errMsg}`);
+							return cb(new SystemMessage(systemMessages.BUILD_RESPONSES_ERROR).addInfo(Entities.Error, errMsg));
+						}
 
-					const satelliteTargets = [];
-					(satAfter.chunks || []).forEach(chunk => {
-						(chunk.pRaids || []).forEach(praid => {
-							(praid.diskSegments || []).forEach(seg => {
-								if (seg.nodeUUID && !satelliteTargets.includes(seg.nodeUUID))
-									satelliteTargets.push(seg.nodeUUID);
+						const satelliteTargets = [];
+						(satAfter.chunks || []).forEach(chunk => {
+							(chunk.pRaids || []).forEach(praid => {
+								(praid.diskSegments || []).forEach(seg => {
+									if (seg.nodeUUID && !satelliteTargets.includes(seg.nodeUUID))
+										satelliteTargets.push(seg.nodeUUID);
+								});
 							});
 						});
-					});
 
-					cb(null, {
-						satelliteUUID: satAfter.uuid,
-						satelliteTargets: satelliteTargets,
-						reservationVersion: satAfter.reservation.version,
-						allocatorGeneration: allocatorGeneration,
-						messages: msgs,
+						cb(null, {
+							satelliteUUID: satAfter.uuid,
+							satelliteTargets: satelliteTargets,
+							reservationVersion: satAfter.reservation.version,
+							allocatorGeneration: allocatorGeneration,
+							messages: msgs,
+						});
 					});
 				});
 			});
