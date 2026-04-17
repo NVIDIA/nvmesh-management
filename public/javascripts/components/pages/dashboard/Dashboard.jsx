@@ -179,7 +179,7 @@ const Dashboard = () => {
 										value: countersData.tpvCount.alarm,
 										link: '/thinProvisioning'
 									}}
-									bottomElement={{
+									fourthElement={{
 										name: 'Detached',
 										value: countersData.tpvCount.detached,
 										link: '/thinProvisioning'
