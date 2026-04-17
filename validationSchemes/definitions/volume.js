@@ -44,6 +44,8 @@ const cdvConfigScheme = {
 	unevaluatedProperties: false,
 	properties: {
 		cdvExtentSizeMB: { type: 'integer', enum: consts.cdvExtentSizeMBValues },
+		// allocatorSizeGB retained for backward-readable input only; ignored on create.
+		// Allocator metadata now lives on a satellite volume of fixed size CDV_MGMT_SIZE_GIB.
 		allocatorSizeGB: { type: 'integer', default: 1, minimum: 1 },
 		maxTPVs: { type: 'integer', default: 512, minimum: 1 },
 	},
@@ -117,11 +119,16 @@ const scheme = {
 			then: { required: ['RAIDLevel'] }
 		},
 		{
-			// CDV: cdvConfig required; cdvExtentSizeMB required within it
+			// CDV: cdvConfig required; cdvExtentSizeMB required within it.
+			// CDV name uses the stricter cdvVolumeName scheme (≤16 chars,
+			// no -mgmt suffix) so that '<cdvName>-mgmt' fits the volumeName limit.
 			if: isCDV,
 			then: {
 				required: ['cdvConfig'],
-				properties: { cdvConfig: { required: ['cdvExtentSizeMB'] } }
+				properties: {
+					cdvConfig: { required: ['cdvExtentSizeMB'] },
+					name: { $ref: consts.MANAGEMENT_DEFINITIONS + '/cdvVolumeName.js' }
+				}
 			}
 		},
 		{

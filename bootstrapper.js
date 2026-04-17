@@ -36,7 +36,9 @@ var logModule = require('./modules/log.js');
 var sanityAndRecover = require('./modules/sanityAndRecover.js');
 var volumeEncryptionModule = require('./modules/volumeEncryption.js');
 const upgradeModule = require('./modules/upgrade.js');
-var cdvTomaAutoAttach = require('./modules/cdvTomaAutoAttach.js');
+// cdvTomaAutoAttach intentionally not imported — CDV auto-attach to TOMAs has
+// been retired; the allocator-satellite volume is attached on-demand by the
+// elected allocator TOMA via Kafka. See SatelliteVolumeForCDVAlloc.md.
 
 
 var scope = {};
@@ -707,11 +709,10 @@ scope.afterModulesLoaded = function(callback) {
 };
 
 scope.reconcileCDVTomaAttachments = (cb) => {
-	// Non-blocking: release the bootstrap series immediately, run reconciliation in background.
+	// CDVs are no longer auto-attached to TOMAs. Allocator-satellite attach is
+	// driven by the elected allocator TOMA via Kafka (see SatelliteVolumeForCDVAlloc).
+	// No bootstrap reconciliation needed.
 	if (cb) cb();
-	cdvTomaAutoAttach.reconcileAllCDVs().catch(err =>
-		logger.sysDEBUG(`Bootstrap: CDV TOMA attachment reconciliation failed: ${err}`)
-	);
 };
 
 scope.bootstrap = function(callback) {

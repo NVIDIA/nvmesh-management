@@ -118,11 +118,27 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 		sort = { ...sort, _id: 1 };
 	}
 
+	// Allocator-satellite (CDV_MGMT) volumes are an internal implementation
+	// detail; hide them from default listings.  Pass `?includeSatellites=true`
+	// to surface them (used by CLI/UI flows that render satellites as child
+	// rows of their parent CDV).
+	let userFilter = utils.tryParseJSON(req.query.filter) || {};
+	const includeSatellites = req.query.includeSatellites === 'true';
+	if (!includeSatellites) {
+		const excludeMgmt = { volumeClass: { $ne: consts.volumeClass.CDV_MGMT } };
+		if (Object.keys(userFilter).length === 0) {
+			userFilter = excludeMgmt;
+		} else if (userFilter.volumeClass === undefined) {
+			userFilter = { ...userFilter, ...excludeMgmt };
+		}
+		// If the caller explicitly filtered on volumeClass, respect it.
+	}
+
 	volumeModule.getAllVolumes(
 		utils.tryParseJSON(req.query.projection),
 		page,
 		count,
-		utils.tryParseJSON(req.query.filter),
+		userFilter,
 		sort,
 		function(err, volumes) {
 			if (err)

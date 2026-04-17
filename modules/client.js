@@ -3629,9 +3629,12 @@ scope.attach = (clientID, clientUUID, requestedVolumes, cb) => {
 
 		const tpvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.TPV);
 		const cdvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV);
+		const cdvMgmtVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV_MGMT);
 		const otherVolumes = requestedVolumes.filter(v => {
 			const vc = classMap[v.name]?.volumeClass;
-			return vc !== consts.volumeClass.TPV && vc !== consts.volumeClass.CDV;
+			return vc !== consts.volumeClass.TPV
+				&& vc !== consts.volumeClass.CDV
+				&& vc !== consts.volumeClass.CDV_MGMT;
 		});
 
 		const allMessages = [];
@@ -3643,6 +3646,18 @@ scope.attach = (clientID, clientUUID, requestedVolumes, cb) => {
 				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
 				.addInfo(Entities.Client.ID, clientID)
 				.addInfo(Entities.Error, 'CDV volumes are auto-managed and cannot be attached manually'));
+		});
+
+		// Allocator-satellite (CDV_MGMT) volumes are attached only by the elected
+		// allocator TOMA via the internal attachSatelliteForAllocator path; manual
+		// REST attach is forbidden.
+		cdvMgmtVolumes.forEach(vol => {
+			allMessages.push(new SystemAdminMessage(systemMessages.BUILD_RESPONSES_ERROR)
+				.addInfo(Entities.Volume.ID, vol.name)
+				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+				.addInfo(Entities.Client.ID, clientID)
+				.addInfo(Entities.Error,
+					'Allocator-satellite volumes are attached automatically by the elected allocator TOMA and cannot be attached manually.'));
 		});
 
 		async.parallel([
@@ -3695,9 +3710,12 @@ scope.detach = (clientID, clientUUID, requestedVolumes, cb) => {
 
 		const tpvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.TPV);
 		const cdvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV);
+		const cdvMgmtVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV_MGMT);
 		const otherVolumes = requestedVolumes.filter(v => {
 			const vc = classMap[v.name]?.volumeClass;
-			return vc !== consts.volumeClass.TPV && vc !== consts.volumeClass.CDV;
+			return vc !== consts.volumeClass.TPV
+				&& vc !== consts.volumeClass.CDV
+				&& vc !== consts.volumeClass.CDV_MGMT;
 		});
 
 		const allMessages = [];
@@ -3709,6 +3727,16 @@ scope.detach = (clientID, clientUUID, requestedVolumes, cb) => {
 				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
 				.addInfo(Entities.Client.ID, clientID)
 				.addInfo(Entities.Error, 'CDV volumes are auto-managed and cannot be detached manually'));
+		});
+
+		// Allocator-satellite (CDV_MGMT) volumes are detached only by re-election preempt; manual detach forbidden.
+		cdvMgmtVolumes.forEach(vol => {
+			allMessages.push(new SystemAdminMessage(systemMessages.DETACH_VOLUME_GENERAL_ERROR)
+				.addInfo(Entities.Volume.ID, vol.name)
+				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+				.addInfo(Entities.Client.ID, clientID)
+				.addInfo(Entities.Error,
+					'Allocator-satellite volumes are detached automatically when the next allocator preempts; manual detach is not permitted.'));
 		});
 
 		async.parallel([
@@ -4736,6 +4764,84 @@ scope.fetchClientByID = function(clientID, cb) {
 };
 
 // ─── Thin Provisioning ───────────────────────────────────────────────────────
+
+// Internal entry point for the TOMA-driven satellite-volume attach.  Called
+// from the Kafka handler for `AttachSatelliteRequest` (Phase 2).  REST callers
+// cannot reach this — the user-facing /attach endpoint refuses CDV_MGMT.
+//
+// Returns via cb(err, result) where result is { satelliteUUID, satelliteTargets,
+// reservationVersion } on success.
+//
+// Reuses the existing exclusive-preempt attach path: the preempt mechanism
+// kicks any prior allocator TOMA holding the satellite, satisfying the
+// "fence the previous allocator" requirement at the storage target.
+scope.attachSatelliteForAllocator = (cdvUUID, tomaHostname, allocatorGeneration, requestId, cb) => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+
+	logger.sysDEBUG(`attachSatelliteForAllocator: cdvUUID=${cdvUUID} toma=${tomaHostname} gen=${allocatorGeneration} reqId=${requestId}`);
+
+	volumeCollection.findOne({ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV }, (err, cdv) => {
+		if (err) return cb(new MongoError(err).log());
+		if (!cdv) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, cdvUUID));
+		if (!cdv.allocatorVolumeUUID)
+			return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Error, `CDV ${cdv._id} has no satellite link`));
+
+		volumeCollection.findOne({ uuid: cdv.allocatorVolumeUUID, volumeClass: consts.volumeClass.CDV_MGMT }, (err2, sat) => {
+			if (err2) return cb(new MongoError(err2).log());
+			if (!sat) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, cdv.allocatorVolumeUUID));
+
+			const requestedVolumes = [{
+				name: sat._id,
+				uuid: sat.uuid,
+				reservation: {
+					mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE,
+					preempt: true,
+					isDetachOthers: true,
+				},
+				referenceID: `allocator:${cdvUUID}`,
+			}];
+
+			scope.attachVolumes(tomaHostname, tomaHostname, requestedVolumes, msgs => {
+				// scope.attachVolumes does not directly return success/failure data;
+				// poll the satellite document to obtain the new reservation.version.
+				volumeCollection.findOne({ uuid: sat.uuid }, (err3, satAfter) => {
+					if (err3) return cb(new MongoError(err3).log());
+					if (!satAfter) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, sat.uuid));
+
+					const isHeld = satAfter.reservation
+						&& satAfter.reservation.mode === consts.reservationModes.EXCLUSIVE_READ_WRITE
+						&& satAfter.reservation.reservedBy === tomaHostname;
+
+					if (!isHeld) {
+						const heldBy = satAfter.reservation && satAfter.reservation.reservedBy;
+						const errMsg = `Satellite attach for ${tomaHostname} did not result in exclusive hold (current reservedBy=${heldBy})`;
+						logger.sysDEBUG(`attachSatelliteForAllocator: ${errMsg}`);
+						return cb(new SystemMessage(systemMessages.BUILD_RESPONSES_ERROR).addInfo(Entities.Error, errMsg));
+					}
+
+					const satelliteTargets = [];
+					(satAfter.chunks || []).forEach(chunk => {
+						(chunk.pRaids || []).forEach(praid => {
+							(praid.diskSegments || []).forEach(seg => {
+								if (seg.nodeUUID && !satelliteTargets.includes(seg.nodeUUID))
+									satelliteTargets.push(seg.nodeUUID);
+							});
+						});
+					});
+
+					cb(null, {
+						satelliteUUID: satAfter.uuid,
+						satelliteTargets: satelliteTargets,
+						reservationVersion: satAfter.reservation.version,
+						allocatorGeneration: allocatorGeneration,
+						messages: msgs,
+					});
+				});
+			});
+		});
+	});
+};
 
 scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 	if (typeof options === 'function') { callback = options; options = {}; }

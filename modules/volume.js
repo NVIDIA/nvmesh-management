@@ -27,7 +27,10 @@ const { sysERROR } = require('../logger.js');
 const { DeleteVolume } = require('../models/kafkaMessages/DeleteVolume');
 const { UpdateVolume } = require('../models/kafkaMessages/UpdateVolume.js');
 const { DeleteVolumeCompleted } = require('../models/kafkaMessages/DeleteVolumeCompleted.js');
-const cdvTomaAutoAttach = require('./cdvTomaAutoAttach');
+// cdvTomaAutoAttach intentionally not imported: CDVs are no longer auto-attached
+// to TOMAs. The allocator-satellite volume (<CDV>-mgmt) carries the allocator
+// metadata and is attached on-demand by the elected allocator TOMA via Kafka.
+// See nvmesh-kernel/design/SatelliteVolumeForCDVAlloc.md.
 
 var scope = {};
 scope.volumeCalculationInProgress = {};
@@ -1113,11 +1116,11 @@ function updatePRaidSegmentsInDrives(segments, callback) {
 }
 
 scope.handleSegmentChangeInPRaid = function(reportPRaid, volume, user, lockedZones, callback) {
-	const isCDVFirstPRaid = volume.volumeClass === consts.volumeClass.CDV &&
-		volume.chunks && volume.chunks[0] &&
-		volume.chunks[0].pRaids.some(pr => pr.uuid === reportPRaid.uuid);
-	const oldNodeIds = isCDVFirstPRaid ? cdvTomaAutoAttach._firstPRaidNodeIds(volume) : null;
-
+	// CDV first-pRAID topology changes no longer trigger TOMA reconciliation.
+	// The allocator-satellite volume is attached on demand by the elected
+	// allocator TOMA via the Kafka path (Phase 2 of SatelliteVolumeForCDVAlloc),
+	// and re-election is driven by RAFT inside TOMA, not by management observing
+	// segment changes here.
 	async.parallel([
 		function(callback) {
 			var startDT3 = new Date();
@@ -1139,14 +1142,7 @@ scope.handleSegmentChangeInPRaid = function(reportPRaid, volume, user, lockedZon
 				callback();
 			});
 		}
-	], function() {
-		if (isCDVFirstPRaid) {
-			cdvTomaAutoAttach.reconcileFirstPRaidAttachments(volume, oldNodeIds).catch(err =>
-				logger.sysDEBUG(`handleSegmentChangeInPRaid: cdvTomaAutoAttach reconcile failed for CDV ${volume._id}: ${err}`)
-			);
-		}
-		callback();
-	});
+	], callback);
 };
 
 function convertReportPRaidFormatToDBFormat(pRaid) {
@@ -2545,6 +2541,10 @@ function notifyDeletion(volume, callback) {
 }
 
 scope.markVolumesForDeletion = function(volumes, cb) {
+	// Internal API.  User-facing CDV_MGMT refusal lives in scope.deleteVolumes
+	// (called by the REST route).  Calling this directly from internal flows
+	// such as allocateAndSliceIntoVolumes rollback is permitted, including
+	// for satellites — otherwise rollback would leak orphaned satellites.
 	var db = app.get('db');
 	var volumeCollection = db.collection('volume');
 	var serverCollection = db.collection('server');
@@ -2600,18 +2600,10 @@ scope.markVolumesForDeletion = function(volumes, cb) {
 					`CDV has ${dbVolume.tpvCount} TPV(s). Delete all TPVs before deleting the CDV.`, volume);
 				return callback(true);
 			},
-			function detachCDVFromTomaNodes(callback) {
-				// Auto-detach CDV from all TOMA nodes before deletion. CDV attachments are
-				// auto-managed (toma: referenceIDs); clearing them here ensures the volume is
-				// not blocked by lingering TOMA attachments in failIfAttached below.
-				if (dbVolume.volumeClass !== consts.volumeClass.CDV) return callback();
-				cdvTomaAutoAttach.detachCDVFromAllNodes(dbVolume)
-					.then(() => callback())
-					.catch(err => {
-						logger.sysDEBUG(`cdvTomaAutoAttach.detachCDVFromAllNodes failed for CDV ${dbVolume._id}: ${err}`);
-						callback(); // non-fatal; failIfAttached will catch if still attached
-					});
-			},
+			// CDV TOMA auto-detach removed: CDVs are no longer auto-attached to
+			// TOMAs (see saveVolumes). The allocator satellite is detached
+			// implicitly by the next-allocator preempt, or via stale-client
+			// cleanup if its current holder is gone.
 			function failIfAttached(callback) {
 				scope.getAttachedClientsForVolume(volume, (err, clients) => {
 					if (err) {
@@ -2677,30 +2669,47 @@ scope.markVolumesForDeletion = function(volumes, cb) {
 
 					var $set = { action: consts.volumeActions.MARKED_FOR_DELETION };
 
-					volumeCollection.findOneAndUpdate(
-						$query,
+					// CDV + satellite are marked for deletion in a single updateMany so
+					// they transition in one Mongo operation under the same management
+					// lock.  The satellite's _id is '<cdv>-mgmt' and is the canonical
+					// way to find it (parentCDVId is also stored but the suffix-based
+					// lookup avoids an extra query).
+					const isCDV = dbVolume.volumeClass === consts.volumeClass.CDV;
+					const satelliteId = isCDV ? dbVolume._id + consts.CDV_MGMT_SUFFIX : null;
+					const idFilter = isCDV
+						? { _id: { $in: [dbVolume._id, satelliteId] } }
+						: $query;
+
+					volumeCollection.updateMany(
+						idFilter,
 						{ $set: $set, $inc: { version: 1 } },
-						{
-							returnDocument: consts.mongoReturnDocument.AFTER,
-							multi: true
-						},
-						function(err, updatedVolume) {
+						function(err) {
 							if (err) {
 								err = new MongoError(err).log();
 								handleDeleteVolumeError(systemMessages.VOLUME_DELETE_FAILED, err, volume);
 								return callback(err);
-							} else {
-								if (!updatedVolume || !updatedVolume.chunks) {
-									logger.sysDEBUG(`We updated the volume ${volume._id} ${updatedVolume ? updatedVolume._id : ''} status to markedForDeletion,
-									but the volume doesn't contain chunks, it was probably in a 'pending' state.`);
+							}
 
-									handleDeleteVolumeError(systemMessages.VOLUME_DELETE_PENDING, err, volume);
+							// Re-fetch the updated documents (updateMany doesn't return them).
+							volumeCollection.find(idFilter).toArray((err, updatedDocs) => {
+								if (err || !updatedDocs || !updatedDocs.length) {
+									err = err && new MongoError(err).log();
+									handleDeleteVolumeError(systemMessages.VOLUME_DELETE_FAILED, err || 'updated docs not found', volume);
+									return callback(err || true);
+								}
 
-									return callback(err);
-								} else {
+								// CDV is the document the caller asked about; the rest are
+								// any satellites swept along.  Run post-marking work for each.
+								async.eachSeries(updatedDocs, (updatedVolume, postCb) => {
+									if (!updatedVolume.chunks) {
+										logger.sysDEBUG(`Volume ${updatedVolume._id} marked for deletion but has no chunks (was probably pending)`);
+										return postCb();
+									}
+
 									events.emitEvent([events.getVolumeID(updatedVolume._id)], objectNotifier.events.volumeActionChangeEvent, updatedVolume);
 
-									messages.push(addVolumeInfo(new SystemAdminMessage(systemMessages.VOLUME_MARKED_FOR_DELETION)));
+									if (updatedVolume._id === dbVolume._id)
+										messages.push(addVolumeInfo(new SystemAdminMessage(systemMessages.VOLUME_MARKED_FOR_DELETION)));
 
 									var volumeNodesUUIDs = getVolumeNodesUUIDs(updatedVolume);
 
@@ -2716,7 +2725,7 @@ scope.markVolumesForDeletion = function(volumes, cb) {
 											logger.sysERROR('Failed to fetch volume segments that reside on an evicted drive', err);
 
 										if (!results.length) {
-											notifyDeletion(updatedVolume, callback);
+											notifyDeletion(updatedVolume, postCb);
 										} else {
 											var volType = updatedVolume.type;
 											var segmentsIdsToDeprecate = results.map(result => {
@@ -2727,13 +2736,12 @@ scope.markVolumesForDeletion = function(volumes, cb) {
 												err => {
 													if (err)
 														logger.sysERROR(err);
-
-													notifyDeletion(updatedVolume, callback);
+													notifyDeletion(updatedVolume, postCb);
 												});
 										}
 									});
-								}
-							}
+								}, callback);
+							});
 						}
 					);
 				});
@@ -2771,12 +2779,34 @@ function getVolumeNodesUUIDs(volume) {
 }
 
 scope.deleteVolumes = (volumes, cb) => {
+	// User-facing entry: refuse direct delete of allocator-satellite volumes.
+	// Satellites are deleted only as a side effect of deleting their parent CDV
+	// (markVolumesForDeletion sweeps the satellite under the same Mongo lock).
+	const refused = [];
+	const acceptable = [];
+	volumes.forEach(v => {
+		const id = v._id || v.name;
+		if (id && typeof id === 'string' && id.endsWith(consts.CDV_MGMT_SUFFIX))
+			refused.push(v);
+		else
+			acceptable.push(v);
+	});
+
+	const refusalMessages = refused.map(v =>
+		new SystemAdminMessage(systemMessages.VOLUME_DELETE_FAILED)
+			.addInfo(Entities.Volume.ID, v._id || v.name)
+			.addInfo(Entities.Volume.UUID, v.uuid)
+			.addInfo(Entities.Error,
+				'Allocator-satellite volumes are managed automatically and cannot be deleted directly. Delete the parent CDV instead.'));
+
+	if (!acceptable.length) return cb(refusalMessages);
+
 	utils.executeOnVolumes(
-		volumes,
+		acceptable,
 		scope.markVolumesForDeletion,
 		scope.deleteSnapshots,
 		deleteMDVolumeNotSupportedResponse,
-		cb
+		results => cb(refusalMessages.concat(results || []))
 	);
 };
 
@@ -2850,13 +2880,33 @@ function modifyVolumes(volumes, user, modifyingFunction, cb) {
 	);
 }
 scope.extendVolumes = (volumes, user, cb) => {
-	modifyVolumes(volumes, user, utils.extendVolumes, cb);
+	// Allocator-satellite volumes are fixed-size and not extendable.
+	const satellites = volumes.filter(v => v.volumeClass === consts.volumeClass.CDV_MGMT);
+	const extendable = volumes.filter(v => v.volumeClass !== consts.volumeClass.CDV_MGMT);
+	const messages = satellites.map(v =>
+		new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+			.addInfo(Entities.Volume.ID, v._id)
+			.addInfo(Entities.Error, 'Allocator-satellite volumes are fixed-size and cannot be extended.')
+	);
+	if (!extendable.length) return cb(messages);
+	modifyVolumes(extendable, user, utils.extendVolumes, results => {
+		cb(messages.concat(results || []));
+	});
 };
 
 scope.updateVolumes = (volumes, user, cb) => {
-	const cdvVolumes = volumes.filter(v => v.volumeClass === consts.volumeClass.CDV);
-	const otherVolumes = volumes.filter(v => v.volumeClass !== consts.volumeClass.CDV);
+	// Allocator-satellite volumes (<CDV>-mgmt) are not user-mutable.
+	const satelliteVolumes = volumes.filter(v => v.volumeClass === consts.volumeClass.CDV_MGMT);
+	const mutableVolumes = volumes.filter(v => v.volumeClass !== consts.volumeClass.CDV_MGMT);
+	const cdvVolumes = mutableVolumes.filter(v => v.volumeClass === consts.volumeClass.CDV);
+	const otherVolumes = mutableVolumes.filter(v => v.volumeClass !== consts.volumeClass.CDV);
 	const messages = [];
+
+	satelliteVolumes.forEach(v => {
+		messages.push(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+			.addInfo(Entities.Volume.ID, v._id)
+			.addInfo(Entities.Error, 'Allocator-satellite volumes are managed automatically and cannot be modified.'));
+	});
 
 	async.series([
 		next => {
@@ -3109,15 +3159,13 @@ scope.saveVolumes = (requestVolumes, user, cb) => {
 
 	const tpvVolumes = requestVolumes.filter(v => v.volumeClass === consts.volumeClass.TPV);
 	const otherVolumes = requestVolumes.filter(v => v.volumeClass !== consts.volumeClass.TPV);
-	const cdvNames = otherVolumes.filter(v => v.volumeClass === consts.volumeClass.CDV).map(v => v.name);
+	const cdvVolumes = otherVolumes.filter(v => v.volumeClass === consts.volumeClass.CDV);
+	const nonCDVOthers = otherVolumes.filter(v => v.volumeClass !== consts.volumeClass.CDV);
 
-	otherVolumes.forEach(volume => {
-		if (volume.volumeClass === consts.volumeClass.CDV) {
-			prepareCDVForCreate(volume);
-		} else {
-			delete volume.cdvConfig;
-			delete volume.tpvConfig;
-		}
+	cdvVolumes.forEach(prepareCDVForCreate);
+	nonCDVOthers.forEach(volume => {
+		delete volume.cdvConfig;
+		delete volume.tpvConfig;
 	});
 
 	const messages = [];
@@ -3128,34 +3176,47 @@ scope.saveVolumes = (requestVolumes, user, cb) => {
 			createTPVs(tpvVolumes, user, msgs => { messages.push(...msgs); cb(); });
 		},
 		cb => {
-			if (!otherVolumes.length) return cb();
-			const categorizedVolumes = utils.splitVolumesAndSnapshots(otherVolumes);
+			// Each CDV is created together with its <CDV>-mgmt satellite
+			// via allocateAndSliceIntoVolumes — both succeed or both roll back.
+			if (!cdvVolumes.length) return cb();
+			async.eachSeries(cdvVolumes, (cdv, next) => {
+				const satellite = buildSatelliteVolumeForCDV(cdv);
+				// Satellite is allocated FIRST so it lands first in the chunk
+				// pool; the CDV follows with the remaining capacity.
+				allocateAndSliceIntoVolumes([satellite, cdv], user, (msgs, created) => {
+					messages.push(...msgs);
+					if (created.length === 2) {
+						// Back-fill cross-references: link the CDV to its satellite.
+						const [satCreated, cdvCreated] = created;
+						const db = app.get('db');
+						db.collection('volume').updateOne(
+							{ _id: cdvCreated._id, uuid: cdvCreated.uuid },
+							{ $set: { allocatorVolumeId: satCreated._id, allocatorVolumeUUID: satCreated.uuid } },
+							err => {
+								if (err) {
+									new MongoError(err).log();
+									logger.sysERROR(`saveVolumes: failed to link CDV ${cdvCreated._id} to satellite ${satCreated._id}: ${err}`);
+								}
+								next();
+							}
+						);
+					} else {
+						next();
+					}
+				});
+			}, cb);
+		},
+		cb => {
+			if (!nonCDVOthers.length) return cb();
+			const categorizedVolumes = utils.splitVolumesAndSnapshots(nonCDVOthers);
 			utils.executeFunctionsOnVolumes(
 				categorizedVolumes,
 				(volumes, callback) => { utils.createVolumes(volumes, user, callback); },
 				(snapshots, callback) => { scope.createSnapshots(snapshots, user, callback); },
 				(mdVolumes, callback) => callback(),
-				otherVolumes,
+				nonCDVOthers,
 				msgs => { messages.push(...msgs); cb(); }
 			);
-		},
-		cb => {
-			if (!cdvNames.length) return cb();
-			const db = app.get('db');
-			db.collection('volume').find(
-				{ _id: { $in: cdvNames }, volumeClass: consts.volumeClass.CDV, chunks: { $exists: true, $not: { $size: 0 } } }
-			).toArray((err, cdvDocs) => {
-				if (err) {
-					logger.sysDEBUG(`saveVolumes: failed to fetch CDVs for TOMA auto-attach: ${err}`);
-					return cb();
-				}
-				Promise.all(cdvDocs.map(cdv => cdvTomaAutoAttach.attachCDVToAllTomaNodes(cdv)))
-					.then(() => cb())
-					.catch(err => {
-						logger.sysDEBUG(`saveVolumes: cdvTomaAutoAttach.attachCDVToAllTomaNodes failed: ${err}`);
-						cb();
-					});
-			});
 		},
 	], () => cb(messages));
 };
@@ -3183,24 +3244,94 @@ function prepareCDVForCreate(volume) {
 	const cfg = volume.cdvConfig || {};
 	volume.cdvConfig = {
 		cdvExtentSizeMB: cfg.cdvExtentSizeMB,
-		allocatorSizeGB: cfg.allocatorSizeGB != null ? cfg.allocatorSizeGB : 1,
+		// allocatorSizeGB retained on the schema for backward-readable input
+		// only; the allocator now lives on a fixed-size satellite volume.
+		allocatorSizeGB: consts.CDV_MGMT_SIZE_GIB,
 		maxTPVs: cfg.maxTPVs != null ? cfg.maxTPVs : 512,
 	};
 	delete volume.tpvConfig;
 
-	// Trim blocks so the data region is an exact multiple of cdvExtentSizeMB.
-	// Management allocates using decimal GB but the kernel measures allocator and
-	// extent sizes in binary GiB/MiB, so a raw allocation often ends with a
-	// fractional extent.  Use explicit binary constants here so the calculation
-	// remains correct if consts.GB is ever changed to GiB.
+	// Trim blocks so the CDV is an exact multiple of cdvExtentSizeMB.  The CDV
+	// no longer reserves [0, A) for allocator metadata — that data lives on the
+	// satellite volume — so the entire CDV is data extents starting at offset 0.
 	if (volume.blocks && volume.cdvConfig.cdvExtentSizeMB > 0) {
 		const extentBytes = volume.cdvConfig.cdvExtentSizeMB * consts.MiB;
-		const allocBytes = volume.cdvConfig.allocatorSizeGB * consts.GiB;
 		const totalBytes = volume.blocks * consts.BLOCK_SIZE;
-		const dataBytes = totalBytes > allocBytes ? totalBytes - allocBytes : 0;
-		const fullExtents = Math.floor(dataBytes / extentBytes);
-		volume.blocks = Math.floor((allocBytes + fullExtents * extentBytes) / consts.BLOCK_SIZE);
+		const fullExtents = Math.floor(totalBytes / extentBytes);
+		volume.blocks = Math.floor((fullExtents * extentBytes) / consts.BLOCK_SIZE);
 	}
+}
+
+// Build the allocator-satellite volume document for a CDV.  The satellite is a
+// regular volume (volumeClass: CDV_MGMT) of fixed size CDV_MGMT_SIZE_GIB GiB,
+// inheriting the CDV's RAID configuration and placement constraints so the same
+// TOMAs that can write the CDV's first pRAID can also write the satellite.
+function buildSatelliteVolumeForCDV(cdvVolume) {
+	const propsToInherit = [
+		'VPG', 'RAIDLevel', 'numberOfMirrors', 'stripeSize', 'stripeWidth',
+		'dataBlocks', 'parityBlocks', 'diskClasses', 'serverClasses', 'domain',
+		'limitByDisks', 'limitByNodes', 'allowOverflow', 'allowAllocationOnOfflineDrives',
+		'ignoreNodeSeparation', 'enableCrcCheck', 'use_debug_di',
+		'createdBy', 'modifiedBy', 'dateCreated', 'dateModified',
+	];
+
+	const sat = {};
+	propsToInherit.forEach(p => {
+		if (Object.prototype.hasOwnProperty.call(cdvVolume, p))
+			sat[p] = cdvVolume[p];
+	});
+
+	sat.name = cdvVolume.name + consts.CDV_MGMT_SUFFIX;
+	sat.capacity = consts.CDV_MGMT_SIZE_GIB;
+	sat.volumeClass = consts.volumeClass.CDV_MGMT;
+	sat.parentCDVId = cdvVolume._id || cdvVolume.name;
+	sat.description = `Allocator metadata satellite for CDV '${cdvVolume.name}'`;
+	// Satellite is created with no encryption regardless of the CDV's setting.
+	sat.isEncrypted = false;
+	delete sat.encryption;
+	delete sat.cdvConfig;
+	delete sat.tpvConfig;
+	return sat;
+}
+
+// Allocate space and slice it into N indistinguishable-from-regular volumes,
+// in input order.  Volumes are created sequentially via the normal createVolume
+// path (each gets its own clean chunks); on any failure, all previously-created
+// slices are marked for deletion to keep the operation transactional.
+//
+// `slices` is a list of fully-prepared volume documents (the same shape as
+// requestVolumes for saveVolumes — name, capacity, RAIDLevel, etc.).
+function allocateAndSliceIntoVolumes(slices, user, cb) {
+	const messages = [];
+	const created = [];
+	let failed = false;
+
+	async.eachSeries(slices, (slice, next) => {
+		if (failed) return next();
+		utils.createVolume(slice, user, (err, allocatedVolume, message) => {
+			if (message) messages.push(message);
+			if (err || !allocatedVolume) {
+				failed = true;
+			} else {
+				created.push(allocatedVolume);
+			}
+			next();
+		});
+	}, () => {
+		if (!failed) return cb(messages, created);
+
+		// Roll back: mark previously-created slices for deletion.  Best-effort —
+		// any partial-rollback failure is logged but does not block the parent
+		// caller from reporting the overall create as failed.
+		if (!created.length) return cb(messages, []);
+
+		const toDelete = created.map(v => ({ _id: v._id, uuid: v.uuid }));
+		logger.sysDEBUG(`allocateAndSliceIntoVolumes: rolling back ${toDelete.length} slice(s) after create failure`);
+		scope.markVolumesForDeletion(toDelete, rollbackMessages => {
+			messages.push(...rollbackMessages);
+			cb(messages, []);
+		});
+	});
 }
 
 function createTPV(volume, user, cb) {

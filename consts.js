@@ -1242,8 +1242,21 @@ consts.preUpgradeCheckRelaxationsMode = {
 consts.volumeClass = {
 	REGULAR: 'REGULAR',
 	CDV: 'CDV',
+	CDV_MGMT: 'CDV_MGMT',
 	TPV: 'TPV',
 };
+
+// Suffix appended to a CDV's name to form its allocator-satellite volume name.
+// Volumes with this suffix on a regular volume name are reserved for system use.
+consts.CDV_MGMT_SUFFIX = '-mgmt';
+
+// Fixed satellite (CDV-mgmt) volume size: 1 GiB. Holds the CDV allocator
+// header + cdv_extent_md[] array. Replaces cdvConfig.allocatorSizeGB.
+consts.CDV_MGMT_SIZE_GIB = 1;
+
+// Max characters in a CDV name. Tighter than the regular volume name limit
+// so that '<cdvName>-mgmt' fits within the regular volume name limit.
+consts.CDV_NAME_MAX_LENGTH = 16;
 
 // Valid power-of-2 values for CDV and TPV extent sizes
 consts.cdvExtentSizeMBValues = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
