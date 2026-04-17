@@ -4828,8 +4828,21 @@ scope.handleAttachSatelliteRequest = (message, callback) => {
 	const { cdvUUID, allocatorTomaHostname, allocatorGeneration, requestId } = payload;
 	const sender = message.hostname;
 
+	// Only OK responses get cached for idempotent retry — a transient failure
+	// (INTERNAL_ERR, etc.) should let the next retry with the same requestId
+	// re-run the operation.  Terminal failures (CDV_NOT_FOUND, CDV_BEING_DELETED,
+	// STALE_GENERATION) are also cached so the TOMA stops retrying immediately.
+	const TERMINAL_FAILURES = new Set([
+		AttachSatelliteResponseStatus.CDV_NOT_FOUND,
+		AttachSatelliteResponseStatus.CDV_BEING_DELETED,
+		AttachSatelliteResponseStatus.STALE_GENERATION,
+	]);
+
 	const finish = responsePayload => {
-		rememberSatelliteResponse(cdvUUID, requestId, responsePayload);
+		const cacheable = responsePayload.status === AttachSatelliteResponseStatus.OK
+			|| TERMINAL_FAILURES.has(responsePayload.status);
+		if (cacheable)
+			rememberSatelliteResponse(cdvUUID, requestId, responsePayload);
 		sendSatelliteResponseToTOMA(allocatorTomaHostname || sender, responsePayload, () => callback());
 	};
 
@@ -4892,11 +4905,24 @@ scope.handleAttachSatelliteRequest = (message, callback) => {
 						`attachSatelliteForAllocator failed: ${attachErr && attachErr.toString()}`);
 				}
 
-				// Persist the new allocator identity on the CDV document.  Best-effort —
-				// failure here is logged but does not invalidate the attach (the satellite
-				// is already exclusively held by the requesting TOMA at this point).
+				// Persist the new allocator identity on the CDV document.
+				// Conditional on (existing gen < this gen) so that if two attach
+				// requests race (e.g., RAFT re-elects rapidly and TOMA-A gen 5
+				// and TOMA-B gen 6 both arrive), the persists land in
+				// generation order regardless of Mongo round-trip timing —
+				// otherwise gen 5 could overwrite gen 6 and let a future stale
+				// gen 5 request incorrectly preempt B.  Best-effort beyond
+				// that — failure is logged but does not invalidate the attach
+				// (the satellite is already exclusively held).
 				volumeCollection.updateOne(
-					{ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV },
+					{
+						uuid: cdvUUID,
+						volumeClass: consts.volumeClass.CDV,
+						$or: [
+							{ allocatorGenerationLastAttached: { $exists: false } },
+							{ allocatorGenerationLastAttached: { $lt: allocatorGeneration } },
+						],
+					},
 					{ $set: {
 						allocatorGenerationLastAttached: allocatorGeneration,
 						currentAllocatorTomaHostname: allocatorTomaHostname,
