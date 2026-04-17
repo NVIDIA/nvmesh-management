@@ -44,7 +44,7 @@ const CreateAttachDetach = ({
 			...filter,
 			isReady: true,
 			type: { $ne: consts.volumeTypes.METADATA_VOLUME },
-			volumeClass: { $ne: consts.volumeClass.CDV }
+			volumeClass: { $nin: [consts.volumeClass.CDV, consts.volumeClass.CDV_MGMT] }
 		};
 		const projection = {
 			name: 1,
