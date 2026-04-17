@@ -106,6 +106,12 @@ function getCounters(cb) {
 				callback(err, obj);
 			});
 		},
+		cdvCount: function(callback) {
+			volumeModule.calculateCDVCounters(callback);
+		},
+		tpvCount: function(callback) {
+			volumeModule.calculateTPVCounters(callback);
+		},
 		serverCount: function(callback) {
 			objectNotifier.getObject(objectNotifier.events.serversCountChangeEvent.name, function(err, obj) {
 				callback(err, obj);
@@ -141,11 +147,15 @@ router.get('/getCounters', function(req, res) {
 });
 
 router.get('/getVolumeCounters', function(req, res) {
-	volumeModule.calculateVolumeCounters((err, counters) => {
+	async.parallel({
+		volumeCount: cb => volumeModule.calculateVolumeCounters(cb),
+		cdvCount: cb => volumeModule.calculateCDVCounters(cb),
+		tpvCount: cb => volumeModule.calculateTPVCounters(cb),
+	}, (err, results) => {
 		if (err)
 			new SystemMessage(systemMessages.INDEX_GET_COUNTERS_FAILURE).addInfo(Entities.Error, err).log();
 
-		res.json(counters);
+		res.json(results);
 	});
 });
 

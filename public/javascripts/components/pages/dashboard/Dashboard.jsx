@@ -101,8 +101,13 @@ const Dashboard = () => {
 	};
 
 	async function getVolumeCounters() {
-		const volumeCounters = await ManagementService.getVolumeCounters();
-		setCountersData(prev => ({ ...prev, volumeCount: { ...prev.volumeCount, ...volumeCounters } }));
+		const { volumeCount, cdvCount, tpvCount } = await ManagementService.getVolumeCounters();
+		setCountersData(prev => ({
+			...prev,
+			volumeCount: { ...prev.volumeCount, ...volumeCount },
+			cdvCount: { ...prev.cdvCount, ...cdvCount },
+			tpvCount: { ...prev.tpvCount, ...tpvCount },
+		}));
 	}
 
 	const setCounter = (counterName, data) => {
@@ -130,94 +135,147 @@ const Dashboard = () => {
 				<h1>Dashboard</h1>
 
 				{countersData && (
-					<div className="dashboard-row-container">
-						<div className="dashboard-gauges">
-							<StatusGauge
-								header="Volumes"
-								headerLink="/volumes"
-								icon={<i className="fa fa-bolt"></i>}
-								topElement={{
-									name: 'Healthy',
-									value: countersData.volumeCount.total - (countersData.volumeCount.critical + countersData.volumeCount.alarm),
-									link: '/volumes?filter={"health": "healthy"}'
-								}}
-								rightElement={{
-									name: 'Critical',
-									value: countersData.volumeCount.critical,
-									link: '/volumes?filter={"health": "critical"}'
-								}}
-								leftElement={{
-									name: 'Alarm',
-									value: countersData.volumeCount.alarm,
-									link: '/volumes?filter={"health": "alarm"}'
-								}}
-							/>
+					<div className="dashboard-gauges-section">
+						<div className="dashboard-row-container">
+							<div className="dashboard-gauges">
+								<StatusGauge
+									header="Volumes"
+									headerLink="/volumes"
+									icon={<i className="fa fa-bolt"></i>}
+									topElement={{
+										name: 'Healthy',
+										value: countersData.volumeCount.total - (countersData.volumeCount.critical + countersData.volumeCount.alarm),
+										link: '/volumes?filter={"health": "healthy"}'
+									}}
+									rightElement={{
+										name: 'Critical',
+										value: countersData.volumeCount.critical,
+										link: '/volumes?filter={"health": "critical"}'
+									}}
+									leftElement={{
+										name: 'Alarm',
+										value: countersData.volumeCount.alarm,
+										link: '/volumes?filter={"health": "alarm"}'
+									}}
+								/>
+							</div>
+							<div className="dashboard-gauges">
+								<StatusGauge
+									header="TPVs"
+									headerLink="/thinProvisioning"
+									icon={<i className="fa fa-clone"></i>}
+									topElement={{
+										name: 'Healthy',
+										value: countersData.tpvCount.healthy,
+										link: '/thinProvisioning'
+									}}
+									rightElement={{
+										name: 'Critical',
+										value: countersData.tpvCount.critical,
+										link: '/thinProvisioning'
+									}}
+									leftElement={{
+										name: 'Alarm',
+										value: countersData.tpvCount.alarm,
+										link: '/thinProvisioning'
+									}}
+									bottomElement={{
+										name: 'Detached',
+										value: countersData.tpvCount.detached,
+										link: '/thinProvisioning'
+									}}
+								/>
+							</div>
+							<div className="dashboard-gauges">
+								<StatusGauge
+									header="CDVs"
+									headerLink="/thinProvisioning/cdv"
+									icon={<i className="fa fa-database"></i>}
+									topElement={{
+										name: 'Healthy',
+										value: countersData.cdvCount.total - (countersData.cdvCount.critical + countersData.cdvCount.alarm),
+										link: '/thinProvisioning/cdv'
+									}}
+									rightElement={{
+										name: 'Critical',
+										value: countersData.cdvCount.critical,
+										link: '/thinProvisioning/cdv'
+									}}
+									leftElement={{
+										name: 'Alarm',
+										value: countersData.cdvCount.alarm,
+										link: '/thinProvisioning/cdv'
+									}}
+								/>
+							</div>
 						</div>
-						<div className="dashboard-gauges">
-							<StatusGauge
-								header="Targets"
-								headerLink="/servers"
-								icon={<i className="fa fa-bullseye"></i>}
-								topElement={{
-									name: 'Healthy',
-									value: countersData.serverCount.total - (countersData.serverCount.critical + countersData.serverCount.alarm),
-									link: '/servers?filter={"health": "healthy"}'
-								}}
-								rightElement={{
-									name: 'Critical',
-									value: countersData.serverCount.critical,
-									link: '/servers?filter={"health": "critical"}'
-								}}
-								leftElement={{
-									name: 'Alarm',
-									value: countersData.serverCount.alarm,
-									link: '/servers?filter={"health": "alarm"}'
-								}}
-							/>
-						</div>
-						<div className="dashboard-gauges">
-							<StatusGauge
-								header="Clients"
-								headerLink="/clients"
-								icon={<i className="fa fa-desktop"></i>}
-								topElement={{
-									name: 'Healthy',
-									value: countersData.clientCount.total - (countersData.clientCount.critical + countersData.clientCount.alarm),
-									link: '/clients?filter={"health": "healthy"}'
-								}}
-								rightElement={{
-									name: 'Critical',
-									value: countersData.clientCount.critical,
-									link: '/clients?filter={"health": "critical"}'
-								}}
-								leftElement={{
-									name: 'Alarm',
-									value: countersData.clientCount.alarm,
-									link: '/clients?filter={"health": "alarm"}'
-								}}
-							/>
-						</div>
-						<div className="dashboard-gauges">
-							<StatusGauge
-								header="Drives"
-								headerLink="/disks"
-								icon={<i className="fa fa-hdd-o"></i>}
-								topElement={{
-									name: 'Healthy',
-									value: countersData.diskCount.total - (countersData.diskCount.critical + countersData.diskCount.alarm),
-									link: '/disks?filter={"disks.health": "healthy"}'
-								}}
-								rightElement={{
-									name: 'Critical',
-									value: countersData.diskCount.critical,
-									link: '/disks?filter={"disks.health": "critical"}'
-								}}
-								leftElement={{
-									name: 'Alarm',
-									value: countersData.diskCount.alarm,
-									link: '/disks?filter={"disks.health": "alarm"}'
-								}}
-							/>
+						<div className="dashboard-row-container dashboard-row-container--infrastructure">
+							<div className="dashboard-gauges">
+								<StatusGauge
+									header="Targets"
+									headerLink="/servers"
+									icon={<i className="fa fa-bullseye"></i>}
+									topElement={{
+										name: 'Healthy',
+										value: countersData.serverCount.total - (countersData.serverCount.critical + countersData.serverCount.alarm),
+										link: '/servers?filter={"health": "healthy"}'
+									}}
+									rightElement={{
+										name: 'Critical',
+										value: countersData.serverCount.critical,
+										link: '/servers?filter={"health": "critical"}'
+									}}
+									leftElement={{
+										name: 'Alarm',
+										value: countersData.serverCount.alarm,
+										link: '/servers?filter={"health": "alarm"}'
+									}}
+								/>
+							</div>
+							<div className="dashboard-gauges">
+								<StatusGauge
+									header="Clients"
+									headerLink="/clients"
+									icon={<i className="fa fa-desktop"></i>}
+									topElement={{
+										name: 'Healthy',
+										value: countersData.clientCount.total - (countersData.clientCount.critical + countersData.clientCount.alarm),
+										link: '/clients?filter={"health": "healthy"}'
+									}}
+									rightElement={{
+										name: 'Critical',
+										value: countersData.clientCount.critical,
+										link: '/clients?filter={"health": "critical"}'
+									}}
+									leftElement={{
+										name: 'Alarm',
+										value: countersData.clientCount.alarm,
+										link: '/clients?filter={"health": "alarm"}'
+									}}
+								/>
+							</div>
+							<div className="dashboard-gauges">
+								<StatusGauge
+									header="Drives"
+									headerLink="/disks"
+									icon={<i className="fa fa-hdd-o"></i>}
+									topElement={{
+										name: 'Healthy',
+										value: countersData.diskCount.total - (countersData.diskCount.critical + countersData.diskCount.alarm),
+										link: '/disks?filter={"disks.health": "healthy"}'
+									}}
+									rightElement={{
+										name: 'Critical',
+										value: countersData.diskCount.critical,
+										link: '/disks?filter={"disks.health": "critical"}'
+									}}
+									leftElement={{
+										name: 'Alarm',
+										value: countersData.diskCount.alarm,
+										link: '/disks?filter={"disks.health": "alarm"}'
+									}}
+								/>
+							</div>
 						</div>
 					</div>
 				)}

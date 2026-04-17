@@ -690,6 +690,26 @@ a[disabled] {
 				cursor: pointer;
 			}
 		}
+
+		&.health-link--bottom {
+			top: auto;
+			bottom: 20px;
+			width: auto;
+			padding: 0;
+			margin: auto;
+			right: 0;
+			left: 0;
+
+			> span > span {
+				position: absolute;
+				width: 60px;
+				padding: 0;
+				bottom: -13px;
+				left: 0;
+				right: 0;
+				margin: auto;
+			}
+		}
 	}
 
 	.status-gauge {
@@ -3082,12 +3102,24 @@ input.md-input {
 	}
 }
 
+.dashboard-gauges-section {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+}
+
 .dashboard-row-container {
 	display: flex;
 	flex-direction: row;
 	flex-wrap: wrap;
 	gap: 10px;
 	justify-content: space-evenly;
+}
+
+.dashboard-row-container--infrastructure {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid style_consts.$dividers;
 }
 
 .section {

@@ -129,7 +129,7 @@ scope.getVolumesHealthCalculationPipeline = () => {
 		{ $match: {
 			status: { $nin: [consts.volumeStatuses.PENDING, consts.volumeStatuses.TO_BE_DELETED] },
 			isReserved: false,
-			volumeClass: { $nin: [consts.volumeClass.CDV, consts.volumeClass.TPV] },
+			volumeClass: { $nin: [consts.volumeClass.CDV, consts.volumeClass.TPV, consts.volumeClass.CDV_MGMT] },
 		} },
 		{ $addFields: { zones: '$chunks.zone' } },
 		{ $project: { zones: 1, health: 1, RAIDLevel: 1 } },
@@ -201,6 +201,64 @@ scope.calculateVolumeCounters = cb => {
 		}
 
 		cb(err, counters);
+	});
+};
+
+const makeClassCountersFn = volumeClass => cb => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+
+	volumeCollection.aggregate([
+		{ $match: { volumeClass } },
+		{ $group: { _id: '$health', count: { $sum: 1 } } },
+		{ $group: { _id: null, mergedDoc: { $push: { k: '$_id', v: '$count' } } } },
+		{ $replaceRoot: { newRoot: { $arrayToObject: '$mergedDoc' } } },
+		{ $addFields: { total: { $sum: ['$healthy', '$critical', '$alarm'] } } },
+	]).toArray((err, rows) => {
+		if (err) {
+			err = new MongoError(err).log();
+		} else {
+			rows = rows[0] || { total: 0 };
+			[consts.targetHealth.HEALTHY, consts.targetHealth.ALARM, consts.targetHealth.CRITICAL]
+				.forEach(h => { if (!(h in rows)) rows[h] = 0; });
+		}
+		cb(err, rows);
+	});
+};
+
+scope.calculateCDVCounters = makeClassCountersFn(consts.volumeClass.CDV);
+
+// TPVs get a 4-bucket split: healthy/alarm/critical + detached.
+// A TPV with no exclusiveClient has status=UNAVAILABLE → stored health=critical,
+// but a TPV no one is attached to isn't a user-visible problem. We surface those
+// separately as "detached" (neutral). CDV-level problems still show on the CDV gauge.
+scope.calculateTPVCounters = cb => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+
+	volumeCollection.aggregate([
+		{ $match: { volumeClass: consts.volumeClass.TPV } },
+		{ $addFields: { bucket: { $cond: {
+			if: { $and: [
+				{ $ifNull: ['$tpvConfig.exclusiveClient', false] },
+				{ $ne: ['$tpvConfig.exclusiveClient', ''] },
+			] },
+			then: '$health',
+			else: 'detached',
+		} } } },
+		{ $group: { _id: '$bucket', count: { $sum: 1 } } },
+		{ $group: { _id: null, mergedDoc: { $push: { k: '$_id', v: '$count' } } } },
+		{ $replaceRoot: { newRoot: { $arrayToObject: '$mergedDoc' } } },
+		{ $addFields: { total: { $sum: ['$healthy', '$critical', '$alarm', '$detached'] } } },
+	]).toArray((err, rows) => {
+		if (err) {
+			err = new MongoError(err).log();
+		} else {
+			rows = rows[0] || { total: 0 };
+			[consts.targetHealth.HEALTHY, consts.targetHealth.ALARM, consts.targetHealth.CRITICAL, 'detached']
+				.forEach(k => { if (!(k in rows)) rows[k] = 0; });
+		}
+		cb(err, rows);
 	});
 };
 

@@ -26,9 +26,10 @@ const StatusGaugeElement = ({
 	name,
 	value,
 	link,
+	extraClassName = '',
 }) => {
 	return (
-		<a className={`health-link ${link ? 'health-link-hover' : ''}`} href={link} title={value}>
+		<a className={`health-link ${link ? 'health-link-hover' : ''} ${extraClassName}`} href={link} title={value}>
 			<span>
 				{numToKRoundNumber(value)}
 				<span>{name}</span>
@@ -44,6 +45,7 @@ const StatusGauge = ({
 	topElement,
 	rightElement,
 	leftElement,
+	bottomElement,
 }) => {
 	const gaugeRef = useRef(null);
 	const chart = useRef(null);
@@ -52,6 +54,7 @@ const StatusGauge = ({
 		[topElement.name, topElement.value],
 		[rightElement.name, rightElement.value],
 		[leftElement.name, leftElement.value],
+		...(bottomElement ? [[bottomElement.name, bottomElement.value]] : []),
 	];
 
 	useEffect(() => {
@@ -63,7 +66,7 @@ const StatusGauge = ({
 			initChart();
 		}
 
-	}, [topElement.value, rightElement.value, leftElement.value]);
+	}, [topElement.value, rightElement.value, leftElement.value, bottomElement?.value]);
 
 
 	const initChart = () => {
@@ -76,7 +79,8 @@ const StatusGauge = ({
 				colors: {
 					[topElement.name]: STATUS_COLORS.NORMAL,
 					[rightElement.name]: STATUS_COLORS.ERROR,
-					[leftElement.name]: STATUS_COLORS.WARNING
+					[leftElement.name]: STATUS_COLORS.WARNING,
+					...(bottomElement ? { [bottomElement.name]: STATUS_COLORS.PLACEHOLDER } : {}),
 				}
 			},
 			donut: {
@@ -90,7 +94,7 @@ const StatusGauge = ({
 
 
 	return (
-		<div className="status-gauge-container">
+		<div className={`status-gauge-container ${bottomElement ? 'status-gauge-container--with-bottom' : ''}`}>
 			<div className="icon">{icon}</div>
 
 			{topElement && (
@@ -101,6 +105,9 @@ const StatusGauge = ({
 			)}
 			{leftElement && (
 				<StatusGaugeElement {...leftElement} />
+			)}
+			{bottomElement && (
+				<StatusGaugeElement {...bottomElement} extraClassName="health-link--bottom" />
 			)}
 
 			<div className="status-gauge" ref={gaugeRef}></div>
