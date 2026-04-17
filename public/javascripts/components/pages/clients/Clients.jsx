@@ -258,7 +258,37 @@ const Clients = () => {
 			filterable: false,
 			value: client =>
 				<AttachmentsList
-					items={client.attachedBlockDevices}
+					items={client.attachedBlockDevices.filter(d => !d.volumeClass || d.volumeClass === consts.volumeClass.REGULAR)}
+					getStatus={item => getVolumeAttachmentStatus(client, item)}
+				/>
+		},
+		{
+			name: 'TPV Attachments',
+			field: 'attachedBlockDevices',
+			filterable: false,
+			value: client =>
+				<AttachmentsList
+					items={client.attachedBlockDevices.filter(d => d.volumeClass === consts.volumeClass.TPV)}
+					getStatus={item => getVolumeAttachmentStatus(client, item)}
+				/>
+		},
+		{
+			name: 'CDV Attachments',
+			field: 'attachedBlockDevices',
+			filterable: false,
+			value: client =>
+				<AttachmentsList
+					items={client.attachedBlockDevices.filter(d => d.volumeClass === consts.volumeClass.CDV)}
+					getStatus={item => getVolumeAttachmentStatus(client, item)}
+				/>
+		},
+		{
+			name: 'CDV-Mgmt Attachments',
+			field: 'attachedBlockDevices',
+			filterable: false,
+			value: client =>
+				<AttachmentsList
+					items={client.attachedBlockDevices.filter(d => d.volumeClass === consts.volumeClass.CDV_MGMT)}
 					getStatus={item => getVolumeAttachmentStatus(client, item)}
 				/>
 		},
