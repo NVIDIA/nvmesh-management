@@ -2881,11 +2881,13 @@ function modifyVolumes(volumes, user, modifyingFunction, cb) {
 }
 scope.extendVolumes = (volumes, user, cb) => {
 	// Allocator-satellite volumes are fixed-size and not extendable.
-	const satellites = volumes.filter(v => v.volumeClass === consts.volumeClass.CDV_MGMT);
-	const extendable = volumes.filter(v => v.volumeClass !== consts.volumeClass.CDV_MGMT);
+	const isSatellite = v => v.volumeClass === consts.volumeClass.CDV_MGMT
+		|| (typeof (v._id || v.name) === 'string' && (v._id || v.name).endsWith(consts.CDV_MGMT_SUFFIX));
+	const satellites = volumes.filter(isSatellite);
+	const extendable = volumes.filter(v => !isSatellite(v));
 	const messages = satellites.map(v =>
 		new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
-			.addInfo(Entities.Volume.ID, v._id)
+			.addInfo(Entities.Volume.ID, v._id || v.name)
 			.addInfo(Entities.Error, 'Allocator-satellite volumes are fixed-size and cannot be extended.')
 	);
 	if (!extendable.length) return cb(messages);
@@ -2895,16 +2897,20 @@ scope.extendVolumes = (volumes, user, cb) => {
 };
 
 scope.updateVolumes = (volumes, user, cb) => {
-	// Allocator-satellite volumes (<CDV>-mgmt) are not user-mutable.
-	const satelliteVolumes = volumes.filter(v => v.volumeClass === consts.volumeClass.CDV_MGMT);
-	const mutableVolumes = volumes.filter(v => v.volumeClass !== consts.volumeClass.CDV_MGMT);
+	// Allocator-satellite volumes (<CDV>-mgmt) are not user-mutable.  REST
+	// callers may not include volumeClass on every input — also reject by
+	// the reserved name suffix as a backstop.
+	const isSatellite = v => v.volumeClass === consts.volumeClass.CDV_MGMT
+		|| (typeof (v._id || v.name) === 'string' && (v._id || v.name).endsWith(consts.CDV_MGMT_SUFFIX));
+	const satelliteVolumes = volumes.filter(isSatellite);
+	const mutableVolumes = volumes.filter(v => !isSatellite(v));
 	const cdvVolumes = mutableVolumes.filter(v => v.volumeClass === consts.volumeClass.CDV);
 	const otherVolumes = mutableVolumes.filter(v => v.volumeClass !== consts.volumeClass.CDV);
 	const messages = [];
 
 	satelliteVolumes.forEach(v => {
 		messages.push(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
-			.addInfo(Entities.Volume.ID, v._id)
+			.addInfo(Entities.Volume.ID, v._id || v.name)
 			.addInfo(Entities.Error, 'Allocator-satellite volumes are managed automatically and cannot be modified.'));
 	});
 
@@ -3185,24 +3191,42 @@ scope.saveVolumes = (requestVolumes, user, cb) => {
 				// pool; the CDV follows with the remaining capacity.
 				allocateAndSliceIntoVolumes([satellite, cdv], user, (msgs, created) => {
 					messages.push(...msgs);
-					if (created.length === 2) {
-						// Back-fill cross-references: link the CDV to its satellite.
-						const [satCreated, cdvCreated] = created;
-						const db = app.get('db');
-						db.collection('volume').updateOne(
+					if (created.length !== 2) return next();
+
+					// Back-fill cross-references in both directions: the CDV gains
+					// allocatorVolumeId/UUID linking to the satellite, and the satellite
+					// gains parentCDVUUID (parentCDVId was set at build time but the CDV
+					// UUID is only generated during createVolume).
+					const [satCreated, cdvCreated] = created;
+					const volColl = app.get('db').collection('volume');
+
+					async.parallel([
+						pcb => volColl.updateOne(
 							{ _id: cdvCreated._id, uuid: cdvCreated.uuid },
-							{ $set: { allocatorVolumeId: satCreated._id, allocatorVolumeUUID: satCreated.uuid } },
+							{ $set: {
+								allocatorVolumeId: satCreated._id,
+								allocatorVolumeUUID: satCreated.uuid,
+							} },
 							err => {
 								if (err) {
 									new MongoError(err).log();
-									logger.sysERROR(`saveVolumes: failed to link CDV ${cdvCreated._id} to satellite ${satCreated._id}: ${err}`);
+									logger.sysERROR(`saveVolumes: failed to link CDV ${cdvCreated._id} → satellite ${satCreated._id}: ${err}`);
 								}
-								next();
+								pcb();
 							}
-						);
-					} else {
-						next();
-					}
+						),
+						pcb => volColl.updateOne(
+							{ _id: satCreated._id, uuid: satCreated.uuid },
+							{ $set: { parentCDVUUID: cdvCreated.uuid } },
+							err => {
+								if (err) {
+									new MongoError(err).log();
+									logger.sysERROR(`saveVolumes: failed to link satellite ${satCreated._id} → CDV ${cdvCreated._id}: ${err}`);
+								}
+								pcb();
+							}
+						),
+					], () => next());
 				});
 			}, cb);
 		},
