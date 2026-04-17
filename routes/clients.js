@@ -129,7 +129,28 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 				}
 			}
 
-		res.json(clients);
+		const bdUUIDs = new Set();
+		for (const client of clients)
+			for (const bd of client.block_devices || [])
+				if (bd.uuid) bdUUIDs.add(bd.uuid);
+
+		if (bdUUIDs.size === 0)
+			return res.json(clients);
+
+		app.get('db').collection('volume').find(
+			{ uuid: { $in: [...bdUUIDs] } },
+			{ projection: { uuid: 1, volumeClass: 1 } }
+		).toArray((err, volumes) => {
+			if (!err) {
+				const classByUUID = {};
+				for (const v of volumes) classByUUID[v.uuid] = v.volumeClass;
+				for (const client of clients)
+					for (const bd of client.block_devices || [])
+						if (bd.uuid && classByUUID[bd.uuid])
+							bd.volumeClass = classByUUID[bd.uuid];
+			}
+			res.json(clients);
+		});
 	});
 });
 

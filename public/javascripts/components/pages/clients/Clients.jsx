@@ -178,6 +178,14 @@ const BlockDevicesToggle = ({ totalCount, isExpanded, toggleExpanded }) => {
 		);
 };
 
+const getVolumeClassIcon = volumeClass => {
+	if (volumeClass === consts.volumeClass.CDV)
+		return { className: 'fa fa-database', title: 'CDV (carrier)' };
+	if (volumeClass === consts.volumeClass.CDV_MGMT)
+		return { className: 'fa fa-cog', title: 'CDV allocator satellite' };
+	return null;
+};
+
 const AttachmentsList = ({ items, getStatus, nameDisplay }) => {
 	const [isExpanded, setIsExpanded] = useState(false);
 	const aliasesToString = aliases => aliases && aliases.length ? ` [${aliases.join(', ')}]` : '';
@@ -185,22 +193,26 @@ const AttachmentsList = ({ items, getStatus, nameDisplay }) => {
 
 	return (
 		<>
-			{displayedItems.map((item) => (
-				<div key={item.uuid || item.name} className="pull-left mr-5">
-					<span
-						className={getStatus(item).class}
-						title={getStatus(item).title}
-					>
-						{nameDisplay
-							? nameDisplay(item)
-							: <>
-								{item.name}
-								{item.aliases ? aliasesToString(item.aliases) : ''}
-							  </>
-						}
-					</span>{' '}
-				</div>
-			))}
+			{displayedItems.map((item) => {
+				const icon = getVolumeClassIcon(item.volumeClass);
+				return (
+					<div key={item.uuid || item.name} className="pull-left mr-5">
+						<span
+							className={getStatus(item).class}
+							title={getStatus(item).title}
+						>
+							{icon && <i className={`${icon.className} mr-1`} title={icon.title}></i>}
+							{nameDisplay
+								? nameDisplay(item)
+								: <>
+									{item.name}
+									{item.aliases ? aliasesToString(item.aliases) : ''}
+								  </>
+							}
+						</span>{' '}
+					</div>
+				);
+			})}
 			<BlockDevicesToggle
 				totalCount={items.length}
 				isExpanded={isExpanded}
