@@ -2804,6 +2804,32 @@ scope.markVolumesForDeletion = function(volumes, cb) {
 					);
 				});
 			},
+			function clearLingeringAttachmentsWishfulState(callback) {
+				// Clear any leftover client.attachments.<uuid> wishful-state entries
+				// for the volume being deleted (and for its satellite, if it's a
+				// CDV).  Without this, a CDV_MGMT left in ATTACHING state on the
+				// allocator TOMA client when the CDV is deleted produces an orphan
+				// "attaching" action in the Clients UI that never clears.  Runs
+				// after markForDeletion so a racing attach can no longer succeed,
+				// and after failIfAttached so we know no live block_device holds
+				// these uuids.
+				const uuidsToClear = [dbVolume.uuid];
+				if (dbVolume.volumeClass === consts.volumeClass.CDV && dbVolume.allocatorVolumeUUID)
+					uuidsToClear.push(dbVolume.allocatorVolumeUUID);
+
+				const $unset = {};
+				uuidsToClear.forEach(u => $unset[`attachments.${u}`] = 1);
+				const $or = uuidsToClear.map(u => ({ [`attachments.${u}`]: { $exists: true } }));
+
+				db.collection('client').updateMany(
+					{ $or },
+					{ $unset, $inc: { attachmentsVersion: 1 } },
+					err => {
+						if (err) new MongoError(err).log();
+						callback();
+					}
+				);
+			},
 			function releaseLockPerVolume(callback) {
 				lockModule.releaseLockByZones(lockedZones, () => {
 					lockedZones.clear();
