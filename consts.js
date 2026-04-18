@@ -451,8 +451,18 @@ consts.socketStatus = {
 
 consts.targetHealth = {
 	HEALTHY: 'healthy',
+	ALMOST_FULL: 'almost_full',
 	ALARM: 'alarm',
 	CRITICAL: 'critical'
+};
+
+// Severity order used when two independent signals (e.g. TOMA state vs. CDV
+// extent usage) disagree on a volume's health — take the max.
+consts.targetHealthSeverity = {
+	healthy: 0,
+	almost_full: 1,
+	alarm: 2,
+	critical: 3
 };
 
 consts.diskVendorHexToName = {

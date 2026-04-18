@@ -468,7 +468,11 @@ scope.populateInitialDBCollections = (mainCallback) => {
 						fixInSanityAndRecover: {
 							availableBlocks: false
 						},
-						disableOldManagements: true
+						disableOldManagements: true,
+						thinProvisioning: {
+							cdvAlmostFullThresholdPercent: 90,
+							cdvCriticalThresholdPercent: 99
+						}
 					}
 				},
 				{ upsert: true },

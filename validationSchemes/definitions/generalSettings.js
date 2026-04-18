@@ -80,7 +80,14 @@ var scheme = {
 				partitionsFactorForManagementTopics: { type: 'integer', minimum: 1 }
 			}
 		},
-		disableOldManagements: { type: 'boolean', const: true }
+		disableOldManagements: { type: 'boolean', const: true },
+		thinProvisioning: {
+			type: 'object',
+			properties: {
+				cdvAlmostFullThresholdPercent: { type: 'integer', minimum: 0, maximum: 100 },
+				cdvCriticalThresholdPercent: { type: 'integer', minimum: 0, maximum: 100 }
+			}
+		}
 	}
 };
 

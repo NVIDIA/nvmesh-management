@@ -467,6 +467,48 @@ const GeneralSettings = () => {
 					</>}
 				</AccordionPanel>
 
+				<AccordionPanel title="Thin Provisioning">
+					<div className="form-group row">
+						<div className="col-lg-12">
+							<label>CDV Extent Usage Thresholds</label>
+							<p><small className="text-muted">Health thresholds driven by the ratio of allocated data extents to the CDV&apos;s total data
+								extents. Below the &quot;Almost Full&quot; threshold the CDV is Healthy; at or above &quot;Almost Full&quot; it is marked
+								Almost Full; at or above &quot;Critical&quot; it is marked Critical. These thresholds are merged with TOMA-reported state
+								(degraded / rebuilding → Alarm) by taking the most severe.</small></p>
+						</div>
+					</div>
+					<div className="form-group row">
+						<div className="col-lg-4">
+							<label>Almost Full Threshold</label>
+							<p><small className="text-muted">Default: 90%</small></p>
+						</div>
+						<div className="col-lg-8">
+							<Input type="number"
+							       className="form-control sm-input"
+							       min="0"
+							       max="100"
+							       step="1"
+							       value={(settings.thinProvisioning && settings.thinProvisioning.cdvAlmostFullThresholdPercent) ?? 90}
+							       onChange={e => handleSettingsChange('thinProvisioning.cdvAlmostFullThresholdPercent', parseInt(e.target.value))}/> %
+						</div>
+					</div>
+					<div className="form-group row">
+						<div className="col-lg-4">
+							<label>Critical Threshold</label>
+							<p><small className="text-muted">Default: 99%</small></p>
+						</div>
+						<div className="col-lg-8">
+							<Input type="number"
+							       className="form-control sm-input"
+							       min="0"
+							       max="100"
+							       step="1"
+							       value={(settings.thinProvisioning && settings.thinProvisioning.cdvCriticalThresholdPercent) ?? 99}
+							       onChange={e => handleSettingsChange('thinProvisioning.cdvCriticalThresholdPercent', parseInt(e.target.value))}/> %
+						</div>
+					</div>
+				</AccordionPanel>
+
 				<AccordionPanel title="Logging">
 
 					<div className="form-group row">

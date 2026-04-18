@@ -193,7 +193,7 @@ const Dashboard = () => {
 									icon={<i className="fa fa-database"></i>}
 									topElement={{
 										name: 'Healthy',
-										value: countersData.cdvCount.total - (countersData.cdvCount.critical + countersData.cdvCount.alarm),
+										value: countersData.cdvCount.healthy,
 										link: '/thinProvisioning/cdv'
 									}}
 									rightElement={{
@@ -205,6 +205,11 @@ const Dashboard = () => {
 										name: 'Alarm',
 										value: countersData.cdvCount.alarm,
 										link: '/thinProvisioning/cdv'
+									}}
+									fourthElement={{
+										name: 'Almost Full',
+										value: countersData.cdvCount.almost_full,
+										link: '/thinProvisioning/cdv?filter={"health": "almost_full"}'
 									}}
 								/>
 							</div>

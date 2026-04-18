@@ -239,29 +239,31 @@ scope.calculateVolumeCounters = cb => {
 	});
 };
 
-const makeClassCountersFn = volumeClass => cb => {
+// CDVs get a 4-bucket split: healthy/almost_full/alarm/critical.
+// almost_full is populated by the CDV extent-usage severity merge in
+// calculateVolumeStatus (see getCDVExtentUsageHealth). alarm still comes from
+// the usual TOMA-reported states (degraded / rebuilding).
+scope.calculateCDVCounters = cb => {
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
 
 	volumeCollection.aggregate([
-		{ $match: { volumeClass } },
+		{ $match: { volumeClass: consts.volumeClass.CDV } },
 		{ $group: { _id: '$health', count: { $sum: 1 } } },
 		{ $group: { _id: null, mergedDoc: { $push: { k: '$_id', v: '$count' } } } },
 		{ $replaceRoot: { newRoot: { $arrayToObject: '$mergedDoc' } } },
-		{ $addFields: { total: { $sum: ['$healthy', '$critical', '$alarm'] } } },
+		{ $addFields: { total: { $sum: ['$healthy', '$almost_full', '$alarm', '$critical'] } } },
 	]).toArray((err, rows) => {
 		if (err) {
 			err = new MongoError(err).log();
 		} else {
 			rows = rows[0] || { total: 0 };
-			[consts.targetHealth.HEALTHY, consts.targetHealth.ALARM, consts.targetHealth.CRITICAL]
+			[consts.targetHealth.HEALTHY, consts.targetHealth.ALMOST_FULL, consts.targetHealth.ALARM, consts.targetHealth.CRITICAL]
 				.forEach(h => { if (!(h in rows)) rows[h] = 0; });
 		}
 		cb(err, rows);
 	});
 };
-
-scope.calculateCDVCounters = makeClassCountersFn(consts.volumeClass.CDV);
 
 // TPVs get a 4-bucket split: healthy/alarm/critical + detached.
 // A TPV with no exclusiveClient has status=UNAVAILABLE → stored health=critical,
@@ -2127,6 +2129,13 @@ scope.calculateVolumeStatus = function(volume) {
 
 	// calculate health
 	newHealth = getVolumeHealth(newStatus, newAction);
+
+	// For CDVs, merge TOMA-reported health (degraded / rebuilding → alarm) with
+	// extent-usage-derived health (almost_full / critical). Take the max severity.
+	if (volume.volumeClass === consts.volumeClass.CDV) {
+		newHealth = mergeHealthBySeverity(newHealth, getCDVExtentUsageHealth(volume));
+	}
+
 	var changedHealth = newHealth != oldHealth;
 
 	// check what changed and collect events to emit
@@ -2384,10 +2393,40 @@ function getVolumeHealth(volumeStatus, volumeAction) {
 	return health;
 }
 
+// CDV extent-usage health: driven by the runtimeStats.{allocatedExtents,totalDataExtents}
+// counters that TOMA publishes after every CDV_ALLOC_EXTENT / CDV_FREE_EXTENT, compared
+// against the operator-configurable thresholds in generalSettings.thinProvisioning.
+// Returns HEALTHY, ALMOST_FULL or CRITICAL. ALARM is intentionally not reachable here —
+// the Alarm bucket for CDVs is reserved for TOMA-reported states (DEGRADED, REBUILDING)
+// and is merged in by the caller using targetHealthSeverity.
+function getCDVExtentUsageHealth(volume) {
+	var rs = volume && volume.runtimeStats;
+	if (!rs || !rs.totalDataExtents || rs.totalDataExtents <= 0 || typeof rs.allocatedExtents !== 'number')
+		return consts.targetHealth.HEALTHY;
+
+	var settings = (app.get('globalSettings') || {}).thinProvisioning || {};
+	var almostFullPct = typeof settings.cdvAlmostFullThresholdPercent === 'number' ? settings.cdvAlmostFullThresholdPercent : 90;
+	var criticalPct = typeof settings.cdvCriticalThresholdPercent === 'number' ? settings.cdvCriticalThresholdPercent : 99;
+
+	var usagePct = (rs.allocatedExtents / rs.totalDataExtents) * 100;
+
+	if (usagePct >= criticalPct)
+		return consts.targetHealth.CRITICAL;
+	if (usagePct >= almostFullPct)
+		return consts.targetHealth.ALMOST_FULL;
+	return consts.targetHealth.HEALTHY;
+}
+
+function mergeHealthBySeverity(a, b) {
+	var sev = consts.targetHealthSeverity;
+	return (sev[a] || 0) >= (sev[b] || 0) ? a : b;
+}
+
 function getHealthEvent(health) {
 	var emitHealthEvent;
 
 	switch (health) {
+		case consts.targetHealth.ALMOST_FULL:
 		case consts.targetHealth.ALARM:
 		case consts.targetHealth.CRITICAL:
 			emitHealthEvent = objectNotifier.events.volumeFailureEvent;
@@ -3881,17 +3920,23 @@ scope.handleCDVAllocatorStats = (message, callback) => {
 	var volumeCollection = db.collection('volume');
 	const { cdvUUID, allocatedExtents, totalDataExtents } = message.payload;
 
-	volumeCollection.updateOne(
+	volumeCollection.findOneAndUpdate(
 		{ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV },
 		{ $set: {
 			'runtimeStats.allocatedExtents': allocatedExtents,
 			'runtimeStats.totalDataExtents': totalDataExtents,
 			'runtimeStats.lastUpdated': new Date(),
 		} },
-		() => {}
+		{ returnDocument: consts.mongoReturnDocument.AFTER },
+		(err, res) => {
+			var cdv = res && res.value;
+			if (err || !cdv)
+				return callback();
+			// Re-run status calculation so the new usage ratio is reflected in
+			// volume.health via getCDVExtentUsageHealth() severity merge.
+			scope.calculateAndUpdateVolumeStatus(cdv._id, cdv, () => callback());
+		}
 	);
-
-	callback();
 };
 
 // Called by kafkaRouter when a client management agent reports per-TPV allocator
