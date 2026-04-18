@@ -37,6 +37,7 @@ const Sidebar = () => {
 		icon: 'fa-cubes',
 		caption: 'Thin Provisioning',
 		adminOnly: false,
+		alpha: true,
 		subItems: [{
 			url: '/thin-provisioning/cdv',
 			icon: 'fa fa-database',
@@ -244,6 +245,17 @@ const MenuLink = ({
 				<a onClick={(event) => onToggleSubMenu(event, link)} href={link.url}>
 					<i className={`fa ${link.icon}`}></i>
 					<span>{link.caption}</span>
+					{link.alpha && <span style={{
+						fontSize: '13.5px',
+						fontWeight: 'bold',
+						background: 'linear-gradient(135deg, #7B2FBE, #4A90D9)',
+						color: 'white',
+						padding: '1.5px 7.5px',
+						borderRadius: '12px',
+						marginLeft: '7.5px',
+						letterSpacing: '0.75px',
+						verticalAlign: 'middle',
+					}}>α</span>}
 					{link.subItems &&
 						<i className={`fa pull-right fa-chevron-left sub-menu-arrow ${(isOpen || isCurrentPage) ? 'rotated' : ''}`}></i>}
 				</a>
