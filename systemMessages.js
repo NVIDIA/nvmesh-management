@@ -1458,17 +1458,10 @@ var systemMessages = {
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
-	MIXED_VERSION_CLUSTER_NOT_SUPPORTED: {
-		message: 'Operation not supported in a mixed-version cluster; complete rolling upgrade first',
-		id: 1960,
-		header: 'Preempt Failed',
-		logLevel: consts.loggingLevel.WARNING,
-		sysLogLevel: consts.loggingLevel.WARNING
-	},
 	CLIENT_PREEMPT_FROM_CDV_REQUEST: {
 		message: 'REST API Request: Preempt Client from CDV',
 		id: 1961,
-		header: getAuditHeader(consts.entity.client, 'preemptFromCDV'),
+		header: getAuditHeader(consts.entity.client, 'Preempt From CDV'),
 		logLevel: consts.loggingLevel.INFO,
 		sysLogLevel: consts.loggingLevel.INFO,
 		isAudit: true,
