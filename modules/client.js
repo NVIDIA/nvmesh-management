@@ -4985,11 +4985,19 @@ scope.attachSatelliteForAllocator = (cdvUUID, tomaHostname, allocatorGeneration,
 				if (err2) return cb(new MongoError(err2).log());
 				if (!sat) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, cdv.allocatorVolumeUUID));
 
+				// The reservation-transition validator (volume.js getTransitionValidity) rejects
+				// a preempt request whose reservation.version does not match the current value on
+				// the satellite document — defaulting to 0 will fail once the previous allocator
+				// has attached (which bumps the version).  Read the current version and pass it
+				// through so the preempt validates cleanly.
+				const currentReservationVersion = (sat.reservation && sat.reservation.version) || 0;
+
 				const requestedVolumes = [{
 					name: sat._id,
 					uuid: sat.uuid,
 					reservation: {
 						mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE,
+						version: currentReservationVersion,
 						preempt: true,
 						isDetachOthers: true,
 					},
