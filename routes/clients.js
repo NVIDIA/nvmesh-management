@@ -312,10 +312,14 @@ router.get('/count', getCountEntitiesHandler('client'));
  * every TOMA, terminates the client's reg_ctx on every CDV segment, clears
  * tpvConfig.exclusiveClient on every TPV the client held on this CDV, and
  * removes the (client, CDV) attachment from Mongo.
+ *
+ * Body-based POST (not path-parameterized) so the CLI layer can template
+ * the payload via Jinja — CLI route fields are not rendered.
+ *
+ * Body: { clientID: string, cdvID: string, reason: string }
  */
-router.post('/:clientID/preemptFromCDV/:cdvID', isAdminRole, (req, res) => {
-	const { clientID, cdvID } = req.params;
-	const reason = (req.body && req.body.reason) || '';
+router.post('/preemptFromCDV', isAdminRole, (req, res) => {
+	const { clientID, cdvID, reason } = req.body || {};
 
 	const auditLog = createAuditRequestLog(req, systemMessages.CLIENT_PREEMPT_FROM_CDV_REQUEST)
 		.addInfo(Entities.Client.ID, clientID)
@@ -324,6 +328,8 @@ router.post('/:clientID/preemptFromCDV/:cdvID', isAdminRole, (req, res) => {
 	utils.handleRESTAndLog(
 		[auditLog],
 		cb => {
+			if (!clientID || !cdvID)
+				return cb(new SystemMessage(systemMessages.INVALID_REQUEST_PARAMS || systemMessages.BAD_REQUEST));
 			const db = req.app.get('db');
 			db.collection('volume').findOne(
 				{ _id: cdvID, volumeClass: consts.volumeClass.CDV },
@@ -335,7 +341,7 @@ router.post('/:clientID/preemptFromCDV/:cdvID', isAdminRole, (req, res) => {
 						// CDV_PREEMPT_TOMA_UNRESPONSIVE returns as error so the
 						// operator knows the EVICTING state persists for the
 						// reaper or manual retry.
-						cb(preemptErr, { clientID, cdvID, reason });
+						cb(preemptErr, { clientID, cdvID, reason: reason || '' });
 					});
 				}
 			);
