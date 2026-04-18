@@ -1624,8 +1624,10 @@ scope.sendPreemptToAllTomasOfCDV = (cdv, clientID, newFloor, cb) => {
 	// Synchronous placeholder install — any concurrent caller that arrives
 	// after this line sees the existing entry and chains its callback.
 	const entry = {
-		cdv, clientID, newFloor,
-		expectedTomas: null,  // populated after server lookup
+		cdv,
+		clientID,
+		newFloor,
+		expectedTomas: null, // populated after server lookup
 		ackedTomas: new Set(),
 		callback: cb,
 		retries: 0,
@@ -4085,6 +4087,64 @@ scope.detach = (clientID, clientUUID, requestedVolumes, options, cb) => {
 					'Allocator-satellite volumes are detached automatically when the next allocator preempts (pass adminManualOperation=true to override).'));
 		});
 
+		// Admin-manual-operation: a CDV attached via attachTPV carries
+		// referenceIDs of the form 'tpv:<tpvUUID>' (and possibly 'toma:<...>').
+		// A direct detach without referenceID auto-defaults to
+		// referenceID=volume.uuid, which doesn't match the stored entries and
+		// trips the MISSING_REF_ID check in scope.detachVolumes.
+		//
+		// Split the admin-override CDV/CDV_MGMT detaches out of otherVolumes.
+		// For each, read the stored referenceIDs and fire one scope.detachVolumes
+		// call per refID, SERIALLY — the existing path's refID-removal logic
+		// handles "middle ref → refIDs.length > 1 → keep attached" vs. "last
+		// ref → full detach + DetachVolumes Kafka" correctly only when each
+		// volume.uuid appears at most once per call. Sequential per-refID
+		// detaches preserve that invariant and fully-detach by the last one.
+		const overrideVolumes = adminManualOperation
+			? otherVolumes.filter(v => {
+				const vc = classMap[v.name]?.volumeClass;
+				return vc === consts.volumeClass.CDV || vc === consts.volumeClass.CDV_MGMT;
+			})
+			: [];
+		const plainOtherVolumes = otherVolumes.filter(v => !overrideVolumes.includes(v));
+
+		const detachOverrideVolumes = (nextPhase) => {
+			if (!overrideVolumes.length) return nextPhase();
+			const clientCollection = db.collection('client');
+			async.eachSeries(overrideVolumes, (vol, eachVol) => {
+				const uuid = classMap[vol.name]?.uuid;
+				if (!uuid) return eachVol();
+				clientCollection.findOne(
+					{ _id: clientID },
+					{ projection: { [`attachments.${uuid}.referenceIDs`]: 1, uuid: 1 } },
+					(err, clientDoc) => {
+						if (err || !clientDoc) {
+							allMessages.push(new SystemAdminMessage(systemMessages.DETACH_VOLUME_GENERAL_ERROR)
+								.addInfo(Entities.Volume.ID, vol.name)
+								.addInfo(Entities.Volume.UUID, uuid)
+								.addInfo(Entities.Client.ID, clientID)
+								.addInfo(Entities.Error, err ? String(err) : 'client not found'));
+							return eachVol();
+						}
+						const refIDs = (clientDoc.attachments && clientDoc.attachments[uuid]
+							&& clientDoc.attachments[uuid].referenceIDs) || [];
+						// No stored references: fall back to the default path which
+						// handles VOLUME_NOT_ATTACHED / MISSING_REF_ID reporting.
+						const refsToDetach = refIDs.length ? refIDs : [null];
+						async.eachSeries(refsToDetach, (refID, nextRef) => {
+							const req = refID === null
+								? [{ name: vol.name, uuid, force: vol.force }]
+								: [{ name: vol.name, uuid, referenceID: refID, force: vol.force }];
+							scope.detachVolumes(clientID, clientUUID, req, msgs => {
+								if (Array.isArray(msgs)) allMessages.push(...msgs);
+								nextRef();
+							});
+						}, eachVol);
+					}
+				);
+			}, nextPhase);
+		};
+
 		async.parallel([
 			next => {
 				if (!tpvVolumes.length) return next();
@@ -4105,13 +4165,14 @@ scope.detach = (clientID, clientUUID, requestedVolumes, options, cb) => {
 				}, next);
 			},
 			next => {
-				if (!otherVolumes.length) return next();
-				utils.executeOnVolumesAndClient(otherVolumes, clientID, clientUUID,
+				if (!plainOtherVolumes.length) return next();
+				utils.executeOnVolumesAndClient(plainOtherVolumes, clientID, clientUUID,
 					scope.detachVolumes, scope.detachSnapshots,
 					(clientID, clientUUID, mdVolumes, cb) => volumeModule.mdVolumeOperationNotSupportedResponse(mdVolumes, cb),
 					msgs => { allMessages.push(...msgs); next(); }
 				);
-			}
+			},
+			next => detachOverrideVolumes(next)
 		], () => cb(allMessages));
 	});
 };

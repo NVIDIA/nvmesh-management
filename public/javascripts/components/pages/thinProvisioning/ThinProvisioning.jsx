@@ -124,11 +124,11 @@ const ThinProvisioning = () => {
 				// when the server-side enrichment isn't present on a given payload,
 				// the check falls through to the plain client name.
 				if (tpvRow.isEvicting) {
-					return <React.Fragment>
+					return <>
 						{tpvRow.tpvConfig?.exclusiveClient}
 						{' '}
 						<label className="label bg-yellow">Evicting</label>
-					</React.Fragment>;
+					</>;
 				}
 				return tpvRow.tpvConfig?.exclusiveClient || <em>Detached</em>;
 			},
