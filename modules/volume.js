@@ -82,12 +82,47 @@ scope.getAllVolumes = function(projection, page, count, filter, sort, cb) {
 		}
 	];
 
-	// Denormalize CDV name for TPV queries
+	// Denormalize CDV name for TPV queries; also enrich with isEvicting so
+	// the ThinProvisioning table's per-row "Evicting" badge
+	// (TPV_PerClientCDVPreemption.md Step 19b) can render. isEvicting is
+	// derived the same way as in calculateTPVCounters: join the exclusive
+	// client's attachments (a UUID-keyed object) and check whether the
+	// entry keyed by the parent CDV UUID has action==='evicting'.
 	if (query.filter.volumeClass === consts.volumeClass.TPV) {
 		pipeline.push(
 			{ $lookup: { from: 'volume', localField: 'tpvConfig.cdvId', foreignField: '_id', as: '_cdv', pipeline: [{ $project: { name: 1 } }] } },
 			{ $addFields: { 'tpvConfig.cdvName': { $arrayElemAt: ['$_cdv.name', 0] } } },
-			{ $unset: '_cdv' }
+			{ $unset: '_cdv' },
+			{ $lookup: {
+				from: 'client',
+				let: { exClient: '$tpvConfig.exclusiveClient', cdvUUID: '$tpvConfig.cdvUUID' },
+				pipeline: [
+					{ $match: { $expr: { $eq: ['$_id', '$$exClient'] } } },
+					{ $project: {
+						_id: 0,
+						isEvicting: {
+							$let: {
+								vars: {
+									match: { $arrayElemAt: [
+										{ $filter: {
+											input: { $objectToArray: { $ifNull: ['$attachments', {}] } },
+											as: 'kv',
+											cond: { $eq: ['$$kv.k', '$$cdvUUID'] },
+										} },
+										0,
+									] },
+								},
+								in: { $eq: ['$$match.v.action', consts.volumeAttachmentActions.EVICTING] },
+							},
+						},
+					} },
+				],
+				as: '_clientEvict',
+			} },
+			{ $addFields: {
+				isEvicting: { $ifNull: [{ $arrayElemAt: ['$_clientEvict.isEvicting', 0] }, false] },
+			} },
+			{ $unset: '_clientEvict' }
 		);
 	}
 
@@ -236,14 +271,59 @@ scope.calculateTPVCounters = cb => {
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
 
+	// Per-client CDV preempt (TPV_PerClientCDVPreemption.md Step 19b):
+	// a TPV whose exclusiveClient has action === 'evicting' on the parent
+	// CDV is counted as 'alarm' on the dashboard dial. This is the durable
+	// observation channel — the per-row Evicting badge is transient and
+	// might be missed by an operator skimming the dashboard.
+	//
+	// client.attachments is a UUID-keyed object. Look up the attachment entry
+	// via attachments.<cdvUUID> (not by cdvId/name) — the TPV's tpvConfig has
+	// cdvUUID for exactly this purpose.
 	volumeCollection.aggregate([
 		{ $match: { volumeClass: consts.volumeClass.TPV } },
+		{ $lookup: {
+			from: 'client',
+			let: { exClient: '$tpvConfig.exclusiveClient', cdvUUID: '$tpvConfig.cdvUUID' },
+			pipeline: [
+				{ $match: { $expr: { $eq: ['$_id', '$$exClient'] } } },
+				// attachments is a UUID-keyed object; $objectToArray + $filter
+				// pulls out the attachment entry for the TPV's parent CDV.
+				// Compatible with MongoDB 3.6+; avoids $getField (5.0+).
+				{ $project: {
+					_id: 0,
+					isEvicting: {
+						$let: {
+							vars: {
+								match: { $arrayElemAt: [
+									{ $filter: {
+										input: { $objectToArray: { $ifNull: ['$attachments', {}] } },
+										as: 'kv',
+										cond: { $eq: ['$$kv.k', '$$cdvUUID'] },
+									} },
+									0,
+								] },
+							},
+							in: { $eq: ['$$match.v.action', consts.volumeAttachmentActions.EVICTING] },
+						},
+					},
+				} },
+			],
+			as: 'clientEvict',
+		} },
+		{ $addFields: {
+			isEvicting: { $ifNull: [{ $arrayElemAt: ['$clientEvict.isEvicting', 0] }, false] },
+		} },
 		{ $addFields: { bucket: { $cond: {
 			if: { $and: [
 				{ $ifNull: ['$tpvConfig.exclusiveClient', false] },
 				{ $ne: ['$tpvConfig.exclusiveClient', ''] },
 			] },
-			then: '$health',
+			then: { $cond: {
+				if: '$isEvicting',
+				then: consts.targetHealth.ALARM,
+				else: '$health',
+			} },
 			else: 'detached',
 		} } } },
 		{ $group: { _id: '$bucket', count: { $sum: 1 } } },
@@ -3364,6 +3444,10 @@ function prepareCDVForCreate(volume) {
 		// only; the allocator now lives on a fixed-size satellite volume.
 		allocatorSizeGB: consts.CDV_MGMT_SIZE_GIB,
 		maxTPVs: cfg.maxTPVs != null ? cfg.maxTPVs : 512,
+		// Per-client preempt admission gate (see TPV_PerClientCDVPreemption.md).
+		// Monotonic u64; bumped by preemptClientFromCDV. 0 is the sentinel
+		// "no gate"; pre-feature CDVs read 0.
+		admissionFloor: 0,
 	};
 	delete volume.tpvConfig;
 

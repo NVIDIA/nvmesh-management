@@ -1444,6 +1444,36 @@ var systemMessages = {
 		id: 1957,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	CLIENT_EVICTING_FROM_CDV: {
+		message: 'Cannot attach: client is being evicted from this CDV',
+		id: 1958,
+		header: 'Attach Failed',
+		logLevel: consts.loggingLevel.WARNING,
+		sysLogLevel: consts.loggingLevel.WARNING
+	},
+	CDV_PREEMPT_TOMA_UNRESPONSIVE: {
+		message: 'CDV preempt failed: one or more TOMAs did not acknowledge; eviction state persists for later retry',
+		id: 1959,
+		header: 'Preempt Failed',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	MIXED_VERSION_CLUSTER_NOT_SUPPORTED: {
+		message: 'Operation not supported in a mixed-version cluster; complete rolling upgrade first',
+		id: 1960,
+		header: 'Preempt Failed',
+		logLevel: consts.loggingLevel.WARNING,
+		sysLogLevel: consts.loggingLevel.WARNING
+	},
+	CLIENT_PREEMPT_FROM_CDV_REQUEST: {
+		message: 'REST API Request: Preempt Client from CDV',
+		id: 1961,
+		header: getAuditHeader(consts.entity.client, 'preemptFromCDV'),
+		logLevel: consts.loggingLevel.INFO,
+		sysLogLevel: consts.loggingLevel.INFO,
+		isAudit: true,
+		isSecurity: true
+	},
 	DISK_FORMAT_FAILED: {
 		message: 'Failed to format drive',
 		id: 15531,

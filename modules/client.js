@@ -36,6 +36,8 @@ const { UpdateTargetNICs } = require('../models/kafkaMessages/UpdateTargetNICs')
 const { UpdateVolumeEmulation } = require('../models/kafkaMessages/UpdateVolumeEmulation');
 const { UpdateReferenceIDs } = require('../models/kafkaMessages/UpdateReferenceIDs.js');
 const { AttachSatelliteResponse, AttachSatelliteResponseStatus } = require('../models/kafkaMessages/AttachSatelliteResponse.js');
+const { PreemptClientFromCDV } = require('../models/kafkaMessages/PreemptClientFromCDV.js');
+const { PreemptClientFromCDVResponse } = require('../models/kafkaMessages/PreemptClientFromCDVResponse.js');
 
 var scope = {};
 
@@ -1561,6 +1563,325 @@ scope.sendReservationModeChangeMessageToAllTargets = (volumes, cb) => {
 			], nextZone);
 		});
 	}, cb);
+};
+
+// ── Per-client CDV preempt: fan-out and ACK aggregation ─────────────────────
+//
+// In-memory tracker for in-flight preemptClientFromCDV fan-outs. Key =
+// `${cdvUUID}|${clientID}`. The durable source of truth is the EVICTING action
+// on the client's attachment document in Mongo (Step 14 markEvicting); this
+// tracker exists only to bridge the async Kafka fan-out / ACK loop. If the
+// management instance restarts mid-preempt, the reaper (Step 14b) re-initiates
+// the preempt from the EVICTING Mongo state and rebuilds this tracker; any
+// late ACK arriving for a preempt that is no longer tracked is a harmless
+// no-op (§2.10.4 idempotency).
+const pendingPreempts = new Map();
+
+const PREEMPT_ACK_TIMEOUT_MS = 30 * 1000;
+const PREEMPT_MAX_RETRIES = 5;
+const PREEMPT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000];
+
+function preemptKey(cdvUUID, clientID) {
+	return `${cdvUUID}|${clientID}`;
+}
+
+function resolvePendingPreempt(key, err) {
+	const entry = pendingPreempts.get(key);
+	if (!entry) return;
+	pendingPreempts.delete(key);
+	if (entry.timer) clearTimeout(entry.timer);
+	entry.callback(err);
+}
+
+scope.sendPreemptToAllTomasOfCDV = (cdv, clientID, newFloor, cb) => {
+	// Derive the set of zones serving this CDV from the CDV's chunks; pattern
+	// matches sendReservationModeChangeMessageToAllTargets. A TOMA that has no
+	// segments of this CDV but receives the message anyway will ACK with a
+	// no-op (terminatedRegistrants=0); idempotency makes over-fan-out safe.
+	const zones = [...new Set(
+		(cdv.chunks || []).flatMap(chunk => (chunk.pRaids || []).map(pRaid => pRaid.zone))
+	)];
+	if (zones.length === 0) {
+		// CDV has no chunks — nothing to fan out to. Treat as success so
+		// management can proceed to cleanupDB. This case is pathological
+		// (CDV with no segments) but we do not want to block the eviction.
+		return cb();
+	}
+
+	const key = preemptKey(cdv.uuid, clientID);
+	// If a fan-out is already in flight for this (cdv, client), wait on its
+	// completion rather than starting a duplicate. This handles the reaper
+	// racing an operator-initiated preempt, or two admin REST calls landing
+	// concurrently. Atomic check-and-install via synchronous Map access:
+	// both checking and setting a placeholder happen in this tick before
+	// any await/async boundary, closing the TOCTOU window.
+	const existing = pendingPreempts.get(key);
+	if (existing) {
+		const prev = existing.callback;
+		existing.callback = (err) => { prev(err); cb(err); };
+		return;
+	}
+	// Synchronous placeholder install — any concurrent caller that arrives
+	// after this line sees the existing entry and chains its callback.
+	const entry = {
+		cdv, clientID, newFloor,
+		expectedTomas: null,  // populated after server lookup
+		ackedTomas: new Set(),
+		callback: cb,
+		retries: 0,
+		timer: null,
+	};
+	pendingPreempts.set(key, entry);
+
+	utils.loadCollection('server',
+		{ filter: { zone: { $in: zones } }, projection: { node_id: 1, topics: 1 } },
+		(err, targets) => {
+			if (err) return resolvePendingPreempt(key, err);
+			const targetByNode = new Map(targets.map(t => [t.node_id, t]));
+			if (targetByNode.size === 0) return resolvePendingPreempt(key, null);
+
+			entry.expectedTomas = new Set(targetByNode.keys());
+
+			const publish = (toNodeIds) => {
+				const msg = new PreemptClientFromCDV(
+					clientID, null, cdv._id, cdv.uuid, newFloor
+				);
+				async.each(toNodeIds, (nodeId, nextNode) => {
+					const target = targetByNode.get(nodeId);
+					if (!target) return nextNode();
+					kafkaModule.sendMessages(
+						target.topics[consts.topicSuffix.TOMA_COMMANDS],
+						[msg],
+						nextNode
+					);
+				}, () => {});
+			};
+
+			const armTimeout = () => {
+				entry.timer = setTimeout(() => {
+					const missing = [...entry.expectedTomas].filter(t => !entry.ackedTomas.has(t));
+					if (missing.length === 0) {
+						return resolvePendingPreempt(key, null);
+					}
+					if (entry.retries >= PREEMPT_MAX_RETRIES) {
+						return resolvePendingPreempt(key,
+							new SystemMessage(systemMessages.CDV_PREEMPT_TOMA_UNRESPONSIVE)
+								.addInfo(Entities.Volume.UUID, cdv.uuid)
+								.addInfo(Entities.Client.ID, clientID)
+								.log());
+					}
+					const backoff = PREEMPT_BACKOFF_MS[entry.retries] || 16000;
+					entry.retries += 1;
+					setTimeout(() => {
+						if (!pendingPreempts.has(key)) return;
+						publish(missing);
+						armTimeout();
+					}, backoff);
+				}, PREEMPT_ACK_TIMEOUT_MS);
+			};
+
+			publish([...entry.expectedTomas]);
+			armTimeout();
+		});
+};
+
+// Per-client CDV preempt entry point (§2.10 / Step 14).
+//
+// Callable from:
+//   • detachTPV force path (Step 15.1)
+//   • removeAlreadyDetachedAttachments stale-client cleanup (Step 15.2)
+//   • attachTPV with reservation.preempt === PREEMPT (Step 15.3)
+//   • POST /clients/:id/preemptFromCDV/:cdvID admin REST (Step 16)
+//   • reapEvictingAttachments on management startup / periodic tick (Step 14b)
+//
+// Ordering invariant (see TPV_PerClientCDVPreemption.md §2.10.3): markEvicting
+// BEFORE newFloor. If management crashes between the two writes, the reaper
+// observes EVICTING and resumes. The reverse order leaves no recoverable signal.
+scope.preemptClientFromCDV = (cdvUUID, clientID, callback) => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	const clientCollection = db.collection('client');
+	let cdv, newFloor;
+
+	async.series([
+		function loadCDV(cb) {
+			volumeCollection.findOne(
+				{ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV },
+				(err, doc) => {
+					if (err) return cb(new MongoError(err).log());
+					if (!doc) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, cdvUUID));
+					cdv = doc;
+					cb();
+				}
+			);
+		},
+		// Step 1 of Step 14 — mark EVICTING FIRST.
+		// attachments is a UUID-keyed object; use the '.${uuid}.action' path
+		// pattern matching lines 1160, 3146.
+		function markEvicting(cb) {
+			clientCollection.updateOne(
+				{ _id: clientID, [`attachments.${cdv.uuid}`]: { $exists: true } },
+				{ $set: { [`attachments.${cdv.uuid}.action`]: consts.volumeAttachmentActions.EVICTING } },
+				err => {
+					if (err) return cb(new MongoError(err).log());
+					// matchedCount == 0 is fine — attachment may have been removed
+					// by a concurrent stale-client cleanup; the preempt is still
+					// safe to proceed (TOMA handler is idempotent on missing
+					// reg_ctx, cleanupDB is a no-op on missing attachment).
+					cb();
+				}
+			);
+		},
+		// Step 2 — bump floor via $max (monotonic, idempotent on retry).
+		function bumpFloor(cb) {
+			newFloor = ((cdv.cdvConfig && cdv.cdvConfig.admissionFloor) || 0) + 1;
+			volumeCollection.updateOne(
+				{ uuid: cdvUUID },
+				{ $max: { 'cdvConfig.admissionFloor': newFloor } },
+				err => {
+					if (err) return cb(new MongoError(err).log());
+					// Reload cdv so the fan-out picks up the latest floor; an
+					// earlier reaper bump via $max may have set a higher value.
+					volumeCollection.findOne({ uuid: cdvUUID }, (err2, doc) => {
+						if (err2) return cb(new MongoError(err2).log());
+						if (doc && doc.cdvConfig && doc.cdvConfig.admissionFloor > newFloor) {
+							newFloor = doc.cdvConfig.admissionFloor;
+						}
+						cdv = doc || cdv;
+						cb();
+					});
+				}
+			);
+		},
+		// Step 3 — fan out to every TOMA, wait for ACKs with retry/backoff.
+		function fanOut(cb) {
+			scope.sendPreemptToAllTomasOfCDV(cdv, clientID, newFloor, cb);
+		},
+		// Step 4 — DB cleanup once all ACKs land: remove the (client, CDV)
+		// attachment entry and clear tpvConfig.exclusiveClient on every TPV
+		// the client held on this CDV.
+		function cleanupDB(cb) {
+			scope.clearEvictedClientState(cdv, clientID, cb);
+		},
+	], callback);
+};
+
+// Remove the (client, CDV) attachment entry, strip tpv:* references, and
+// clear tpvConfig.exclusiveClient on every TPV the client held on this CDV.
+scope.clearEvictedClientState = (cdv, clientID, callback) => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	const clientCollection = db.collection('client');
+
+	async.series([
+		function clearExclusiveClient(cb) {
+			volumeCollection.updateMany(
+				{
+					'tpvConfig.cdvUUID': cdv.uuid,
+					'tpvConfig.exclusiveClient': clientID,
+					volumeClass: consts.volumeClass.TPV,
+				},
+				{
+					$set: {
+						'tpvConfig.exclusiveClient': null,
+						'tpvConfig.exclusiveClientUUID': null,
+					},
+				},
+				err => {
+					if (err) new MongoError(err).log();
+					cb();
+				}
+			);
+		},
+		function removeAttachment(cb) {
+			// attachments is a UUID-keyed object — remove via $unset on the
+			// full path. Matches the pattern at lines 1154, 3126.
+			clientCollection.updateOne(
+				{ _id: clientID },
+				{ $unset: { [`attachments.${cdv.uuid}`]: 1 } },
+				err => {
+					if (err) new MongoError(err).log();
+					cb();
+				}
+			);
+		},
+	], callback);
+};
+
+// Step 14b — reaper for stuck EVICTING attachments.
+//
+// Scans client attachments for action === 'evicting' and resumes each via
+// preemptClientFromCDV. Every downstream step is idempotent:
+//   • $max floor bump is a no-op if floor already >= newFloor
+//   • TOMA handler uses max_t and second terminate pass finds no reg_ctx
+//   • clearEvictedClientState is a no-op if the attachment is already gone
+//
+// Called from bootstrapper on startup and on a periodic timer; see Step 14b.
+scope.reapEvictingAttachments = (cb) => {
+	const db = app.get('db');
+	const clientCollection = db.collection('client');
+	const volumeCollection = db.collection('volume');
+
+	// attachments is a UUID-keyed object. Use $expr + $objectToArray to find
+	// clients whose attachments object contains ANY value with action==EVICTING.
+	clientCollection.find(
+		{ $expr: { $anyElementTrue: { $map: {
+			input: { $ifNull: [{ $objectToArray: '$attachments' }, []] },
+			as: 'a',
+			in: { $eq: ['$$a.v.action', consts.volumeAttachmentActions.EVICTING] },
+		} } } },
+		{ projection: { _id: 1, attachments: 1 } }
+	).toArray((err, clients) => {
+		if (err) {
+			new MongoError(err).log();
+			return cb && cb(err);
+		}
+		async.eachSeries(clients || [], (client, nextClient) => {
+			// attachments object values have { uuid, action, ... }; collect the
+			// uuids of entries whose action is EVICTING.
+			const evictingUUIDs = Object.keys(client.attachments || {}).filter(uuid =>
+				client.attachments[uuid] &&
+				client.attachments[uuid].action === consts.volumeAttachmentActions.EVICTING
+			);
+			async.eachSeries(evictingUUIDs, (cdvUUID, nextAttach) => {
+				// Confirm the attachment's volume is a CDV (skip any stray
+				// EVICTING action on a non-CDV volume — defensive).
+				volumeCollection.findOne(
+					{ uuid: cdvUUID, volumeClass: consts.volumeClass.CDV },
+					{ projection: { uuid: 1 } },
+					(err2, cdv) => {
+						if (err2 || !cdv) return nextAttach();
+						scope.preemptClientFromCDV(cdv.uuid, client._id, () => nextAttach());
+					}
+				);
+			}, nextClient);
+		}, cb || (() => {}));
+	});
+};
+
+scope.handlePreemptClientFromCDVResponse = (message, callback) => {
+	const parsed = PreemptClientFromCDVResponse.parse(message.payload || message);
+	const key = preemptKey(parsed.cdvUUID, parsed.clientID);
+	const entry = pendingPreempts.get(key);
+	if (!entry) {
+		// Late ACK for a preempt we are no longer tracking (restart, duplicate,
+		// etc.). Harmless: the Mongo EVICTING state is the authoritative record.
+		return callback();
+	}
+	// Match ACK to the newFloor we fanned out; late ACK for an older floor is
+	// ignored. Idempotent: multiple ACKs from the same TOMA for the same floor
+	// are coalesced by the Set.
+	if (parsed.newFloor !== entry.newFloor) return callback();
+	if (parsed.tomaID) entry.ackedTomas.add(parsed.tomaID);
+	// expectedTomas is still null in the very early window between the
+	// placeholder install in sendPreemptToAllTomasOfCDV and loadCollection
+	// completion. An ACK can't actually arrive in that window (nothing has
+	// been published yet), but guard defensively so a stale replayed ACK
+	// from a prior publication can't trip the all-acked check.
+	if (!entry.expectedTomas) return callback();
+	const allAcked = [...entry.expectedTomas].every(t => entry.ackedTomas.has(t));
+	if (allAcked) resolvePendingPreempt(key, null);
+	callback();
 };
 
 scope.getDetachUpdateForAttachment = (detachment, referenceID) => {
@@ -5051,6 +5372,7 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 	const syncFlush = options.syncFlush !== false;
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
+	const clientCollection = db.collection('client');
 	let tpv, cdv;
 
 	async.series([
@@ -5079,6 +5401,66 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 				});
 			});
 		},
+		function checkNotEvictingFromCDV(cb) {
+			// Per-client CDV preempt (Step 2a of TPV_PerClientCDVPreemption.md):
+			// refuse the attach if this client has an in-flight eviction on this
+			// CDV. The gate is per-(client, CDV); an EVICTING state on another
+			// CDV does not block. The error is retriable — the client retries
+			// once the eviction clears (Step 14 cleanupDB) or the reaper (Step
+			// 14b) completes it.
+			//
+			// `attachments` is a UUID-keyed object (not an array) — see §3 of
+			// this file and the patterns at lines 1139, 3234. Access the CDV's
+			// attachment entry via attachments[cdv.uuid].
+			clientCollection.findOne(
+				{ _id: clientID },
+				{ projection: { [`attachments.${cdv.uuid}.action`]: 1 } },
+				(err, clientDoc) => {
+					if (err) return cb(new MongoError(err).log());
+					const attachment = clientDoc && clientDoc.attachments && clientDoc.attachments[cdv.uuid];
+					if (attachment && attachment.action === consts.volumeAttachmentActions.EVICTING) {
+						return cb(new SystemMessage(systemMessages.CLIENT_EVICTING_FROM_CDV)
+							.addInfo(Entities.Client.ID, clientID)
+							.addInfo(Entities.Volume.ID, cdv._id));
+					}
+					cb();
+				}
+			);
+		},
+		function preemptPreviousHolderIfAny(cb) {
+			// Attach-with-preempt (Step 15.3 of TPV_PerClientCDVPreemption.md):
+			// if the TPV is currently held by a different client, fence that
+			// client from the CDV via the narrow per-client primitive instead
+			// of the today's volume-wide reservation.version bump that disturbs
+			// every survivor on the CDV. options.preempt is the attacher's
+			// intent signal (set by callers that wish to displace a stale
+			// holder); without it we just proceed and let management's normal
+			// exclusiveClient conflict path reject.
+			const prevHolder = tpv.tpvConfig && tpv.tpvConfig.exclusiveClient;
+			if (!prevHolder || prevHolder === clientID || !options.preempt) return cb();
+
+			scope.preemptClientFromCDV(cdv.uuid, prevHolder, err => {
+				if (err) {
+					// Propagate preempt failure — MUST NOT proceed with the
+					// attach, otherwise the new client gets a floor-stamped
+					// CDV attach while the old client's reg_ctx may still
+					// exist on some TOMAs (both writing → corruption).
+					return cb(err);
+				}
+				// Reload cdv to pick up the new admission floor stamped by
+				// the preempt, and reload tpv to observe the cleared
+				// exclusiveClient.
+				volumeCollection.findOne({ _id: tpv._id, volumeClass: consts.volumeClass.TPV }, (err2, tpvDoc) => {
+					if (err2) return cb(new MongoError(err2).log());
+					if (tpvDoc) tpv = tpvDoc;
+					volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV }, (err3, cdvDoc) => {
+						if (err3) return cb(new MongoError(err3).log());
+						if (cdvDoc) cdv = cdvDoc;
+						cb();
+					});
+				});
+			});
+		},
 		function attachCDV(cb) {
 			// attachVolumes handles both cases: new CDV attach and ref-only update
 			// (CDV already SHARED_RW attached due to another TPV or TOMA ref).
@@ -5086,11 +5468,19 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 			// block device for TPV L1-tree I/O (load_state / flush_state).  With
 			// isHidden=true the kernel skips gendisk/queue creation and tpv_cdv_sync_io
 			// cannot submit bios.  Same rationale as cdvTomaAutoAttach.js isHidden=false.
+			//
+			// Step 2b: stamp the current admission floor on reservation.version so
+			// the client's REGISTER to TOMA carries the floor and TOMA can reject
+			// stale-version retries from an evicted client.
+			const admissionFloor = (cdv.cdvConfig && cdv.cdvConfig.admissionFloor) || 0;
 			scope.attachVolumes(clientID, clientUUID, [{
 				uuid: cdv.uuid,
 				name: cdv._id,
 				referenceID: `tpv:${tpv.uuid}`,
-				reservation: { mode: consts.reservationModeNames.SHARED_READ_WRITE }
+				reservation: {
+					mode: consts.reservationModeNames.SHARED_READ_WRITE,
+					version: admissionFloor,
+				}
 			}], () => cb());
 		},
 		function attachTPVVolume(cb) {
@@ -5174,6 +5564,17 @@ scope.detachTPV = (clientID, clientUUID, tpvName, callback) => {
  * For each attachment: if the volume is a TPV, clears tpvConfig.exclusiveClient and removes
  * the tpv:<uuid> referenceID from the parent CDV, conditionally detaching the CDV.
  * Non-TPV attachments are skipped silently.
+ *
+ * Per-client CDV preempt integration (TPV_PerClientCDVPreemption.md §2.10 Step 15.2):
+ * For each distinct CDV whose TPVs are being cleaned up here, first call
+ * preemptClientFromCDV to fence the stale client at the TOMA layer (raise
+ * CDV admission_floor + terminate reg_ctx on every CDV segment). Without this,
+ * a partitioned stale client whose reg_ctx still lives on TOMA could continue
+ * RDMA-writing to already-mapped CDV extents — the Path 1 data-path hole
+ * described in §2.10.4. preemptClientFromCDV is idempotent on retry ($max
+ * floor, linear reg_ctx walk), so running it here before the per-TPV cleanup
+ * is safe and closes the stale-writer gap for the stale-client cleanup path
+ * (not just operator-initiated force-detach).
  */
 function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
 	const db = app.get('db');
@@ -5189,48 +5590,62 @@ function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
 			if (err) { new MongoError(err).log(); return done(); }
 			if (!tpvDocs || !tpvDocs.length) return done();
 
-			async.each(tpvDocs, (tpv, next) => {
-				async.series([
-					function clearExclusiveClient(cb) {
-						volumeCollection.updateOne(
-							{ _id: tpv._id, volumeClass: consts.volumeClass.TPV },
-							{ $unset: { 'tpvConfig.exclusiveClient': 1 } },
-							err => { if (err) new MongoError(err).log(); cb(); }
-						);
-					},
-					function recalcTPVStatus(cb) {
-						volumeModule.calculateAndUpdateVolumeStatus(tpv._id, null, () => cb());
-					},
-					function removeCDVReference(cb) {
-						if (!tpv.tpvConfig?.cdvUUID) return cb();
+			// Collect distinct CDV UUIDs this client held TPVs on. Preempt the
+			// client on each CDV at the TOMA layer BEFORE running per-TPV
+			// cleanup — otherwise a partitioned stale client's reg_ctx keeps
+			// living on TOMA and can continue issuing RDMA writes to already-
+			// mapped CDV extents (§2.10.4 Path 1 data-path hole).
+			const cdvUUIDs = [...new Set(
+				tpvDocs.map(t => t.tpvConfig && t.tpvConfig.cdvUUID).filter(Boolean)
+			)];
 
-						// Look up the CDV to get its _id
-						volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV },
-							{ projection: { _id: 1, uuid: 1 } }, (err, cdv) => {
-								if (err || !cdv) {
-									if (err) new MongoError(err).log();
-									return cb();
-								}
+			async.series([
+				preemptCb => async.eachSeries(cdvUUIDs, (cdvUUID, nextCDV) => {
+					scope.preemptClientFromCDV(cdvUUID, clientID, () => nextCDV());
+				}, preemptCb),
+				perTpvCb => async.each(tpvDocs, (tpv, next) => {
+					async.series([
+						function clearExclusiveClient(cb) {
+							volumeCollection.updateOne(
+								{ _id: tpv._id, volumeClass: consts.volumeClass.TPV },
+								{ $unset: { 'tpvConfig.exclusiveClient': 1 } },
+								err2 => { if (err2) new MongoError(err2).log(); cb(); }
+							);
+						},
+						function recalcTPVStatus(cb) {
+							volumeModule.calculateAndUpdateVolumeStatus(tpv._id, null, () => cb());
+						},
+						function removeCDVReference(cb) {
+							if (!tpv.tpvConfig?.cdvUUID) return cb();
 
-								// Look up this client's UUID for the detachVolumes call
-								clientCollection.findOne({ _id: clientID }, { projection: { uuid: 1 } }, (err2, clientDoc) => {
-									if (err2 || !clientDoc) {
+							// Look up the CDV to get its _id
+							volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV },
+								{ projection: { _id: 1, uuid: 1 } }, (err2, cdv) => {
+									if (err2 || !cdv) {
 										if (err2) new MongoError(err2).log();
 										return cb();
 									}
 
-									// Remove the tpv:<uuid> referenceID; detachVolumes handles conditional CDV detach
-									// when no tpv:* or toma:* refs remain on this client for this CDV.
-									scope.detachVolumes(clientID, clientDoc.uuid, [{
-										uuid: cdv.uuid,
-										name: cdv._id,
-										referenceID: `tpv:${tpv.uuid}`
-									}], () => cb());
+									// Look up this client's UUID for the detachVolumes call
+									clientCollection.findOne({ _id: clientID }, { projection: { uuid: 1 } }, (err3, clientDoc) => {
+										if (err3 || !clientDoc) {
+											if (err3) new MongoError(err3).log();
+											return cb();
+										}
+
+										// Remove the tpv:<uuid> referenceID; detachVolumes handles conditional CDV detach
+										// when no tpv:* or toma:* refs remain on this client for this CDV.
+										scope.detachVolumes(clientID, clientDoc.uuid, [{
+											uuid: cdv.uuid,
+											name: cdv._id,
+											referenceID: `tpv:${tpv.uuid}`
+										}], () => cb());
+									});
 								});
-							});
-					}
-				], next);
-			}, done);
+						}
+					], next);
+				}, perTpvCb),
+			], done);
 		});
 }
 

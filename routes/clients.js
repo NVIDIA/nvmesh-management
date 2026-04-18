@@ -306,6 +306,44 @@ router.get('/count', getCountEntitiesHandler('client'));
 * }]
 */
 
+/**
+ * Per-client CDV preempt admin endpoint (TPV_PerClientCDVPreemption.md §2.10
+ * Step 16). Forcibly evicts a client from a CDV: raises admission_floor on
+ * every TOMA, terminates the client's reg_ctx on every CDV segment, clears
+ * tpvConfig.exclusiveClient on every TPV the client held on this CDV, and
+ * removes the (client, CDV) attachment from Mongo.
+ */
+router.post('/:clientID/preemptFromCDV/:cdvID', isAdminRole, (req, res) => {
+	const { clientID, cdvID } = req.params;
+	const reason = (req.body && req.body.reason) || '';
+
+	const auditLog = createAuditRequestLog(req, systemMessages.CLIENT_PREEMPT_FROM_CDV_REQUEST)
+		.addInfo(Entities.Client.ID, clientID)
+		.addInfo(Entities.Volume.ID, cdvID);
+
+	utils.handleRESTAndLog(
+		[auditLog],
+		cb => {
+			const db = req.app.get('db');
+			db.collection('volume').findOne(
+				{ _id: cdvID, volumeClass: consts.volumeClass.CDV },
+				{ projection: { uuid: 1 } },
+				(err, cdv) => {
+					if (err || !cdv) return cb(err || new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.ID, cdvID));
+					clientModule.preemptClientFromCDV(cdv.uuid, clientID, preemptErr => {
+						// Treat success and non-fatal retry conditions as 200;
+						// CDV_PREEMPT_TOMA_UNRESPONSIVE returns as error so the
+						// operator knows the EVICTING state persists for the
+						// reaper or manual retry.
+						cb(preemptErr, { clientID, cdvID, reason });
+					});
+				}
+			);
+		},
+		systemAdminMessages => res.json(systemAdminMessages)
+	);
+});
+
 router.post('/attach', isAdminRole, (req, res) => {
 	let { client, clientUUID, volumes } = req.body;
 

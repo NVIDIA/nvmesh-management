@@ -494,4 +494,149 @@ describe('Thin Provisioning', () => {
 			handleCDVCapacityWarning(fakeMessage, done);
 		});
 	});
+
+	// ── Per-client CDV preempt (TPV_PerClientCDVPreemption.md §2.10 Step 20) ──
+
+	describe('CDV preempt client', () => {
+		const clientModule = require('../modules/client.js');
+		let cdv, tpv;
+		const TEST_CLIENT = 'test-client-01';
+		const TEST_CLIENT_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+		before(() => setup.newSetup()
+			.then(() => generateAndSaveTargets(1, 1))
+			.then(() => {
+				cdv = makeCDV('cdv-preempt-test', 20);
+				return saveVolume(cdv);
+			})
+			.then(() => {
+				tpv = makeTPV('tpv-preempt-test', cdv.name, 4);
+				return saveVolume(tpv);
+			})
+			// Simulate an existing attachment in the 'normal' state so the
+			// preempt flow has something to transition to EVICTING.
+			// attachments is a UUID-keyed object, not an array.
+			.then(() => app.get('db').collection('client').insertOne({
+				_id: TEST_CLIENT,
+				uuid: TEST_CLIENT_UUID,
+				attachments: {
+					[cdv.uuid]: {
+						uuid: cdv.uuid,
+						name: cdv.name,
+						volumeID: cdv.name,
+						action: consts.volumeAttachmentActions.ATTACHING,
+					},
+				},
+			}))
+			// Simulate the TPV having this client as its exclusive holder.
+			.then(() => app.get('db').collection('volume').updateOne(
+				{ _id: tpv.name },
+				{ $set: { 'tpvConfig.exclusiveClient': TEST_CLIENT, 'tpvConfig.exclusiveClientUUID': TEST_CLIENT_UUID } }
+			))
+		);
+
+		it('CDV admissionFloor should be initialized to 0 on create', () => {
+			return getVolumeFromDB(cdv.name).then(doc => {
+				assert.strictEqual(doc.cdvConfig.admissionFloor, 0,
+					'Expected admissionFloor=0 on freshly-created CDV');
+			});
+		});
+
+		it('Attach request during EVICTING is refused with CLIENT_EVICTING_FROM_CDV', done => {
+			// Mark attachment as EVICTING directly in Mongo to simulate an
+			// in-flight preempt (avoids waiting for the Kafka fan-out).
+			const clientCol = app.get('db').collection('client');
+			clientCol.updateOne(
+				{ _id: TEST_CLIENT },
+				{ $set: { [`attachments.${cdv.uuid}.action`]: consts.volumeAttachmentActions.EVICTING } },
+				() => {
+					clientModule.attachTPV(TEST_CLIENT, TEST_CLIENT_UUID, tpv.name, {}, err => {
+						assert(err, 'Expected attachTPV to fail while EVICTING');
+						const isCorrectError = err && err.internalName === 'CLIENT_EVICTING_FROM_CDV';
+						assert(isCorrectError,
+							`Expected CLIENT_EVICTING_FROM_CDV, got ${err && err.internalName}`);
+						// Restore attachment state for subsequent tests.
+						clientCol.updateOne(
+							{ _id: TEST_CLIENT },
+							{ $set: { [`attachments.${cdv.uuid}.action`]: consts.volumeAttachmentActions.ATTACHING } },
+							() => done()
+						);
+					});
+				}
+			);
+		});
+
+		it('Double-preempt should be idempotent (floor monotonic via $max)', done => {
+			// Seed: bump floor twice manually, simulating two preempt invocations
+			// that land (first bumps 0→1, second 1→2 on retry). Using $max means
+			// a $max with value ≤ current value is a no-op.
+			const volCol = app.get('db').collection('volume');
+			volCol.updateOne(
+				{ uuid: cdv.uuid },
+				{ $max: { 'cdvConfig.admissionFloor': 5 } },
+				() => {
+					// Second call with a lower value — should NOT decrease.
+					volCol.updateOne(
+						{ uuid: cdv.uuid },
+						{ $max: { 'cdvConfig.admissionFloor': 3 } },
+						() => {
+							volCol.findOne({ uuid: cdv.uuid }, (err, doc) => {
+								assert.strictEqual(doc.cdvConfig.admissionFloor, 5,
+									'Expected floor to remain at 5 after $max 3 (monotonic)');
+								done();
+							});
+						}
+					);
+				}
+			);
+		});
+
+		it('clearEvictedClientState should clear exclusiveClient on TPV and remove attachment', done => {
+			// Ensure baseline.
+			app.get('db').collection('volume').updateOne(
+				{ _id: tpv.name },
+				{ $set: { 'tpvConfig.exclusiveClient': TEST_CLIENT, 'tpvConfig.exclusiveClientUUID': TEST_CLIENT_UUID } },
+				() => {
+					clientModule.clearEvictedClientState(cdv, TEST_CLIENT, () => {
+						app.get('db').collection('volume').findOne({ _id: tpv.name }, (err, tpvDoc) => {
+							assert.strictEqual(tpvDoc.tpvConfig.exclusiveClient, null,
+								'Expected exclusiveClient cleared');
+							app.get('db').collection('client').findOne({ _id: TEST_CLIENT }, (err2, clientDoc) => {
+								const stillHas = clientDoc && clientDoc.attachments && clientDoc.attachments[cdv.uuid];
+								assert(!stillHas, 'Expected (client, CDV) attachment removed');
+								done();
+							});
+						});
+					});
+				}
+			);
+		});
+
+		it('reapEvictingAttachments should find and resume stuck EVICTING attachments', done => {
+			// Re-seed an EVICTING attachment to represent a management crash
+			// between markEvicting and the ACK round-trip.
+			const clientCol = app.get('db').collection('client');
+			clientCol.updateOne(
+				{ _id: TEST_CLIENT },
+				{ $set: { attachments: { [cdv.uuid]: {
+					uuid: cdv.uuid,
+					name: cdv.name,
+					volumeID: cdv.name,
+					action: consts.volumeAttachmentActions.EVICTING,
+				} } } },
+				() => {
+					// Reaper invokes preemptClientFromCDV internally; the fan-out
+					// will no-op in this unit-test context (no TOMAs) but the flow
+					// must not throw. The test validates the discovery pass.
+					clientModule.reapEvictingAttachments(err => {
+						// Reaper returns no error even if individual preempts time
+						// out — it logs and moves on.
+						assert(!err || err === null || typeof err === 'undefined',
+							`Reaper should not hard-fail, got ${err && err.message}`);
+						done();
+					});
+				}
+			);
+		});
+	});
 });

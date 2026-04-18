@@ -48,6 +48,11 @@ const cdvConfigScheme = {
 		// Allocator metadata now lives on a satellite volume of fixed size CDV_MGMT_SIZE_GIB.
 		allocatorSizeGB: { type: 'integer', default: 1, minimum: 1 },
 		maxTPVs: { type: 'integer', default: 512, minimum: 1 },
+		// Note: cdvConfig.admissionFloor is a server-owned field populated by
+		// prepareCDVForCreate and mutated only by preemptClientFromCDV in
+		// modules/volume.js. It is intentionally NOT listed here so that
+		// unevaluatedProperties: false rejects user-supplied values with a
+		// clean 400.
 	},
 };
 

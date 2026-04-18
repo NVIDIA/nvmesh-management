@@ -363,7 +363,8 @@ consts.volumeAttachmentActions = {
 	DETACHING: 'detaching',
 	UNAUTHORIZED: 'unauthorized',
 	REATTACHING: 're-attaching',
-	DETACHING_STALE: 'detaching-stale'
+	DETACHING_STALE: 'detaching-stale',
+	EVICTING: 'evicting'
 };
 
 consts.emulationModes = {
@@ -924,11 +925,13 @@ consts.kafkaMessageTypes = {
 		requestEncryptionResponse: 'encryptionRequestResponse',
 		cdvAllocatorFreeAll: 'cdvAllocatorFreeAll',
 		attachSatelliteResponse: 'attachSatelliteResponse',
+		preemptClientFromCDV: 'preemptClientFromCDV',
 	},
 	TOMAToManagement_TP: {
 		cdvCapacityWarning: 'cdvCapacityWarning',
 		cdvAllocatorStats: 'cdvAllocatorStats',
 		attachSatelliteRequest: 'attachSatelliteRequest',
+		preemptClientFromCDVResponse: 'preemptClientFromCDVResponse',
 	}
 };
 

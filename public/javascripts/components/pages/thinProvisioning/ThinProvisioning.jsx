@@ -116,7 +116,22 @@ const ThinProvisioning = () => {
 			name: 'Client',
 			field: 'tpvConfig.exclusiveClient',
 			placeholder: 'Search by Client',
-			value: tpvRow => tpvRow.tpvConfig?.exclusiveClient || <em>Detached</em>,
+			value: tpvRow => {
+				// Per-client CDV preempt badge (TPV_PerClientCDVPreemption.md Step 19b):
+				// render a yellow "Evicting" tag while the TPV's exclusiveClient has
+				// action === 'evicting' on the parent CDV. The server enriches TPV
+				// documents with isEvicting via the $lookup used in calculateTPVCounters;
+				// when the server-side enrichment isn't present on a given payload,
+				// the check falls through to the plain client name.
+				if (tpvRow.isEvicting) {
+					return <React.Fragment>
+						{tpvRow.tpvConfig?.exclusiveClient}
+						{' '}
+						<label className="label bg-yellow">Evicting</label>
+					</React.Fragment>;
+				}
+				return tpvRow.tpvConfig?.exclusiveClient || <em>Detached</em>;
+			},
 		},
 		{
 			name: 'Status',
