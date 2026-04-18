@@ -30,6 +30,7 @@ const CreateTPVModal = ({
 	const [cdvs, setCDVs] = useState([]);
 	const selectedCdvId = watch('cdvId', tpv.tpvConfig?.cdvId || null);
 	const selectedCdv = cdvs.find(c => c._id === selectedCdvId);
+	const isEncryptedWatch = watch('isEncrypted', tpv.isEncrypted || false);
 
 	useEffect(() => {
 		VolumesService.getCDVs().then(result => {
@@ -48,6 +49,11 @@ const CreateTPVModal = ({
 				tpvExtentSizeKB: Number(data.tpvExtentSizeKB),
 			},
 		};
+
+		if (data.isEncrypted) {
+			payload.isEncrypted = true;
+			payload.encryption = { headerSize: Number(data.encryptionHeaderSize) || 16 };
+		}
 
 		if (!isCreate) {
 			payload._id = tpv._id;
@@ -198,6 +204,40 @@ const CreateTPVModal = ({
 								})}
 							/>
 						</FormControl>
+
+						<FormControl name="isEncrypted" label="Encryption">
+							<label className="checkbox-inline">
+								<input
+									type="checkbox"
+									disabled={!isCreate}
+									defaultChecked={tpv.isEncrypted || false}
+									{...register('isEncrypted')}
+								/>
+								{' '}Encrypt this TPV (LUKS)
+							</label>
+						</FormControl>
+
+						{isEncryptedWatch && (
+							<FormControl
+								name="encryptionHeaderSize"
+								label="LUKS Header Size (MB)"
+								errorMessage={formState.errors?.encryptionHeaderSize?.message}
+							>
+								<Input
+									name="encryptionHeaderSize"
+									type="number"
+									className="form-control"
+									placeholder="16"
+									disabled={!isCreate}
+									{...register('encryptionHeaderSize', {
+										value: tpv.encryption?.headerSize || 16,
+										min: { value: 1, message: 'Minimum header size is 1 MB' },
+										max: { value: 100, message: 'Maximum header size is 100 MB' },
+										valueAsNumber: true,
+									})}
+								/>
+							</FormControl>
+						)}
 
 					</div>
 				</div>

@@ -663,6 +663,9 @@ scope.resendKafkaMessages = function(cb) {
 		},
 		function checkForStaleEncryptionCommands(callback) {
 			encryptionModule.resendStaleEncryptionCommands(callback);
+		},
+		function cleanupStuckTPVEncryptionAttaches(callback) {
+			encryptionModule.cleanupTPVAutoAttachesAfterStartup(callback);
 		}
 	], cb);
 };

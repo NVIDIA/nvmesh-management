@@ -16,6 +16,7 @@ var { Entities, SystemMessage, MongoError, SystemAdminMessage } = require('./err
 const systemMessages = require('../systemMessages.js');
 const kafkaModule = require('./kafka.js');
 const volumeModule = require('./volume');
+const clientModule = require('./client.js');
 const { InitEncryption } = require('../models/kafkaMessages/InitEncryption');
 const { RequestEncryptionResponse } = require('../models/kafkaMessages/RequestEncryptionResponse');
 const { AddPassphrase } = require('../models/kafkaMessages/AddPassphrase.js');
@@ -26,7 +27,81 @@ scope.afterModuleLoaded = () => {
 	({ Entities, SystemMessage, MongoError, SystemAdminMessage } = require('./error.js'));
 };
 
+scope.chooseTOMAForTPVEncryption = (tpvVolume, callback) => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+	const serverCollection = db.collection('server');
+
+	const cdvId = tpvVolume.tpvConfig && tpvVolume.tpvConfig.cdvId;
+	if (!cdvId) {
+		return callback(new SystemMessage(systemMessages.GET_EXECUTING_TOMA_FOR_ENCRYPTION_FAILURE)
+			.addInfo(Entities.Volume.ID, tpvVolume.name)
+			.addInfo(Entities.Error, 'TPV has no parent CDV'));
+	}
+
+	volumeCollection.findOne({ _id: cdvId, volumeClass: consts.volumeClass.CDV }, (err, cdv) => {
+		if (err) {
+			return callback(new MongoError(err).log());
+		}
+		if (!cdv) {
+			return callback(new SystemMessage(systemMessages.GET_EXECUTING_TOMA_FOR_ENCRYPTION_FAILURE)
+				.addInfo(Entities.Volume.ID, tpvVolume.name)
+				.addInfo(Entities.Error, `Parent CDV ${cdvId} not found`));
+		}
+
+		// Candidates: the same node set used by cdvTomaAutoAttach — every node
+		// that owns any disk segment in the CDV's first pRAID chunk. The CDV
+		// schema is chunks[0].pRaids[].diskSegments[].node_id (see
+		// modules/cdvTomaAutoAttach.js::_firstPRaidNodeIds). TOMA liveness
+		// (tomaStatus === UP) is checked separately against the server doc.
+		if (!cdv.chunks || !cdv.chunks[0] || !cdv.chunks[0].pRaids) {
+			return callback(new SystemMessage(systemMessages.GET_EXECUTING_TOMA_FOR_ENCRYPTION_FAILURE_UNAVAILABLE_TARGET)
+				.addInfo(Entities.Volume.ID, tpvVolume.name)
+				.addInfo(Entities.Error, `CDV ${cdvId} has no first-pRAID chunk`));
+		}
+		const candidateIds = [...new Set(
+			cdv.chunks[0].pRaids
+				.flatMap(pRaid => pRaid.diskSegments || [])
+				.map(seg => seg && seg.node_id)
+				.filter(Boolean)
+		)];
+
+		if (!candidateIds.length) {
+			return callback(new SystemMessage(systemMessages.GET_EXECUTING_TOMA_FOR_ENCRYPTION_FAILURE_UNAVAILABLE_TARGET)
+				.addInfo(Entities.Volume.ID, tpvVolume.name));
+		}
+
+		serverCollection.find({
+			_id: { $in: candidateIds },
+			tomaStatus: consts.tomaStatuses.UP
+		}, { projection: { bootTime: 1, topics: 1 } }).toArray((err, targets) => {
+			if (err)
+				return callback(new MongoError(err).log());
+
+			if (!targets || !targets.length) {
+				return callback(new SystemMessage(systemMessages.GET_EXECUTING_TOMA_FOR_ENCRYPTION_FAILURE_UNAVAILABLE_TARGET)
+					.addInfo(Entities.Volume.ID, tpvVolume.name));
+			}
+
+			// Prefer the CDV's current allocator TOMA (same locality heuristic
+			// cdvTomaAutoAttach uses). The CDV document field populated by
+			// handleAttachSatelliteRequest (client.js:5401) is
+			// currentAllocatorTomaHostname.
+			const allocatorHost = cdv.currentAllocatorTomaHostname;
+			let chosen = allocatorHost ? targets.find(t => t._id === allocatorHost) : null;
+			if (!chosen) {
+				chosen = targets[Math.floor(Math.random() * targets.length)];
+			}
+			callback(null, chosen);
+		});
+	});
+};
+
 scope.chooseTOMAForEncryption = (volume, callback) => {
+	if (volume.volumeClass === consts.volumeClass.TPV) {
+		return scope.chooseTOMAForTPVEncryption(volume, callback);
+	}
+
 	const db = app.get('db');
 	const serverCollection = db.collection('server');
 	const lockCollection = db.collection('lock');
@@ -165,6 +240,36 @@ scope.resendStaleEncryptionCommands = (cb) => {
 		}, (err) => {
 			cb(err);
 		});
+	});
+};
+
+// Startup cleanup: if management died between an encryption command's
+// response and the TPV-detach it was supposed to trigger, the TPV is left
+// attached to the TOMA and blocks the real client from reattaching. Walk
+// any TPVs that still carry encryption.command.tpvAutoAttachedTOMA and whose
+// command is EXECUTED (response already recorded) and drive the detach.
+// TPVs whose command is still PENDING_SEND / SENT are handled by the
+// existing resendStaleEncryptionCommands + handleCommandResponse paths.
+scope.cleanupTPVAutoAttachesAfterStartup = (cb) => {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+
+	volumeCollection.find({
+		volumeClass: consts.volumeClass.TPV,
+		'encryption.command.tpvAutoAttachedTOMA': { $exists: true, $ne: null },
+		'encryption.command.status': consts.encryptionCommandStatuses.EXECUTED,
+	}, { projection: { _id: 1, 'encryption.command.tpvAutoAttachedTOMA': 1 } }).toArray((err, tpvs) => {
+		if (err) { new MongoError(err).log(); return cb && cb(); }
+		async.eachSeries(tpvs || [], (tpv, next) => {
+			const tomaId = tpv.encryption.command.tpvAutoAttachedTOMA;
+			scope.detachTPVFromTOMAForEncryption(tpv._id, tomaId, () => {
+				volumeCollection.updateOne(
+					{ _id: tpv._id },
+					{ $unset: { 'encryption.command.tpvAutoAttachedTOMA': 1 } },
+					() => next()
+				);
+			});
+		}, () => cb && cb());
 	});
 };
 
@@ -339,6 +444,11 @@ scope.handleCommandResponse = (encryptionResponse, cb) => {
 		if (err)
 			new MongoError(err).log();
 
+		const finish = (v) => {
+			if (v) volumeModule.calculateAndUpdateVolumeStatus(v._id, v, cb);
+			else cb();
+		};
+
 		if (volume) {
 			if (errorResponse) {
 				const systemMsg = new SystemAdminMessage(systemMessages.VOLUME_ENCRYPTION_COMMAND_FAILED)
@@ -352,7 +462,27 @@ scope.handleCommandResponse = (encryptionResponse, cb) => {
 				systemMsg.log();
 			}
 
-			volumeModule.calculateAndUpdateVolumeStatus(volume._id, volume, cb);
+			// TPV auto-attach teardown: encryption is done (success or error),
+			// so release the TPV from the TOMA it was attached to for the run.
+			// Also clears the marker so recovery doesn't re-detach on restart.
+			// Pass null volume to the final status calc so it re-reads — the
+			// detach has mutated tpvConfig.exclusiveClient / reservation fields
+			// and the local `volume` snapshot is now stale.
+			const tomaId = volume.encryption && volume.encryption.command && volume.encryption.command.tpvAutoAttachedTOMA;
+			if (tomaId && volume.volumeClass === consts.volumeClass.TPV) {
+				scope.detachTPVFromTOMAForEncryption(volume._id, tomaId, () => {
+					volumeCollection.findOneAndUpdate(
+						{ _id: volume._id },
+						{ $unset: { 'encryption.command.tpvAutoAttachedTOMA': 1 } },
+						(uerr) => {
+							if (uerr) new MongoError(uerr).log();
+							volumeModule.calculateAndUpdateVolumeStatus(volume._id, null, cb);
+						}
+					);
+				});
+			} else {
+				finish(volume);
+			}
 		} else {
 			logger.sysDEBUG(`Volume with matching last message command index was not found.
 			volumeName: ${volumeName}, command index: ${encryptionCommandIndex}`);
@@ -382,6 +512,13 @@ scope.setEncryptionCommand = (volume, command, executingTOMA, cb) => {
 		'encryption.command.bootTime': executingTOMA.bootTime,
 		'encryption.command.status': consts.encryptionCommandStatuses.PENDING_SEND
 	};
+	// For TPVs management auto-attaches the TPV to the chosen TOMA so the
+	// encryption can run on /dev/nvmesh-tpv/<name>. Record the TOMA ID so
+	// handleCommandResponse (and startup recovery) can drive the symmetric
+	// detach. Absent on regular volumes.
+	if (volume.volumeClass === consts.volumeClass.TPV) {
+		$update.$set['encryption.command.tpvAutoAttachedTOMA'] = executingTOMA._id;
+	}
 
 	$update.$unset = {
 		'encryption.command.response': 1
@@ -486,12 +623,168 @@ scope.verifyEncryptionCommand = (volume, encryptionCommand) => {
 };
 
 
+// TPV encryption runs on a TOMA that the chosen TOMA node has attached as if
+// it were a regular client: preempt+EXCLUSIVE_READ_WRITE on the TPV, so
+// /dev/nvmesh-tpv/<name> exists on the TOMA node and cryptsetup can run
+// against it directly. After the encryption response arrives (handleCommandResponse),
+// management detaches the TPV so the real client can reattach.
+//
+// Implementation detail: the TOMA's hostname is used as the clientID for the
+// attach; the TOMA's node runs the nvmesh client kernel module just like a
+// regular client and will have a matching 'client' document (registered on
+// first connect). attachTPV looks up that doc to get the clientUUID.
+scope.attachTPVToTOMAForEncryption = (dbVolume, executingTOMA, cb) => {
+	const db = app.get('db');
+	const clientCollection = db.collection('client');
+
+	clientCollection.findOne({ _id: executingTOMA._id }, { projection: { uuid: 1 } }, (err, clientDoc) => {
+		if (err) return cb(new MongoError(err).log());
+		if (!clientDoc || !clientDoc.uuid) {
+			return cb(new SystemMessage(systemMessages.GET_EXECUTING_TOMA_FOR_ENCRYPTION_FAILURE)
+				.addInfo(Entities.Volume.ID, dbVolume.name)
+				.addInfo(Entities.Error, `TOMA node ${executingTOMA._id} is not registered as a client; cannot attach TPV for encryption`));
+		}
+
+		// Do NOT pass syncFlush — attachTPV's applySyncFlush step unconditionally
+		// persists the TPV's sourceUUID. The default (syncFlush !== false) keeps
+		// sync_flush on, matching what real client attaches do. Passing false
+		// here would flip the TPV to async-flush during the encryption window
+		// and leave it that way after detach.
+		//
+		// allowNonReady: true bypasses the isReady check in attachVolumes /
+		// getVolumesConfigurationForClient. A newly created encrypted TPV has
+		// isReady=false (flipped to true only after initEncryption completes),
+		// so without this bypass attachTPV silently filters it out and no
+		// attachVolumes Kafka is sent to the TOMA — the later waitForTPV then
+		// times out with "attachment not confirmed".
+		clientModule.attachTPV(executingTOMA._id, clientDoc.uuid, dbVolume._id, { preempt: true, allowNonReady: true }, (attachErr) => {
+			// attachTPV's internal steps frequently swallow errors into logs and
+			// call back without arg, so attachErr may be null even on partial
+			// failure. Authoritative check: re-read the TPV and verify
+			// tpvConfig.exclusiveClient matches the TOMA we asked to attach to.
+			const volumeCollection = db.collection('volume');
+			volumeCollection.findOne({ _id: dbVolume._id, volumeClass: consts.volumeClass.TPV }, (err2, tpv) => {
+				if (err2) return cb(new MongoError(err2).log());
+				if (!tpv || !tpv.tpvConfig || tpv.tpvConfig.exclusiveClient !== executingTOMA._id) {
+					const msg = new SystemMessage(systemMessages.RUN_ENCRYPTION_COMMAND_FAILED)
+						.addInfo(Entities.Volume.ID, dbVolume.name)
+						.addInfo(Entities.Target.executingTOMA, executingTOMA._id)
+						.addInfo(Entities.Error, 'TPV attach to TOMA for encryption did not complete');
+					if (attachErr) msg.addInfo(Entities.Error, attachErr);
+					return cb(msg);
+				}
+				// Wait for the TOMA's client kernel to confirm the TPV attach.
+				// attachTPV fires-and-forgets the attachVolumes Kafka; the TOMA
+				// processes it asynchronously and sends updateAttachmentStatus back.
+				// Sending initEncryption before that confirmation races and causes
+				// "Volume doesn't exist" on the TOMA (its block_devices_hash_by_uuid
+				// hasn't been populated yet). Poll until the attachment action leaves
+				// 'attaching' state (cleared when updateAttachmentStatus is received).
+				scope.waitForTPVAttachedOnTOMA(tpv.uuid, executingTOMA._id, (waitErr) => {
+					if (waitErr) {
+						return cb(new SystemMessage(systemMessages.RUN_ENCRYPTION_COMMAND_FAILED)
+							.addInfo(Entities.Volume.ID, dbVolume.name)
+							.addInfo(Entities.Target.executingTOMA, executingTOMA._id)
+							.addInfo(Entities.Error, waitErr.message || waitErr));
+					}
+					cb();
+				});
+			});
+		});
+	});
+};
+
+// Poll the client document until the TPV attachment on the TOMA is confirmed
+// by the client kernel's updateAttachmentStatus heartbeat.
+//
+// Key insight from client.js:1128-1164: `attachments[uuid].action` is
+// management's WISHFUL state (what mgmt wants — attaching / detaching /
+// reattaching). It's set when mgmt decides to attach and is NEVER cleared
+// by a successful confirmation — the volume can be fully attached and the
+// action field will still say 'attaching'.  The authoritative signal that
+// the TOMA's client kernel actually owns the volume (and /dev/nvmesh-tpv/<name>
+// is live) is an entry in the client's `block_devices` array with
+// `vol_status === ATTACHED` (consts.volumeAttachmentStatus.ATTACHED = 4).
+// That entry is only written once the client kernel sends updateAttachmentStatus
+// reporting the successful attach (client.js::updateAttachmentStatus_handler).
+scope.waitForTPVAttachedOnTOMA = (tpvUuid, tomaId, cb) => {
+	const db = app.get('db');
+	const clientCollection = db.collection('client');
+	const POLL_INTERVAL_MS = 300;
+	const MAX_WAIT_MS = 30000;
+	const deadline = Date.now() + MAX_WAIT_MS;
+
+	function poll() {
+		clientCollection.findOne(
+			{ _id: tomaId },
+			{ projection: { block_devices: 1, [`attachments.${tpvUuid}`]: 1 } },
+			(err, doc) => {
+				if (err) return cb(new MongoError(err).log());
+				const bdev = (doc && Array.isArray(doc.block_devices))
+					? doc.block_devices.find(b => b && b.uuid === tpvUuid)
+					: null;
+				const attachment = doc && doc.attachments && doc.attachments[tpvUuid];
+				const action = attachment && attachment.action;
+
+				// Confirmed: client kernel reported the volume attached.
+				if (bdev && bdev.vol_status === consts.volumeAttachmentStatus.ATTACHED) return cb();
+
+				// Explicit attach-failure states.
+				if (bdev && [
+					consts.volumeAttachmentStatus.ATTACH_FAILED,
+					consts.volumeAttachmentStatus.VOLUME_RESERVATION_DENIED,
+				].includes(bdev.vol_status)) {
+					return cb(new Error(`TPV ${tpvUuid} attach on TOMA ${tomaId} reported status=${consts.volumeAttachmentStatusToName[bdev.vol_status] || bdev.vol_status}`));
+				}
+
+				// Management changed its mind after we started — treat as failure.
+				if (action === consts.volumeAttachmentActions.DETACHING ||
+				    action === consts.volumeAttachmentActions.DETACHING_STALE) {
+					return cb(new Error(`TPV ${tpvUuid} unexpectedly in '${action}' state on TOMA ${tomaId}`));
+				}
+
+				// Still pending (bdev absent, or bdev.vol_status ∈ {BUSY, ATTACHING}).
+				if (Date.now() >= deadline) {
+					const status = bdev ? (consts.volumeAttachmentStatusToName[bdev.vol_status] || bdev.vol_status) : 'no block_devices entry';
+					return cb(new Error(`Timeout: TPV ${tpvUuid} attachment not confirmed on TOMA ${tomaId} after ${MAX_WAIT_MS}ms (vol_status=${status}, action=${action || 'absent'})`));
+				}
+
+				setTimeout(poll, POLL_INTERVAL_MS);
+			}
+		);
+	}
+	poll();
+};
+
+scope.detachTPVFromTOMAForEncryption = (tpvName, tomaId, cb) => {
+	const db = app.get('db');
+	const clientCollection = db.collection('client');
+
+	clientCollection.findOne({ _id: tomaId }, { projection: { uuid: 1 } }, (err, clientDoc) => {
+		if (err) { new MongoError(err).log(); return cb(); }
+		if (!clientDoc || !clientDoc.uuid) {
+			logger.sysDEBUG(`detachTPVFromTOMAForEncryption: TOMA ${tomaId} client doc not found; nothing to detach`);
+			return cb();
+		}
+		clientModule.detachTPV(tomaId, clientDoc.uuid, tpvName, () => cb());
+	});
+};
+
 scope.runEncryptionCommand = (encryptionObj, command, cb) => {
 	let db = app.get('db');
 	let volumeCollection = db.collection('volume');
 
 	let dbVolume;
 	let executingTOMA;
+	// Tracks whether the TPV auto-attach step succeeded. If the Kafka command
+	// is then sent successfully, TOMA owns completion — the response will
+	// drive detach via handleCommandResponse (and cleanupTPVAutoAttaches
+	// AfterStartup picks up the pieces on a management crash). If the attach
+	// succeeded but Kafka was never delivered (broker down, setEncryptionCommand
+	// DB failure, etc.), the TPV would otherwise stay exclusively held by the
+	// TOMA with no response coming, so the final callback must detach.
+	let tpvAttached = false;
+	let kafkaSent = false;
 
 	async.series([
 		//Fetch volume and verify
@@ -522,6 +815,18 @@ scope.runEncryptionCommand = (encryptionObj, command, cb) => {
 			});
 		},
 		(callback) => {
+			// TPV encryption prerequisite: attach the TPV to the chosen TOMA
+			// node with preempt=true, mode=EXCLUSIVE_READ_WRITE so that
+			// /dev/nvmesh-tpv/<name> exists on the TOMA and cryptsetup can
+			// run against it. For non-TPV volumes this step is a no-op — the
+			// TOMA uses the existing shadow-volume mechanism.
+			if (!dbVolume || dbVolume.volumeClass !== consts.volumeClass.TPV) return callback();
+			scope.attachTPVToTOMAForEncryption(dbVolume, executingTOMA, (err) => {
+				if (!err) tpvAttached = true;
+				callback(err);
+			});
+		},
+		(callback) => {
 			scope.setEncryptionCommand(
 				dbVolume,
 				command,
@@ -537,7 +842,10 @@ scope.runEncryptionCommand = (encryptionObj, command, cb) => {
 			);
 		},
 		(callback) => {
-			scope.sendEncryptionCommandToTOMA(encryptionObj, command, executingTOMA, callback);
+			scope.sendEncryptionCommandToTOMA(encryptionObj, command, executingTOMA, (err) => {
+				if (!err) kafkaSent = true;
+				callback(err);
+			});
 		},
 		(callback) => {
 			scope.updateLastCommandSent(
@@ -548,16 +856,45 @@ scope.runEncryptionCommand = (encryptionObj, command, cb) => {
 			);
 		}
 	], (systemMessage) => {
-		const message = new SystemAdminMessage(systemMessage ? systemMessages.RUN_ENCRYPTION_COMMAND_FAILED : systemMessages.RUN_ENCRYPTION_COMMAND_SUCCESS)
-			.addInfo(Entities.Volume.ID, encryptionObj._id)
-			.addInfo(Entities.Volume.UUID, encryptionObj.uuid);
+		const deliver = () => {
+			const message = new SystemAdminMessage(systemMessage ? systemMessages.RUN_ENCRYPTION_COMMAND_FAILED : systemMessages.RUN_ENCRYPTION_COMMAND_SUCCESS)
+				.addInfo(Entities.Volume.ID, encryptionObj._id)
+				.addInfo(Entities.Volume.UUID, encryptionObj.uuid);
 
-		if (!systemMessage || executingTOMA)
-			message.addInfo(Entities.Target.executingTOMA, executingTOMA._id);
+			if (!systemMessage || executingTOMA)
+				message.addInfo(Entities.Target.executingTOMA, executingTOMA._id);
 
-		if (systemMessage)
-			message.addInfo(Entities.Error, systemMessage);
+			if (systemMessage)
+				message.addInfo(Entities.Error, systemMessage);
 
-		cb(message);
+			cb(message);
+		};
+
+		// Intra-call detach-on-failure: if the TPV was attached for encryption
+		// but the command never reached TOMA (Kafka send error, upstream DB
+		// failure), the TOMA-side encryption will never run and no response
+		// will arrive — handleCommandResponse's detach path will never fire.
+		// Release the TPV here so the real client can reattach.
+		//
+		// IMPORTANT: only detach when !kafkaSent. If Kafka was delivered, TOMA
+		// is actively running cryptsetup against /dev/nvmesh-tpv/<name>;
+		// detaching here would yank the block device out from under cryptsetup.
+		// In that case let handleCommandResponse (on response arrival) or
+		// cleanupTPVAutoAttachesAfterStartup (on management restart) drive the
+		// detach.
+		if (systemMessage && tpvAttached && !kafkaSent && executingTOMA && dbVolume) {
+			scope.detachTPVFromTOMAForEncryption(dbVolume._id, executingTOMA._id, () => {
+				// Also clear any tpvAutoAttachedTOMA stamp (setEncryptionCommand
+				// may have set it before the failure). Best-effort; if the
+				// field was never stamped this is a no-op.
+				volumeCollection.updateOne(
+					{ _id: dbVolume._id },
+					{ $unset: { 'encryption.command.tpvAutoAttachedTOMA': 1 } },
+					() => deliver()
+				);
+			});
+		} else {
+			deliver();
+		}
 	});
 };

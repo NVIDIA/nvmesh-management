@@ -323,25 +323,41 @@ router.post('/preemptFromCDV', isAdminRole, (req, res) => {
 
 	const auditLog = createAuditRequestLog(req, systemMessages.CLIENT_PREEMPT_FROM_CDV_REQUEST)
 		.addInfo(Entities.Client.ID, clientID)
-		.addInfo(Entities.Volume.ID, cdvID);
+		.addInfo(Entities.Volume.ID, cdvID)
+		.addInfo('reason', reason || '');
 
 	utils.handleRESTAndLog(
 		[auditLog],
 		cb => {
+			// handleRESTAndLog's cb expects an array of SystemMessage objects
+			// (so the final response handler can .map() over it). Wrap every
+			// outcome — validation error, Mongo miss, preempt error, success —
+			// as a single-entry array.
+			const reply = (msg) => cb([msg
+				.addInfo(Entities.Client.ID, clientID)
+				.addInfo(Entities.Volume.ID, cdvID)]);
 			if (!clientID || !cdvID)
-				return cb(new SystemMessage(systemMessages.INVALID_REQUEST_PARAMS || systemMessages.BAD_REQUEST));
+				return reply(new SystemMessage(systemMessages.INVALID_REQUEST_PARAMS || systemMessages.BAD_REQUEST));
 			const db = req.app.get('db');
 			db.collection('volume').findOne(
 				{ _id: cdvID, volumeClass: consts.volumeClass.CDV },
 				{ projection: { uuid: 1 } },
 				(err, cdv) => {
-					if (err || !cdv) return cb(err || new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.ID, cdvID));
+					if (err)
+						return reply(new SystemMessage(systemMessages.CDV_PREEMPT_TOMA_UNRESPONSIVE).addInfo(Entities.Error, err));
+					if (!cdv)
+						return reply(new SystemMessage(systemMessages.VOLUME_NOT_FOUND));
 					clientModule.preemptClientFromCDV(cdv.uuid, clientID, preemptErr => {
-						// Treat success and non-fatal retry conditions as 200;
-						// CDV_PREEMPT_TOMA_UNRESPONSIVE returns as error so the
-						// operator knows the EVICTING state persists for the
-						// reaper or manual retry.
-						cb(preemptErr, { clientID, cdvID, reason: reason || '' });
+						// preemptErr is null on success, or a SystemMessage /
+						// SystemAdminMessage / MongoError on failure.
+						if (preemptErr instanceof SystemMessage)
+							return reply(preemptErr);
+						if (preemptErr)
+							return reply(new SystemMessage(systemMessages.CDV_PREEMPT_TOMA_UNRESPONSIVE)
+								.addInfo(Entities.Error, preemptErr));
+						// Success — use the audit request message for the success
+						// response too (no dedicated SUCCESS entry exists).
+						reply(new SystemMessage(systemMessages.CLIENT_PREEMPT_FROM_CDV_REQUEST));
 					});
 				}
 			);

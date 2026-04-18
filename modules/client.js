@@ -3557,7 +3557,7 @@ function getRemoveRefIDsPipeline(requestedVolumesWithRefID) {
 		.flat();
 }
 
-scope.attachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnapshotAttach = false) => {
+scope.attachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnapshotAttach = false, attachOptions = {}) => {
 	const db = app.get('db');
 	const clientCollection = db.collection('client');
 
@@ -3592,7 +3592,11 @@ scope.attachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 				return cb(true);
 
 			cb();
-		}, true, isSnapshotAttach, shouldUpdateVolumeReservation);
+			// attachOptions.allowNonReady lets the encrypted-TPV encryption flow
+			// attach a freshly created TPV whose isReady=false while it awaits
+			// initEncryption. Default behaviour (excludeNonReadyVolumes=true) is
+			// preserved for every other caller.
+		}, !attachOptions.allowNonReady, isSnapshotAttach, shouldUpdateVolumeReservation);
 	};
 
 	const requestedVolumesWithRefID = requestedVolumes.filter(volume => volume.referenceID && !volume?.reservation?.isDetachOthers);
@@ -5665,6 +5669,10 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 				reservation.preempt = true;
 				reservation.version = (tpv.reservation && tpv.reservation.version) || 0;
 			}
+			// Forward options.allowNonReady to attachVolumes so the encryption
+			// path can attach a newly created, isReady=false encrypted TPV to
+			// the TOMA node for cryptsetup. For all other TPV attaches the
+			// option is absent and the normal isReady guard still applies.
 			scope.attachVolumes(clientID, clientUUID, [{
 				uuid: tpv.uuid,
 				name: tpv._id,
@@ -5674,7 +5682,7 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 					name: cdv._id,
 					chunks: cdv.chunks,
 				}
-			}], () => cb());
+			}], () => cb(), false, { allowNonReady: !!options.allowNonReady });
 		},
 		function setExclusiveClient(cb) {
 			volumeCollection.findOneAndUpdate(

@@ -15,6 +15,10 @@ import { useAppContext } from '../../App.jsx';
 import CapacityService from '../../services/capacity.service.js';
 import { events, SocketService } from '../../services/socket.service.js';
 import CreateTPVModal from './CreateTPVModal.jsx';
+import InitEncryptionModal from '../volumes/InitEncryptionModal.jsx';
+import PassphraseModal from '../volumes/PassphraseModal.jsx';
+import { passphraseCommandToTitle } from '../volumes/Volumes.jsx';
+import { DropdownButton, DropdownButtonItem } from '../../core/DropdownButton.jsx';
 
 const { useRef, useState, useEffect } = React;
 
@@ -33,7 +37,17 @@ const ThinProvisioning = () => {
 	const [selectedTPVs, setSelectedTPVs] = useState([]);
 	const [showCreateEditModal, setShowCreateEditModal] = useState(false);
 	const [tpv, setTPV] = useState({});
+	const [showInitEncryptionModal, setShowInitEncryptionModal] = useState(false);
+	const [initData, setInitData] = useState({});
+	const [showPassphraseModal, setShowPassphraseModal] = useState(false);
+	const [passphraseCommandName, setPassphraseCommandName] = useState('');
+	const [passphraseData, setPassphraseData] = useState({});
 	const tableRef = useRef();
+
+	const isPassphraseCmdDisabled = selectedTPVs.some(v =>
+		!v.isEncrypted ||
+		!v.encryption?.isInitialized ||
+		(v.encryption?.command?.status && v.encryption.command.status !== consts.encryptionCommandStatuses.EXECUTED));
 
 	useEffect(() => {
 		const interval = setInterval(() => reloadTable(false), 3000);
@@ -134,6 +148,25 @@ const ThinProvisioning = () => {
 			},
 		},
 		{
+			name: 'Encryption',
+			field: 'isEncrypted',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: tpvRow => {
+				if (!tpvRow.isEncrypted) return '—';
+				const cmdStatus = tpvRow.encryption?.command?.status;
+				const rsp = tpvRow.encryption?.command?.response;
+				if (!tpvRow.encryption?.isInitialized && cmdStatus !== consts.encryptionCommandStatuses.SENT && cmdStatus !== consts.encryptionCommandStatuses.PENDING_SEND)
+					return <label className="label bg-yellow">Init Required</label>;
+				if (cmdStatus === consts.encryptionCommandStatuses.SENT || cmdStatus === consts.encryptionCommandStatuses.PENDING_SEND)
+					return <label className="label bg-blue">In Progress</label>;
+				if (rsp?.error && !rsp?.acknowledged)
+					return <label className="label bg-red">Error</label>;
+				return <label className="label bg-green">Encrypted</label>;
+			},
+		},
+		{
 			name: 'Status',
 			field: 'status',
 			className: 'fixed-size-column sx-column',
@@ -229,8 +262,92 @@ const ThinProvisioning = () => {
 		setTPV({});
 	};
 
+	const handleInitEncryption = () => {
+		setInitData({ slot: 1, keySize: consts.XTS_KEY_SIZES.XTS_AES_256 });
+		setShowInitEncryptionModal(true);
+	};
+
+	const handleInitEncryptionSubmit = async(data) => {
+		const payload = selectedTPVs.map(v => ({ _id: v._id, uuid: v.uuid, ...data, command: consts.volumeEncryptionCommands.INIT_ENCRYPTION }));
+		const responses = await VolumesService.initEncryption(payload);
+		const byResult = extractResults(responses);
+		if (byResult.success.length) {
+			successAlert(`${byResult.success.length} TPV(s) Encryption initialized successfully`);
+			reloadTable();
+		}
+		Object.keys(byResult.failed).forEach(errorMsg => {
+			const ids = byResult.failed[errorMsg].map(e => e._id).join(', ');
+			errorAlert(`Failed to initialize Encryption for TPV(s) ${ids} - ${errorMsg}`);
+		});
+		setShowInitEncryptionModal(false);
+	};
+
+	const handleAddPassphrase = () => {
+		setPassphraseCommandName(consts.volumeEncryptionCommands.ADD_PASSPHRASE);
+		setPassphraseData({ slot: 1 });
+		setShowPassphraseModal(true);
+	};
+	const handleRotatePassphrase = () => {
+		setPassphraseCommandName(consts.volumeEncryptionCommands.ROTATE_PASSPHRASE);
+		setPassphraseData({ slot: 1 });
+		setShowPassphraseModal(true);
+	};
+	const handleDeletePassphrase = () => {
+		setPassphraseCommandName(consts.volumeEncryptionCommands.DELETE_PASSPHRASE);
+		setPassphraseData({});
+		setShowPassphraseModal(true);
+	};
+
+	const handlePassphraseSubmit = async(data) => {
+		const payload = selectedTPVs.map(v => ({ _id: v._id, uuid: v.uuid, ...data }));
+		let responses;
+		if (passphraseCommandName === consts.volumeEncryptionCommands.ADD_PASSPHRASE)
+			responses = await VolumesService.addPassphrase(payload);
+		else if (passphraseCommandName === consts.volumeEncryptionCommands.ROTATE_PASSPHRASE)
+			responses = await VolumesService.rotatePassphrase(payload);
+		else if (passphraseCommandName === consts.volumeEncryptionCommands.DELETE_PASSPHRASE)
+			responses = await VolumesService.deletePassphrase(payload);
+		const byResult = extractResults(responses);
+		if (byResult.success.length) {
+			successAlert(`${passphraseCommandToTitle(passphraseCommandName)} Passphrase for ${byResult.success.length} TPV(s) successfully`);
+			reloadTable();
+		}
+		Object.keys(byResult.failed).forEach(errorMsg => {
+			const ids = byResult.failed[errorMsg].map(e => e._id).join(', ');
+			errorAlert(`Failed to ${passphraseCommandToTitle(passphraseCommandName)} Passphrase for TPV(s) ${ids} - ${errorMsg}`);
+		});
+		setShowPassphraseModal(false);
+	};
+
+	const handleAckEncryptionError = async() => {
+		const payload = selectedTPVs.map(v => ({ ...v, command: 'acknowledgeResponse' }));
+		const responses = await VolumesService.acknowledgeEncryptionError(payload);
+		const byResult = extractResults(responses);
+		if (byResult.success.length) {
+			successAlert(`${byResult.success.length} TPV(s) Encryption error acknowledged successfully`);
+			reloadTable();
+		}
+		Object.keys(byResult.failed).forEach(errorMsg => {
+			const ids = byResult.failed[errorMsg].map(e => e._id).join(', ');
+			errorAlert(`Failed to acknowledge Encryption Error for TPV(s) ${ids} - ${errorMsg}`);
+		});
+	};
+
 	return (
 		<div className="page-content">
+			<PassphraseModal
+				isOpen={showPassphraseModal}
+				handleCancel={() => setShowPassphraseModal(false)}
+				onSubmit={handlePassphraseSubmit}
+				commandName={passphraseCommandName}
+				passphraseData={passphraseData}
+			/>
+			<InitEncryptionModal
+				isOpen={showInitEncryptionModal}
+				handleCancel={() => setShowInitEncryptionModal(false)}
+				onSubmit={handleInitEncryptionSubmit}
+				initData={initData}
+			/>
 			{showCreateEditModal && (
 				<CreateTPVModal
 					isOpen={showCreateEditModal}
@@ -245,12 +362,38 @@ const ThinProvisioning = () => {
 
 			<h1>Thin Provisioning</h1>
 
-			<div className="action-container">
+			<div className="action-container" style={{ display: 'flex', alignItems: 'center' }}>
 				<button className="btn multi-select-action-btn btn-info mgmt-btn-info"
 				        disabled={!currUser.isAdmin || !selectedTPVs.length}
 				        onClick={handleDeleteTPVs}>
 					Delete
 				</button>
+				<DropdownButton label="Encryption"
+				                disabled={!currUser.isAdmin || !selectedTPVs.length || selectedTPVs.some(v => !v.isEncrypted)}>
+					<DropdownButtonItem label="Init Encryption"
+					                    onClick={() => handleInitEncryption()}
+					                    disabled={selectedTPVs.some(v =>
+						                    !v.isEncrypted ||
+						                    v.encryption?.isInitialized ||
+						                    [consts.encryptionCommandStatuses.SENT,
+							                    consts.encryptionCommandStatuses.PENDING_SEND].includes(v.encryption?.command?.status)
+					                    )}/>
+					<DropdownButtonItem label="Add Passphrase"
+					                    onClick={() => handleAddPassphrase()}
+					                    disabled={isPassphraseCmdDisabled}/>
+					<DropdownButtonItem label="Rotate Passphrase"
+					                    onClick={() => handleRotatePassphrase()}
+					                    disabled={isPassphraseCmdDisabled}/>
+					<DropdownButtonItem label="Delete Passphrase"
+					                    onClick={() => handleDeletePassphrase()}
+					                    disabled={isPassphraseCmdDisabled}/>
+					<DropdownButtonItem label="Acknowledge Error"
+					                    onClick={() => handleAckEncryptionError()}
+					                    disabled={selectedTPVs.some(v =>
+						                    !v.isEncrypted ||
+						                    !v.encryption?.command?.response?.error ||
+						                    !!v.encryption?.command?.response?.acknowledged)}/>
+				</DropdownButton>
 			</div>
 
 			<FiltSortTable
