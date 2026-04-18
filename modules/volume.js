@@ -3727,8 +3727,10 @@ function createTPV(volume, user, cb) {
 				stripeSize: tpvExtentSizeKB,
 				// Repurposed: CDV extent size in MiB (from parent CDV config).
 				dataBlocks: (cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMB) || 64,
-				// Repurposed: allocator size in GiB (from parent CDV config).
-				parityBlocks: Math.floor((cdv.cdvConfig && (cdv.cdvConfig.allocatorSizeGiB || cdv.cdvConfig.allocatorSizeGB)) || 1),
+				// Repurposed: allocator area size in GiB within the CDV.  Under the
+				// satellite design, allocator metadata lives on the <cdv>-mgmt
+				// volume, so the entire CDV is data — A = 0.
+				parityBlocks: 0,
 				relativeRebuildPriority: 0,
 				enableCrcCheck: false,
 				use_debug_di: false,
