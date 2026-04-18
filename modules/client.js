@@ -4002,7 +4002,16 @@ scope.attach = (clientID, clientUUID, requestedVolumes, options, cb) => {
 			next => {
 				if (!tpvVolumes.length) return next();
 				async.each(tpvVolumes, (vol, eachCb) => {
-					scope.attachTPV(clientID, clientUUID, vol.name, { syncFlush: vol.syncFlush }, attachErr => {
+					// Forward the per-volume preempt flag from the request into
+					// attachTPV options so preemptPreviousHolderIfAny fires for
+					// the old exclusiveClient via the per-client CDV preempt
+					// primitive (TPV_PerClientCDVPreemption.md §2.10 Step 15.3).
+					// Without this, user-facing --preempt was silently dropped
+					// and the attach fell through to the classical EXCLUSIVE
+					// conflict path, which either failed silently or evicted
+					// the wrong client (the new attacher, not the old holder).
+					const preempt = !!(vol.reservation && vol.reservation.preempt);
+					scope.attachTPV(clientID, clientUUID, vol.name, { syncFlush: vol.syncFlush, preempt }, attachErr => {
 						const msg = attachErr
 							? new SystemAdminMessage(systemMessages.BUILD_RESPONSES_ERROR)
 								.addInfo(Entities.Volume.ID, vol.name)
