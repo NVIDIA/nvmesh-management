@@ -12,7 +12,7 @@ const { MongoError } = require('./error');
 // Manages the automatic attachment of CDV volumes to TOMA nodes that host
 // disk segments in the CDV's first pRAID.  A TOMA node needs the CDV attached
 // (non-hidden, SHARED_RW) so its allocator process can perform direct block I/O
-// to the allocator area (first allocatorSizeGB of the CDV).
+// to the allocator area (satellite volume sized allocatorSizeGiB GiB).
 //
 // Two independent reasons can keep a CDV attached to a given node:
 //   1. TOMA reason  — the node has a disk segment in the CDV's first pRAID

@@ -3553,9 +3553,10 @@ function prepareCDVForCreate(volume) {
 	const cfg = volume.cdvConfig || {};
 	volume.cdvConfig = {
 		cdvExtentSizeMB: cfg.cdvExtentSizeMB,
-		// allocatorSizeGB controls the size of the CDV_MGMT satellite volume.
+		// allocatorSizeGiB controls the size of the CDV_MGMT satellite volume.
 		// Defaults to CDV_MGMT_SIZE_GIB (1 GiB) if not supplied.
-		allocatorSizeGB: cfg.allocatorSizeGB || consts.CDV_MGMT_SIZE_GIB,
+		// Read allocatorSizeGB too for backward compat with pre-rename DB records.
+		allocatorSizeGiB: cfg.allocatorSizeGiB || cfg.allocatorSizeGB || consts.CDV_MGMT_SIZE_GIB,
 		maxTPVs: cfg.maxTPVs != null ? cfg.maxTPVs : 512,
 		// Per-client preempt admission gate (see TPV_PerClientCDVPreemption.md).
 		// Monotonic u64; bumped by preemptClientFromCDV. 0 is the sentinel
@@ -3596,7 +3597,7 @@ function buildSatelliteVolumeForCDV(cdvVolume) {
 
 	sat.name = cdvVolume.name + consts.CDV_MGMT_SUFFIX;
 	// capacity is in decimal GB (utils.BtoGB uses consts.GB = 1000³); convert from GiB.
-	const allocatorSizeGiB = (cdvVolume.cdvConfig && cdvVolume.cdvConfig.allocatorSizeGB) || consts.CDV_MGMT_SIZE_GIB;
+	const allocatorSizeGiB = (cdvVolume.cdvConfig && (cdvVolume.cdvConfig.allocatorSizeGiB || cdvVolume.cdvConfig.allocatorSizeGB)) || consts.CDV_MGMT_SIZE_GIB;
 	sat.capacity = allocatorSizeGiB * consts.GiB / consts.GB;
 	sat.volumeClass = consts.volumeClass.CDV_MGMT;
 	sat.parentCDVId = cdvVolume._id || cdvVolume.name;
@@ -3727,7 +3728,7 @@ function createTPV(volume, user, cb) {
 				// Repurposed: CDV extent size in MiB (from parent CDV config).
 				dataBlocks: (cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMB) || 64,
 				// Repurposed: allocator size in GiB (from parent CDV config).
-				parityBlocks: Math.floor((cdv.cdvConfig && cdv.cdvConfig.allocatorSizeGB) || 1),
+				parityBlocks: Math.floor((cdv.cdvConfig && (cdv.cdvConfig.allocatorSizeGiB || cdv.cdvConfig.allocatorSizeGB)) || 1),
 				relativeRebuildPriority: 0,
 				enableCrcCheck: false,
 				use_debug_di: false,
@@ -3815,7 +3816,7 @@ function updateCDV(updateObj, user, cb) {
 		$set.description = updateObj.description;
 
 	// cdvConfig.maxTPVs is the only mutable CDV-specific config field;
-	// cdvExtentSizeMB and allocatorSizeGB are immutable after creation.
+	// cdvExtentSizeMB and allocatorSizeGiB are immutable after creation.
 	if (updateObj.cdvConfig && 'maxTPVs' in updateObj.cdvConfig)
 		$set['cdvConfig.maxTPVs'] = updateObj.cdvConfig.maxTPVs;
 

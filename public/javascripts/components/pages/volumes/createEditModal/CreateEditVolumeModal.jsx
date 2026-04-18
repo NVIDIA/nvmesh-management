@@ -330,7 +330,7 @@ const CreateEditVolume = ({
 			toSubmit.volumeClass = consts.volumeClass.CDV;
 			toSubmit.cdvConfig = {
 				cdvExtentSizeMB: Number(data.cdvExtentSizeMB) || 1024,
-				allocatorSizeGB: data.allocatorSizeGB || 1,
+				allocatorSizeGiB: data.allocatorSizeGiB || 1,
 				maxTPVs: data.maxTPVs || 512,
 			};
 		}
@@ -480,17 +480,17 @@ const CreateEditVolume = ({
 								</FormControl>
 
 								<FormControl
-									name="allocatorSizeGB"
+									name="allocatorSizeGiB"
 									label="Allocator Size (GiB)"
-									errorMessage={formState.errors?.allocatorSizeGB?.message}
+									errorMessage={formState.errors?.allocatorSizeGiB?.message}
 								>
 									<Input
-										name="allocatorSizeGB"
+										name="allocatorSizeGiB"
 										type="number"
 										className="form-control"
 										disabled={!isCreate}
-										{...register('allocatorSizeGB', {
-											value: volume.cdvConfig?.allocatorSizeGB || 1,
+										{...register('allocatorSizeGiB', {
+											value: volume.cdvConfig?.allocatorSizeGiB || 1,
 											min: { value: 1, message: 'Minimum is 1 GiB' },
 											valueAsNumber: true,
 										})}

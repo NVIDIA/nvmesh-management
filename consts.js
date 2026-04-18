@@ -1265,8 +1265,8 @@ consts.volumeClass = {
 // Volumes with this suffix on a regular volume name are reserved for system use.
 consts.CDV_MGMT_SUFFIX = '-mgmt';
 
-// Fixed satellite (CDV-mgmt) volume size: 1 GiB. Holds the CDV allocator
-// header + cdv_extent_md[] array. Replaces cdvConfig.allocatorSizeGB.
+// Default satellite (CDV-mgmt) volume size: 1 GiB. Holds the CDV allocator
+// header + cdv_extent_md[] array. Controlled by cdvConfig.allocatorSizeGiB.
 consts.CDV_MGMT_SIZE_GIB = 1;
 
 // Max characters in a CDV name. Tighter than the regular volume name limit

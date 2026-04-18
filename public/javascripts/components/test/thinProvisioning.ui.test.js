@@ -256,7 +256,7 @@ describe('CreateEditVolumeModal.jsx — CDV payload branch', () => {
 			toSubmit.volumeClass = consts.volumeClass.CDV;
 			toSubmit.cdvConfig = {
 				cdvExtentSizeMB: data.cdvExtentSizeMB || 1024,
-				allocatorSizeGB: data.allocatorSizeGB || 1,
+				allocatorSizeGiB: data.allocatorSizeGiB || 1,
 				maxTPVs: data.maxTPVs || 512,
 			};
 		}
@@ -278,14 +278,14 @@ describe('CreateEditVolumeModal.jsx — CDV payload branch', () => {
 		assert.strictEqual(result.cdvConfig.cdvExtentSizeMB, 1024);
 	});
 
-	it('when isCDV=true: sets cdvConfig.allocatorSizeGB from form data', async() => {
-		const result = applyCDVProperties({}, true, { allocatorSizeGB: 4 });
-		assert.strictEqual(result.cdvConfig.allocatorSizeGB, 4);
+	it('when isCDV=true: sets cdvConfig.allocatorSizeGiB from form data', async() => {
+		const result = applyCDVProperties({}, true, { allocatorSizeGiB: 4 });
+		assert.strictEqual(result.cdvConfig.allocatorSizeGiB, 4);
 	});
 
-	it('when isCDV=true: allocatorSizeGB defaults to 1 when not provided', async() => {
+	it('when isCDV=true: allocatorSizeGiB defaults to 1 when not provided', async() => {
 		const result = applyCDVProperties({}, true, {});
-		assert.strictEqual(result.cdvConfig.allocatorSizeGB, 1);
+		assert.strictEqual(result.cdvConfig.allocatorSizeGiB, 1);
 	});
 
 	it('when isCDV=true: sets cdvConfig.maxTPVs from form data', async() => {
