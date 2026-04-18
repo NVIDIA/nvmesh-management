@@ -4,6 +4,8 @@
  */
 
 
+/* global app */
+
 var express = require('express');
 
 var utils = require('../utils.js');
