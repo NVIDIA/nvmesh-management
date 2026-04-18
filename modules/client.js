@@ -1768,15 +1768,70 @@ scope.preemptClientFromCDV = (cdvUUID, clientID, callback) => {
 	], callback);
 };
 
-// Remove the (client, CDV) attachment entry, strip tpv:* references, and
-// clear tpvConfig.exclusiveClient on every TPV the client held on this CDV.
+// Post-TOMA-ACK cleanup for a per-client CDV preempt (§2.10 Step 14
+// cleanupDB).
+//
+// ORDER INVARIANT: detach every TPV this client holds on this CDV FIRST,
+// then remove any residual CDV attachment. The client kernel's `cdv_vol`
+// pointer on each TPV is dereferenced by the TPV layer (e.g., the
+// /proc/nvmeibc/tpvs/<TPV>/status path calls nvmeibc_volume_get_size on
+// it). If we detach the CDV before the TPVs, freeing the cdv_vol while
+// TPVs still reference it yields a NULL-deref kernel crash on the next
+// TPV access. See the crash backtrace in the TP1 incident report for the
+// symptomatic trace (nvmeibc_volume_get_size+0x7).
+//
+// scope.detachTPV does the right per-TPV unwind — it sends
+// DetachVolumes(TPV) Kafka to the client (kernel tears down the TPV and
+// discards the cdv_vol reference), removes the 'tpv:<uuid>' referenceID
+// from the CDV attachment, and clears tpvConfig.exclusiveClient on the
+// TPV. Once the last 'tpv:*' ref is stripped, the CDV attachment's
+// referenceIDs becomes empty and scope.detachVolumes fires DetachVolumes
+// for the CDV itself — landing at the client AFTER the TPV teardown.
+//
+// After all TPVs are processed, any residual CDV attachment (e.g., an
+// orphan 'toma:*' refID, or a client that was unreachable and Kafka
+// delivery was queued) is cleaned up directly.
 scope.clearEvictedClientState = (cdv, clientID, callback) => {
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
 	const clientCollection = db.collection('client');
+	let clientUUID;
 
 	async.series([
-		function clearExclusiveClient(cb) {
+		function loadClientUUID(cb) {
+			clientCollection.findOne({ _id: clientID }, { projection: { uuid: 1 } }, (err, clientDoc) => {
+				if (err) new MongoError(err).log();
+				clientUUID = clientDoc && clientDoc.uuid;
+				cb();
+			});
+		},
+		function detachTPVsBeforeCDV(cb) {
+			// scope.detachTPV requires a clientUUID; if the client doc is gone
+			// already we skip the cooperative detach — the residual cleanup
+			// below and the normal stale-client cleanup will finish the job.
+			if (!clientUUID) return cb();
+
+			volumeCollection.find({
+				volumeClass: consts.volumeClass.TPV,
+				'tpvConfig.cdvUUID': cdv.uuid,
+				'tpvConfig.exclusiveClient': clientID,
+			}, { projection: { _id: 1 } }).toArray((err, tpvDocs) => {
+				if (err) { new MongoError(err).log(); return cb(); }
+				if (!tpvDocs || !tpvDocs.length) return cb();
+
+				// Serial detach — each scope.detachTPV runs as an async.series
+				// and finishes its Kafka message dispatch before the next
+				// starts; the CDV's referenceIDs list is mutated consistently.
+				async.eachSeries(tpvDocs, (tpv, next) => {
+					scope.detachTPV(clientID, clientUUID, tpv._id, () => next());
+				}, cb);
+			});
+		},
+		function clearExclusiveClientFallback(cb) {
+			// Safety net: if detachTPV was skipped (no clientUUID) or failed
+			// mid-series, clear exclusiveClient on any TPV still pointing at
+			// this client for this CDV, so subsequent attach attempts can
+			// succeed.
 			volumeCollection.updateMany(
 				{
 					'tpvConfig.cdvUUID': cdv.uuid,
@@ -1795,9 +1850,12 @@ scope.clearEvictedClientState = (cdv, clientID, callback) => {
 				}
 			);
 		},
-		function removeAttachment(cb) {
-			// attachments is a UUID-keyed object — remove via $unset on the
-			// full path. Matches the pattern at lines 1154, 3126.
+		function removeResidualAttachment(cb) {
+			// Clean up any residual CDV attachment — scope.detachTPV's refID
+			// decrementing normally removes the attachment once the last
+			// 'tpv:*' ref is stripped. This $unset is the safety net for
+			// cases where an orphan ref remained or the cooperative detach
+			// was skipped. attachments is a UUID-keyed object.
 			clientCollection.updateOne(
 				{ _id: clientID },
 				{ $unset: { [`attachments.${cdv.uuid}`]: 1 } },
