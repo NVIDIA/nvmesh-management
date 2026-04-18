@@ -3501,6 +3501,7 @@ scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
 	).toArray((err, tpvs) => {
 		if (err) return cb(new MongoError(err).log(), volumes);
 
+		// Volume `capacity` is stored in GiB (see createTPV line `blocks = capacity * GiB / BLOCK_SIZE`).
 		const demandByCDV = Object.create(null);
 		for (const tpv of tpvs) {
 			const cdv = cdvs.find(c => c._id === tpv.tpvConfig.cdvId);
@@ -3508,7 +3509,7 @@ scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
 
 			const cdvExtentBytes = cdv.cdvConfig.cdvExtentSizeMB * consts.MiB;
 			const tpvExtentKB = tpv.tpvConfig && tpv.tpvConfig.tpvExtentSizeKB;
-			const virtualBytes = tpv.capacity;
+			const virtualBytes = (tpv.capacity || 0) * consts.GiB;
 			if (!tpvExtentKB || !virtualBytes || !cdvExtentBytes) continue;
 
 			const tpvExtentBytes = tpvExtentKB * 1024;
@@ -3524,7 +3525,7 @@ scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
 		for (const cdv of cdvs) {
 			if (!cdv.cdvConfig || !cdv.cdvConfig.cdvExtentSizeMB || !cdv.capacity) continue;
 			const cdvExtentBytes = cdv.cdvConfig.cdvExtentSizeMB * consts.MiB;
-			const totalDataExtents = Math.floor(cdv.capacity / cdvExtentBytes);
+			const totalDataExtents = Math.floor((cdv.capacity * consts.GiB) / cdvExtentBytes);
 			if (totalDataExtents <= 0) continue;
 			const demand = demandByCDV[cdv._id] || 0;
 			cdv.runtimeStats = cdv.runtimeStats || {};
