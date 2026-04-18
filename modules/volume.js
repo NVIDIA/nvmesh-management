@@ -3474,6 +3474,67 @@ scope.rebuildVolumes = (requestVolumes, user, cb) => {
 
 // ─── Thin Provisioning ───────────────────────────────────────────────────────
 
+// Annotate each CDV row in `volumes` with runtimeStats.overprovisionRatio —
+// the sum over its TPVs of (data extents required for the virtual size +
+// extents needed for the L1 tree), divided by the CDV's total data extents
+// (derived from its own geometry, so it is defined from the moment the CDV
+// exists and does not depend on TOMA stats).
+//
+// Per-TPV demand:
+//   dataExtents = ceil(virtualBytes / cdvExtentBytes)
+//   treeExtents = ceil(virtualBytes / (entriesPerL1 × tpvExtentBytes))
+//                 (plus 1 for an L2 index extent when > 1 L1 is needed)
+// where entriesPerL1 = floor(cdvExtentBytes / TPV_TREE_ENTRY_BYTES).
+// TPV_TREE_ENTRY_BYTES mirrors the kernel's `tpv_tree_entry` (see
+// nvmeibc_tpv.h); must be updated if the on-disk layout changes.
+const TPV_TREE_ENTRY_BYTES = 16;
+
+scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
+	const cdvs = (volumes || []).filter(v => v && v.volumeClass === consts.volumeClass.CDV);
+	if (!cdvs.length) return cb(null, volumes);
+
+	const cdvIds = cdvs.map(c => c._id);
+	const db = app.get('db');
+	db.collection('volume').find(
+		{ volumeClass: consts.volumeClass.TPV, 'tpvConfig.cdvId': { $in: cdvIds } },
+		{ projection: { _id: 1, capacity: 1, 'tpvConfig.cdvId': 1, 'tpvConfig.tpvExtentSizeKB': 1 } }
+	).toArray((err, tpvs) => {
+		if (err) return cb(new MongoError(err).log(), volumes);
+
+		const demandByCDV = Object.create(null);
+		for (const tpv of tpvs) {
+			const cdv = cdvs.find(c => c._id === tpv.tpvConfig.cdvId);
+			if (!cdv || !cdv.cdvConfig || !cdv.cdvConfig.cdvExtentSizeMB) continue;
+
+			const cdvExtentBytes = cdv.cdvConfig.cdvExtentSizeMB * consts.MiB;
+			const tpvExtentKB = tpv.tpvConfig && tpv.tpvConfig.tpvExtentSizeKB;
+			const virtualBytes = tpv.capacity;
+			if (!tpvExtentKB || !virtualBytes || !cdvExtentBytes) continue;
+
+			const tpvExtentBytes = tpvExtentKB * 1024;
+			const dataExtents = Math.ceil(virtualBytes / cdvExtentBytes);
+			const entriesPerL1 = Math.floor(cdvExtentBytes / TPV_TREE_ENTRY_BYTES);
+			const coverPerL1 = entriesPerL1 * tpvExtentBytes;
+			const l1Extents = coverPerL1 > 0 ? Math.max(1, Math.ceil(virtualBytes / coverPerL1)) : 1;
+			const treeExtents = l1Extents + (l1Extents > 1 ? 1 : 0);
+
+			demandByCDV[cdv._id] = (demandByCDV[cdv._id] || 0) + dataExtents + treeExtents;
+		}
+
+		for (const cdv of cdvs) {
+			if (!cdv.cdvConfig || !cdv.cdvConfig.cdvExtentSizeMB || !cdv.capacity) continue;
+			const cdvExtentBytes = cdv.cdvConfig.cdvExtentSizeMB * consts.MiB;
+			const totalDataExtents = Math.floor(cdv.capacity / cdvExtentBytes);
+			if (totalDataExtents <= 0) continue;
+			const demand = demandByCDV[cdv._id] || 0;
+			cdv.runtimeStats = cdv.runtimeStats || {};
+			cdv.runtimeStats.overprovisionRatio = demand / totalDataExtents;
+		}
+
+		cb(null, volumes);
+	});
+};
+
 function prepareCDVForCreate(volume) {
 	volume.tpvCount = 0;
 	const cfg = volume.cdvConfig || {};

@@ -226,6 +226,18 @@ const CDVs = () => {
 			},
 		},
 		{
+			name: 'Over-Provision',
+			field: 'runtimeStats.overprovisionRatio',
+			filterable: false,
+			sortable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: cdvRow => {
+				const r = cdvRow.runtimeStats?.overprovisionRatio;
+				return typeof r === 'number' ? `${r.toFixed(2)}x` : '—';
+			},
+		},
+		{
 			name: 'Max Additional',
 			filterable: false,
 			sortable: false,

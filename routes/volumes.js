@@ -167,7 +167,7 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 				}
 			});
 
-			res.json(volumes);
+			volumeModule.annotateCDVsWithOverprovisionRatio(volumes, () => res.json(volumes));
 		}
 	);
 });
