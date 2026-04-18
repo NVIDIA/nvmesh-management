@@ -734,7 +734,8 @@ scope.waitForTPVAttachedOnTOMA = (tpvUuid, tomaId, cb) => {
 					consts.volumeAttachmentStatus.ATTACH_FAILED,
 					consts.volumeAttachmentStatus.VOLUME_RESERVATION_DENIED,
 				].includes(bdev.vol_status)) {
-					return cb(new Error(`TPV ${tpvUuid} attach on TOMA ${tomaId} reported status=${consts.volumeAttachmentStatusToName[bdev.vol_status] || bdev.vol_status}`));
+					const statusName = consts.volumeAttachmentStatusToName[bdev.vol_status] || bdev.vol_status;
+					return cb(new Error(`TPV ${tpvUuid} attach on TOMA ${tomaId} reported status=${statusName}`));
 				}
 
 				// Management changed its mind after we started — treat as failure.
@@ -745,8 +746,11 @@ scope.waitForTPVAttachedOnTOMA = (tpvUuid, tomaId, cb) => {
 
 				// Still pending (bdev absent, or bdev.vol_status ∈ {BUSY, ATTACHING}).
 				if (Date.now() >= deadline) {
-					const status = bdev ? (consts.volumeAttachmentStatusToName[bdev.vol_status] || bdev.vol_status) : 'no block_devices entry';
-					return cb(new Error(`Timeout: TPV ${tpvUuid} attachment not confirmed on TOMA ${tomaId} after ${MAX_WAIT_MS}ms (vol_status=${status}, action=${action || 'absent'})`));
+					const status = bdev
+						? (consts.volumeAttachmentStatusToName[bdev.vol_status] || bdev.vol_status)
+						: 'no block_devices entry';
+					return cb(new Error(`Timeout: TPV ${tpvUuid} attachment not confirmed on TOMA ${tomaId} `
+						+ `after ${MAX_WAIT_MS}ms (vol_status=${status}, action=${action || 'absent'})`));
 				}
 
 				setTimeout(poll, POLL_INTERVAL_MS);

@@ -157,9 +157,11 @@ const ThinProvisioning = () => {
 				if (!tpvRow.isEncrypted) return '—';
 				const cmdStatus = tpvRow.encryption?.command?.status;
 				const rsp = tpvRow.encryption?.command?.response;
-				if (!tpvRow.encryption?.isInitialized && cmdStatus !== consts.encryptionCommandStatuses.SENT && cmdStatus !== consts.encryptionCommandStatuses.PENDING_SEND)
+				const isPending = cmdStatus === consts.encryptionCommandStatuses.SENT
+					|| cmdStatus === consts.encryptionCommandStatuses.PENDING_SEND;
+				if (!tpvRow.encryption?.isInitialized && !isPending)
 					return <label className="label bg-yellow">Init Required</label>;
-				if (cmdStatus === consts.encryptionCommandStatuses.SENT || cmdStatus === consts.encryptionCommandStatuses.PENDING_SEND)
+				if (isPending)
 					return <label className="label bg-blue">In Progress</label>;
 				if (rsp?.error && !rsp?.acknowledged)
 					return <label className="label bg-red">Error</label>;
