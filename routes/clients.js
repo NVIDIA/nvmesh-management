@@ -346,12 +346,15 @@ router.post('/preemptFromCDV', isAdminRole, (req, res) => {
 				}
 			);
 		},
-		systemAdminMessages => res.json(systemAdminMessages)
+		// Match the /attach pattern: map each SystemMessage to an API
+		// response dict so the CLI can parse { _id, success, error, ... }.
+		systemAdminMessages => res.json(systemAdminMessages.map(
+			m => m.createApiResponse(Entities.Client.ID, Entities.Client.UUID)))
 	);
 });
 
 router.post('/attach', isAdminRole, (req, res) => {
-	let { client, clientUUID, volumes } = req.body;
+	let { client, clientUUID, volumes, adminManualOperation } = req.body;
 
 	let incomingRequestSystemAdminMessages = volumes.map(volume => createAuditRequestLog(req, systemMessages.CLIENT_ATTACH_REQUEST)
 		.addInfo(Entities.Client.ID, client)
@@ -363,7 +366,7 @@ router.post('/attach', isAdminRole, (req, res) => {
 
 	utils.handleRESTAndLog(
 		incomingRequestSystemAdminMessages,
-		cb => clientModule.attach(client, clientUUID, volumes, cb),
+		cb => clientModule.attach(client, clientUUID, volumes, { adminManualOperation: adminManualOperation === true }, cb),
 		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Volume.ID, Entities.Volume.UUID)))
 	);
 });
@@ -407,7 +410,7 @@ router.post('/attach', isAdminRole, (req, res) => {
 * }]
 */
 router.post('/detach', isAdminRole, (req, res) => {
-	let { client, clientUUID, volumes } = req.body;
+	let { client, clientUUID, volumes, adminManualOperation } = req.body;
 
 	let incomingRequestSystemAdminMessages = volumes.map(volume => createAuditRequestLog(req, systemMessages.CLIENT_DETACH_REQUEST)
 		.addInfo(Entities.Client.ID, client)
@@ -419,7 +422,7 @@ router.post('/detach', isAdminRole, (req, res) => {
 
 	utils.handleRESTAndLog(
 		incomingRequestSystemAdminMessages,
-		cb => clientModule.detach(client, clientUUID, volumes, cb),
+		cb => clientModule.detach(client, clientUUID, volumes, { adminManualOperation: adminManualOperation === true }, cb),
 		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Volume.ID, Entities.Volume.UUID)))
 	);
 });

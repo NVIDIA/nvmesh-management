@@ -3932,8 +3932,13 @@ scope.getCombinedStatusAttachment = (client, dataAttachmentID, cb) => {
 	});
 };
 
-scope.attach = (clientID, clientUUID, requestedVolumes, cb) => {
-	logger.sysDEBUG(`clients/attach for client: ${clientID} volumes: ${JSON.stringify(requestedVolumes)}`);
+scope.attach = (clientID, clientUUID, requestedVolumes, options, cb) => {
+	if (typeof options === 'function') { cb = options; options = {}; }
+	options = options || {};
+	const adminManualOperation = options.adminManualOperation === true;
+
+	logger.sysDEBUG(`clients/attach for client: ${clientID} volumes: ${JSON.stringify(requestedVolumes)}`
+		+ (adminManualOperation ? ' (adminManualOperation)' : ''));
 
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
@@ -3950,36 +3955,45 @@ scope.attach = (clientID, clientUUID, requestedVolumes, cb) => {
 		docs.forEach(d => { classMap[d._id] = { volumeClass: d.volumeClass, uuid: d.uuid }; });
 
 		const tpvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.TPV);
-		const cdvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV);
-		const cdvMgmtVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV_MGMT);
+		// Admin-manual-operation override: an admin explicitly opting into
+		// manual CDV / CDV_MGMT handling routes these through the normal
+		// attach/detach path instead of the auto-managed rejection. Used by
+		// support/debug flows; outside of this flag, CDVs remain auto-managed
+		// by the management server and CDV_MGMT satellites are attached only
+		// by the elected allocator TOMA.
+		const cdvVolumes = adminManualOperation ? []
+			: requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV);
+		const cdvMgmtVolumes = adminManualOperation ? []
+			: requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV_MGMT);
 		const otherVolumes = requestedVolumes.filter(v => {
 			const vc = classMap[v.name]?.volumeClass;
-			return vc !== consts.volumeClass.TPV
-				&& vc !== consts.volumeClass.CDV
-				&& vc !== consts.volumeClass.CDV_MGMT;
+			if (vc === consts.volumeClass.TPV) return false;
+			if (adminManualOperation && (vc === consts.volumeClass.CDV || vc === consts.volumeClass.CDV_MGMT)) return true;
+			return vc !== consts.volumeClass.CDV && vc !== consts.volumeClass.CDV_MGMT;
 		});
 
 		const allMessages = [];
 
-		// CDV volumes are auto-managed; manual attach is not permitted.
+		// CDV volumes are auto-managed; manual attach is not permitted without
+		// the adminManualOperation override.
 		cdvVolumes.forEach(vol => {
 			allMessages.push(new SystemAdminMessage(systemMessages.BUILD_RESPONSES_ERROR)
 				.addInfo(Entities.Volume.ID, vol.name)
 				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
 				.addInfo(Entities.Client.ID, clientID)
-				.addInfo(Entities.Error, 'CDV volumes are auto-managed and cannot be attached manually'));
+				.addInfo(Entities.Error, 'CDV volumes are auto-managed and cannot be attached manually (pass adminManualOperation=true to override)'));
 		});
 
 		// Allocator-satellite (CDV_MGMT) volumes are attached only by the elected
 		// allocator TOMA via the internal attachSatelliteForAllocator path; manual
-		// REST attach is forbidden.
+		// REST attach is forbidden without the adminManualOperation override.
 		cdvMgmtVolumes.forEach(vol => {
 			allMessages.push(new SystemAdminMessage(systemMessages.BUILD_RESPONSES_ERROR)
 				.addInfo(Entities.Volume.ID, vol.name)
 				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
 				.addInfo(Entities.Client.ID, clientID)
 				.addInfo(Entities.Error,
-					'Allocator-satellite volumes are attached automatically by the elected allocator TOMA and cannot be attached manually.'));
+					'Allocator-satellite volumes are attached automatically by the elected allocator TOMA (pass adminManualOperation=true to override).'));
 		});
 
 		async.parallel([
@@ -4013,8 +4027,13 @@ scope.attach = (clientID, clientUUID, requestedVolumes, cb) => {
 	});
 };
 
-scope.detach = (clientID, clientUUID, requestedVolumes, cb) => {
-	logger.sysDEBUG(`clients/detach for client: ${clientID} volumes: ${JSON.stringify(requestedVolumes)}`);
+scope.detach = (clientID, clientUUID, requestedVolumes, options, cb) => {
+	if (typeof options === 'function') { cb = options; options = {}; }
+	options = options || {};
+	const adminManualOperation = options.adminManualOperation === true;
+
+	logger.sysDEBUG(`clients/detach for client: ${clientID} volumes: ${JSON.stringify(requestedVolumes)}`
+		+ (adminManualOperation ? ' (adminManualOperation)' : ''));
 
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
@@ -4031,34 +4050,39 @@ scope.detach = (clientID, clientUUID, requestedVolumes, cb) => {
 		docs.forEach(d => { classMap[d._id] = { volumeClass: d.volumeClass, uuid: d.uuid }; });
 
 		const tpvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.TPV);
-		const cdvVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV);
-		const cdvMgmtVolumes = requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV_MGMT);
+		// Admin-manual-operation override: see matching comment in scope.attach.
+		const cdvVolumes = adminManualOperation ? []
+			: requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV);
+		const cdvMgmtVolumes = adminManualOperation ? []
+			: requestedVolumes.filter(v => classMap[v.name]?.volumeClass === consts.volumeClass.CDV_MGMT);
 		const otherVolumes = requestedVolumes.filter(v => {
 			const vc = classMap[v.name]?.volumeClass;
-			return vc !== consts.volumeClass.TPV
-				&& vc !== consts.volumeClass.CDV
-				&& vc !== consts.volumeClass.CDV_MGMT;
+			if (vc === consts.volumeClass.TPV) return false;
+			if (adminManualOperation && (vc === consts.volumeClass.CDV || vc === consts.volumeClass.CDV_MGMT)) return true;
+			return vc !== consts.volumeClass.CDV && vc !== consts.volumeClass.CDV_MGMT;
 		});
 
 		const allMessages = [];
 
-		// CDV volumes are auto-managed; manual detach is not permitted.
+		// CDV volumes are auto-managed; manual detach is not permitted without
+		// the adminManualOperation override.
 		cdvVolumes.forEach(vol => {
 			allMessages.push(new SystemAdminMessage(systemMessages.DETACH_VOLUME_GENERAL_ERROR)
 				.addInfo(Entities.Volume.ID, vol.name)
 				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
 				.addInfo(Entities.Client.ID, clientID)
-				.addInfo(Entities.Error, 'CDV volumes are auto-managed and cannot be detached manually'));
+				.addInfo(Entities.Error, 'CDV volumes are auto-managed and cannot be detached manually (pass adminManualOperation=true to override)'));
 		});
 
-		// Allocator-satellite (CDV_MGMT) volumes are detached only by re-election preempt; manual detach forbidden.
+		// Allocator-satellite (CDV_MGMT) volumes are detached only by re-election
+		// preempt; manual detach forbidden without the adminManualOperation override.
 		cdvMgmtVolumes.forEach(vol => {
 			allMessages.push(new SystemAdminMessage(systemMessages.DETACH_VOLUME_GENERAL_ERROR)
 				.addInfo(Entities.Volume.ID, vol.name)
 				.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
 				.addInfo(Entities.Client.ID, clientID)
 				.addInfo(Entities.Error,
-					'Allocator-satellite volumes are detached automatically when the next allocator preempts; manual detach is not permitted.'));
+					'Allocator-satellite volumes are detached automatically when the next allocator preempts (pass adminManualOperation=true to override).'));
 		});
 
 		async.parallel([
