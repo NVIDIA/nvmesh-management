@@ -238,8 +238,9 @@ const CDVs = () => {
 			},
 		},
 		{
-			// Max CDV Size = (L1 entries) × cdvExtentSize.  The L1 table is
-			// always 1 GiB with a 4 KiB header; each entry is 4 KiB.
+			// Max CDV Size = (satellite entries) × cdvExtentSize.
+			// Satellite holds one 4 KiB cdv_extent_md block per data extent,
+			// minus 1 block for the header; size comes from cdvConfig.allocatorSizeGB.
 			name: 'Max CDV Size',
 			filterable: false,
 			sortable: false,
@@ -248,9 +249,9 @@ const CDVs = () => {
 			value: cdvRow => {
 				const { cdvExtentSizeMB, allocatorSizeGB } = cdvRow.cdvConfig || {};
 				if (!cdvExtentSizeMB || !allocatorSizeGB) return '—';
-				const l1Entries = Math.floor(allocatorSizeGB * 1024 * 1024 * 1024 / 4096) - 1;
-				const maxSizeGB = (l1Entries * cdvExtentSizeMB) / 1024;
-				return CapacityService.toBiggestUnit(maxSizeGB, unitType);
+				const satelliteEntries = Math.floor(allocatorSizeGB * 1024 * 1024 * 1024 / 4096) - 1;
+				const maxSizeGiB = (satelliteEntries * cdvExtentSizeMB) / 1024;
+				return CapacityService.toBiggestUnit(maxSizeGiB, unitType);
 			},
 		},
 		{

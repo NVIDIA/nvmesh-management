@@ -3595,7 +3595,9 @@ function buildSatelliteVolumeForCDV(cdvVolume) {
 	});
 
 	sat.name = cdvVolume.name + consts.CDV_MGMT_SUFFIX;
-	sat.capacity = (cdvVolume.cdvConfig && cdvVolume.cdvConfig.allocatorSizeGB) || consts.CDV_MGMT_SIZE_GIB;
+	// capacity is in decimal GB (utils.BtoGB uses consts.GB = 1000³); convert from GiB.
+	const allocatorSizeGiB = (cdvVolume.cdvConfig && cdvVolume.cdvConfig.allocatorSizeGB) || consts.CDV_MGMT_SIZE_GIB;
+	sat.capacity = allocatorSizeGiB * consts.GiB / consts.GB;
 	sat.volumeClass = consts.volumeClass.CDV_MGMT;
 	sat.parentCDVId = cdvVolume._id || cdvVolume.name;
 	sat.description = `Allocator metadata satellite for CDV '${cdvVolume.name}'`;
