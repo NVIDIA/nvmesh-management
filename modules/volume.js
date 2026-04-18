@@ -2027,19 +2027,27 @@ scope.calculateVolumeStatus = function(volume) {
 		var cdvStatus = volume._parentCDVStatus || consts.volumeStatuses.UNAVAILABLE;
 		var hasClient = !!(volume.tpvConfig && volume.tpvConfig.exclusiveClient);
 
+		// Encryption-derived action (must be computed for TPVs too — without
+		// this the status calc strips `initEncryptionRequired` / in-flight
+		// `initializing_encryption` / `adding_passphrase` / … from encrypted
+		// TPVs on every recalc, and the next verifyEncryptionCommand fails
+		// with VOLUME_NOT_READY_FOR_INIT_ENCRYPTION).
+		var tpvEncAction = scope.getActionByEncryptionCommand(volume);
+		var tpvInitRequired = volume.isEncrypted && !(volume.encryption && volume.encryption.isInitialized);
+
 		if (oldAction === consts.volumeActions.MARKED_FOR_DELETION || oldAction === consts.volumeActions.DELETING) {
 			newStatus = oldStatus;
 			newAction = oldAction;
 		} else if (cdvStatus !== consts.volumeStatuses.ONLINE) {
 			// Parent CDV is not healthy — TPV inherits its status
 			newStatus = cdvStatus;
-			newAction = consts.volumeActions.NONE;
+			newAction = tpvEncAction || (tpvInitRequired ? consts.volumeActions.INIT_ENCRYPTION_REQUIRED : consts.volumeActions.NONE);
 		} else if (hasClient) {
 			newStatus = consts.volumeStatuses.ONLINE;
-			newAction = consts.volumeActions.NONE;
+			newAction = tpvEncAction || (tpvInitRequired ? consts.volumeActions.INIT_ENCRYPTION_REQUIRED : consts.volumeActions.NONE);
 		} else {
 			newStatus = consts.volumeStatuses.UNAVAILABLE;
-			newAction = consts.volumeActions.NONE;
+			newAction = tpvEncAction || (tpvInitRequired ? consts.volumeActions.INIT_ENCRYPTION_REQUIRED : consts.volumeActions.NONE);
 		}
 
 		newHealth = getVolumeHealth(newStatus, newAction);
@@ -3537,13 +3545,17 @@ scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
 };
 
 function prepareCDVForCreate(volume) {
+	// CDVs are never encrypted at the NVMesh volume layer; encryption is per-TPV
+	// only (Architecture Decision #18).  Silently strip any incoming flags.
+	volume.isEncrypted = false;
+	delete volume.encryption;
 	volume.tpvCount = 0;
 	const cfg = volume.cdvConfig || {};
 	volume.cdvConfig = {
 		cdvExtentSizeMB: cfg.cdvExtentSizeMB,
-		// allocatorSizeGB retained on the schema for backward-readable input
-		// only; the allocator now lives on a fixed-size satellite volume.
-		allocatorSizeGB: consts.CDV_MGMT_SIZE_GIB,
+		// allocatorSizeGB controls the size of the CDV_MGMT satellite volume.
+		// Defaults to CDV_MGMT_SIZE_GIB (1 GiB) if not supplied.
+		allocatorSizeGB: cfg.allocatorSizeGB || consts.CDV_MGMT_SIZE_GIB,
 		maxTPVs: cfg.maxTPVs != null ? cfg.maxTPVs : 512,
 		// Per-client preempt admission gate (see TPV_PerClientCDVPreemption.md).
 		// Monotonic u64; bumped by preemptClientFromCDV. 0 is the sentinel
@@ -3583,7 +3595,7 @@ function buildSatelliteVolumeForCDV(cdvVolume) {
 	});
 
 	sat.name = cdvVolume.name + consts.CDV_MGMT_SUFFIX;
-	sat.capacity = consts.CDV_MGMT_SIZE_GIB;
+	sat.capacity = (cdvVolume.cdvConfig && cdvVolume.cdvConfig.allocatorSizeGB) || consts.CDV_MGMT_SIZE_GIB;
 	sat.volumeClass = consts.volumeClass.CDV_MGMT;
 	sat.parentCDVId = cdvVolume._id || cdvVolume.name;
 	sat.description = `Allocator metadata satellite for CDV '${cdvVolume.name}'`;
@@ -3643,6 +3655,8 @@ function createTPV(volume, user, cb) {
 
 	const { cdvId, tpvExtentSizeKB } = volume.tpvConfig || {};
 	const { capacity } = volume;
+	const isEncrypted = !!volume.isEncrypted;
+	const requestedHeaderSize = (volume.encryption && volume.encryption.headerSize) || 16;
 
 	async.series([
 		function fetchAndValidateCDV(next) {
@@ -3690,7 +3704,9 @@ function createTPV(volume, user, cb) {
 				uuid: uuid.v1(),
 				version: 1,
 				isReserved: false,
-				isReady: true,
+				// Encrypted TPVs flip to isReady only after initEncryption completes
+				// (see volumeEncryption.handleCommandResponse).
+				isReady: !isEncrypted,
 				status: consts.volumeStatuses.UNAVAILABLE,
 				health: consts.targetHealth.HEALTHY,
 				volumeClass: consts.volumeClass.TPV,
@@ -3744,6 +3760,14 @@ function createTPV(volume, user, cb) {
 					exclusiveClient: null,
 					exclusiveClientUUID: null,
 				},
+				isEncrypted: isEncrypted,
+				...(isEncrypted && {
+					encryption: {
+						headerSize: requestedHeaderSize,
+						isInitialized: false,
+					},
+					action: consts.volumeActions.INIT_ENCRYPTION_REQUIRED,
+				}),
 			};
 
 			volumeCollection.insertOne(tpv, err => {

@@ -44,8 +44,7 @@ const cdvConfigScheme = {
 	unevaluatedProperties: false,
 	properties: {
 		cdvExtentSizeMB: { type: 'integer', enum: consts.cdvExtentSizeMBValues },
-		// allocatorSizeGB retained for backward-readable input only; ignored on create.
-		// Allocator metadata now lives on a satellite volume of fixed size CDV_MGMT_SIZE_GIB.
+		// allocatorSizeGB controls the size of the CDV_MGMT satellite volume (GiB); default 1.
 		allocatorSizeGB: { type: 'integer', default: 1, minimum: 1 },
 		maxTPVs: { type: 'integer', default: 512, minimum: 1 },
 		// Note: cdvConfig.admissionFloor is a server-owned field populated by

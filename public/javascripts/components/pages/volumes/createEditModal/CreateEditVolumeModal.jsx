@@ -481,7 +481,7 @@ const CreateEditVolume = ({
 
 								<FormControl
 									name="allocatorSizeGB"
-									label="Allocator Size (GB)"
+									label="Allocator Size (GiB)"
 									errorMessage={formState.errors?.allocatorSizeGB?.message}
 								>
 									<Input
@@ -491,7 +491,7 @@ const CreateEditVolume = ({
 										disabled={!isCreate}
 										{...register('allocatorSizeGB', {
 											value: volume.cdvConfig?.allocatorSizeGB || 1,
-											min: { value: 1, message: 'Minimum is 1 GB' },
+											min: { value: 1, message: 'Minimum is 1 GiB' },
 											valueAsNumber: true,
 										})}
 									/>
