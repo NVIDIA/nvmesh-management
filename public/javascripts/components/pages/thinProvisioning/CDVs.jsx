@@ -238,17 +238,19 @@ const CDVs = () => {
 			},
 		},
 		{
-			name: 'Max Additional',
+			// Max CDV Size = (L1 entries) × cdvExtentSize.  The L1 table is
+			// always 1 GiB with a 4 KiB header; each entry is 4 KiB.
+			name: 'Max CDV Size',
 			filterable: false,
 			sortable: false,
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
 			value: cdvRow => {
-				const { totalDataExtents } = cdvRow.runtimeStats || {};
-				const { allocatorSizeGB } = cdvRow.cdvConfig || {};
-				if (totalDataExtents == null || allocatorSizeGB == null) return '—';
-				const maxAddressable = Math.floor(allocatorSizeGB * 1024 * 1024 * 1024 / 4096) - 1;
-				return maxAddressable - totalDataExtents;
+				const { cdvExtentSizeMB, allocatorSizeGB } = cdvRow.cdvConfig || {};
+				if (!cdvExtentSizeMB || !allocatorSizeGB) return '—';
+				const l1Entries = Math.floor(allocatorSizeGB * 1024 * 1024 * 1024 / 4096) - 1;
+				const maxSizeGB = (l1Entries * cdvExtentSizeMB) / 1024;
+				return CapacityService.toBiggestUnit(maxSizeGB, unitType);
 			},
 		},
 		{
