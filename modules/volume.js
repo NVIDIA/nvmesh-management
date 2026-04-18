@@ -2646,6 +2646,11 @@ scope.markVolumesForDeletion = function(volumes, cb) {
 						return callback(true);
 					}
 
+					if ([consts.volumeActions.MARKED_FOR_DELETION, consts.volumeActions.DELETING].includes(result.action)) {
+						messages.push(addVolumeInfo(new SystemAdminMessage(systemMessages.VOLUME_DELETE_PENDING)));
+						return callback(true);
+					}
+
 					dbVolume = result;
 					callback();
 				});
@@ -3274,7 +3279,10 @@ scope.saveVolumes = (requestVolumes, user, cb) => {
 				// Satellite is allocated FIRST so it lands first in the chunk
 				// pool; the CDV follows with the remaining capacity.
 				allocateAndSliceIntoVolumes([satellite, cdv], user, (msgs, created) => {
-					messages.push(...msgs);
+					// Satellite is internal plumbing; expose only the CDV result to callers.
+					// If satellite creation fails there is no CDV message — fall back to all msgs.
+					const cdvMsgs = msgs.filter(m => m.getAdditionalInfoByKey(Entities.Volume.ID) === cdv.name);
+					messages.push(...(cdvMsgs.length ? cdvMsgs : msgs));
 					if (created.length !== 2) return next();
 
 					// Back-fill cross-references in both directions: the CDV gains
