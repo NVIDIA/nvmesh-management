@@ -5651,8 +5651,20 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 			// callback shape here, and setExclusiveClient below falsely
 			// records the new holder while the kernel-side TPV attach never
 			// actually happened.
+			// The TPV's reservation.version is bumped by the detach Kafka path
+			// invoked from preemptPreviousHolderIfAny (clearEvictedClientState
+			// → scope.detachTPV), so the dbVolume.reservation.version the
+			// server sees here is strictly greater than 0. Without forwarding
+			// the current version, validateReservationMode (volume.js:771)
+			// trips isReservationVersionOutdated and the preempt transition
+			// never fires — the attach silently no-ops despite preempt=true.
+			// tpv was reloaded after the preempt step so tpv.reservation.version
+			// is authoritative.
 			const reservation = { mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE };
-			if (options.preempt) reservation.preempt = true;
+			if (options.preempt) {
+				reservation.preempt = true;
+				reservation.version = (tpv.reservation && tpv.reservation.version) || 0;
+			}
 			scope.attachVolumes(clientID, clientUUID, [{
 				uuid: tpv.uuid,
 				name: tpv._id,
