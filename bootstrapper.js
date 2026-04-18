@@ -688,15 +688,6 @@ scope.afterModulesLoaded = function(callback) {
 	sanityAndRecover.afterModuleLoaded();
 	websocket.afterModuleLoaded();
 	clientModule.afterModuleLoaded();
-	// Resume any stuck EVICTING attachments on startup (Step 14b reaper of
-	// TPV_PerClientCDVPreemption.md). Also schedule a periodic sweep so a
-	// TOMA that was unresponsive at eviction time gets retried when it comes
-	// back. Idempotent downstream: floor uses $max, TOMA handler uses max_t,
-	// cleanupDB is a no-op if the attachment is already gone.
-	if (typeof clientModule.reapEvictingAttachments === 'function') {
-		clientModule.reapEvictingAttachments(() => {});
-		setInterval(() => clientModule.reapEvictingAttachments(() => {}), 60 * 1000);
-	}
 	targetModule.afterModuleLoaded();
 	volumeModule.afterModuleLoaded();
 	utils.afterModuleLoaded();
@@ -741,10 +732,24 @@ scope.bootstrap = function(callback) {
 		utils.sendStatsPeriodically,
 		zoneModule.dispatchAllZonesHardwareConfiguration,
 		scope.reconcileCDVTomaAttachments,
+		scope.startEvictingAttachmentsReaper,
 		scope.removeOldMessages
 	], function(err) {
 		callback(err);
 	});
+};
+
+// Resume any stuck EVICTING attachments on startup (Step 14b reaper of
+// TPV_PerClientCDVPreemption.md) and schedule a periodic sweep so a TOMA
+// that was unresponsive at eviction time gets retried when it comes back.
+// Idempotent downstream: floor bump uses $max, TOMA handler uses max_t,
+// cleanupDB is a no-op if the attachment is already gone. Fire-and-forget:
+// any error is logged via MongoError inside reapEvictingAttachments; we
+// do not block bootstrap on the first pass completing.
+scope.startEvictingAttachmentsReaper = (cb) => {
+	setInterval(() => clientModule.reapEvictingAttachments(() => {}), 60 * 1000);
+	clientModule.reapEvictingAttachments(() => {});
+	cb();
 };
 
 scope.removeOldMessages = (cb) => {
