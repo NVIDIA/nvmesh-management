@@ -5636,10 +5636,27 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 			}], () => cb());
 		},
 		function attachTPVVolume(cb) {
+			// Forward options.preempt into the TPV reservation so management's
+			// classical EXCLUSIVE-with-preempt path clears any lingering TPV-
+			// level reservation held by the previous client. Note: the CDV
+			// layer is handled by preemptPreviousHolderIfAny (above) via the
+			// admission_floor mechanism; the TPV layer uses the standard
+			// reservation.version machinery, and both must cooperate.
+			// Without preempt forwarded here, the Kafka DetachVolumes(TPV) that
+			// preemptPreviousHolderIfAny -> clearEvictedClientState -> detachTPV
+			// sent to the previous holder is still in flight in Mongo/client
+			// state — the TPV's reservation.reservedBy still references the
+			// old holder, and scope.attachVolumes refuses the new EXCLUSIVE
+			// attach as a conflict. The failure is then swallowed by the
+			// callback shape here, and setExclusiveClient below falsely
+			// records the new holder while the kernel-side TPV attach never
+			// actually happened.
+			const reservation = { mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE };
+			if (options.preempt) reservation.preempt = true;
 			scope.attachVolumes(clientID, clientUUID, [{
 				uuid: tpv.uuid,
 				name: tpv._id,
-				reservation: { mode: consts.reservationModeNames.EXCLUSIVE_READ_WRITE },
+				reservation,
 				cdvConf: {
 					uuid: cdv.uuid,
 					name: cdv._id,
