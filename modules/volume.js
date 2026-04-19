@@ -933,20 +933,20 @@ scope.updateSegmentZeroingProgress = function(message) {
 	});
 };
 
-function updatePRaidLeader(pRaidToUpdate, shouldUpdate, callback) {
+function updatePRaidLeader(pRaidToUpdate, callback) {
 	var db = app.get('db');
 	var volumeCollection = db.collection('volume');
 
 	var pRaidSetter = 'chunks.$[].pRaids.$[pRaid]';
 	var $set = {};
 
-	if (shouldUpdate) {
-		$set[pRaidSetter + '.version.major'] = pRaidToUpdate.version.major;
-		$set[pRaidSetter + '.version.minor'] = pRaidToUpdate.version.minor;
-		$set[pRaidSetter + '.tomaLeaderRaftTerm'] = pRaidToUpdate.tomaLeaderRaftTerm;
-		$set[pRaidSetter + '.lastReport'] = new Date();
-	} else {
-		$set[pRaidSetter + '.debug'] = 1;
+	$set[pRaidSetter + '.version.major'] = pRaidToUpdate.version.major;
+	$set[pRaidSetter + '.version.minor'] = pRaidToUpdate.version.minor;
+	$set[pRaidSetter + '.tomaLeaderRaftTerm'] = pRaidToUpdate.tomaLeaderRaftTerm;
+	$set[pRaidSetter + '.lastReport'] = new Date();
+
+	if (pRaidToUpdate.updatePRaidToken) {
+		$set[pRaidSetter + '.updatePRaidToken'] = pRaidToUpdate.updatePRaidToken;
 	}
 
 	var query = getPRaidUpdateQuery(pRaidToUpdate);
@@ -989,6 +989,20 @@ function getPRaidUpdateQuery(pRaidToUpdate) {
 			]
 		}
 	};
+
+	if (pRaidToUpdate.updatePRaidToken) {
+		const currentQuery = pRaidMatcher.$elemMatch.$or;
+		pRaidMatcher.$elemMatch.$or = [
+			{ updatePRaidToken: { $exists: false } },
+			{ updatePRaidToken: { $lt: pRaidToUpdate.updatePRaidToken } },
+			{
+				$and: [
+					{ updatePRaidToken: pRaidToUpdate.updatePRaidToken },
+					{ $or: currentQuery }
+				]
+			}
+		];
+	}
 
 	var chunksPraidMatcher = {
 		'chunks.pRaids': pRaidMatcher
@@ -1154,7 +1168,7 @@ scope.handlePRaidStatusMessage = function(message, mainCallback) {
 	message.payload.pRaidsUpdate.forEach((pRaid) => {
 		convertReportPRaidFormatToDBFormat(pRaid);
 
-		var hasDeprecations = pRaid.segments.some((seg)=>seg.status == consts.diskSegmentStatuses.DEPRECATED);
+		var hasDeprecations = pRaid.segments.some((seg) => seg.status === consts.diskSegmentStatuses.DEPRECATED);
 
 		if (hasDeprecations)
 			pRaidsWithDeprecations.push(pRaid);
@@ -1233,6 +1247,10 @@ scope.updatePRaidWithoutDeprecations = function(pRaidToUpdate, callback) {
 	$set[pRaidSetter + '.version.minor'] = pRaidToUpdate.version.minor;
 	$set[pRaidSetter + '.tomaLeaderRaftTerm'] = pRaidToUpdate.tomaLeaderRaftTerm;
 	$set[pRaidSetter + '.lastReport'] = new Date();
+
+	if (pRaidToUpdate.updatePRaidToken) {
+		$set[pRaidSetter + '.updatePRaidToken'] = pRaidToUpdate.updatePRaidToken;
+	}
 
 	pRaidToUpdate.segments.forEach((seg, i)=> {
 		var segFilterName = 'seg' + i;
@@ -1521,7 +1539,7 @@ scope.updatePRaidStatusWithDeprecated = function(pRaidsWithDeprecations, user, c
 				function verifyPRaidVersion(callback) {
 					var startDT2 = new Date();
 
-					updatePRaidLeader(reportPRaid, true, function(err, volume) {
+					updatePRaidLeader(reportPRaid, function(err, volume) {
 						var endDT2 = new Date();
 
 						logger.sysVERBOSE('updatePRaidStatus', 'DT2::It took me ' + (endDT2 - startDT2) + 'ms to update pRaidLeader');
