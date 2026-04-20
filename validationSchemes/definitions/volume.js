@@ -45,9 +45,9 @@ const cdvConfigScheme = {
 	properties: {
 		cdvExtentSizeMiB: { type: 'integer', enum: consts.cdvExtentSizeMiBValues },
 		// allocatorSizeGiB controls the size of the CDV_MGMT satellite volume in GiB; default 1.
-		// allocatorSizeGB is accepted as a backward-compatible alias for pre-rename records.
+		// allocatorSizeGiB is accepted as a backward-compatible alias for pre-rename records.
 		allocatorSizeGiB: { type: 'integer', default: 1, minimum: 1 },
-		allocatorSizeGB: { type: 'integer', default: 1, minimum: 1 },
+		allocatorSizeGiB: { type: 'integer', default: 1, minimum: 1 },
 		maxTPVs: { type: 'integer', default: 512, minimum: 1 },
 		// Note: cdvConfig.admissionFloor is a server-owned field populated by
 		// prepareCDVForCreate and mutated only by preemptClientFromCDV in

@@ -3555,8 +3555,8 @@ function prepareCDVForCreate(volume) {
 		cdvExtentSizeMiB: cfg.cdvExtentSizeMiB,
 		// allocatorSizeGiB controls the size of the CDV_MGMT satellite volume.
 		// Defaults to CDV_MGMT_SIZE_GIB (1 GiB) if not supplied.
-		// Read allocatorSizeGB too for backward compat with pre-rename DB records.
-		allocatorSizeGiB: cfg.allocatorSizeGiB || cfg.allocatorSizeGB || consts.CDV_MGMT_SIZE_GIB,
+		// Read allocatorSizeGiB too for backward compat with pre-rename DB records.
+		allocatorSizeGiB: cfg.allocatorSizeGiB || cfg.allocatorSizeGiB || consts.CDV_MGMT_SIZE_GIB,
 		maxTPVs: cfg.maxTPVs != null ? cfg.maxTPVs : 512,
 		// Per-client preempt admission gate (see TPV_PerClientCDVPreemption.md).
 		// Monotonic u64; bumped by preemptClientFromCDV. 0 is the sentinel
@@ -3597,7 +3597,7 @@ function buildSatelliteVolumeForCDV(cdvVolume) {
 
 	sat.name = cdvVolume.name + consts.CDV_MGMT_SUFFIX;
 	// capacity is in decimal GB (utils.BtoGB uses consts.GB = 1000³); convert from GiB.
-	const allocatorSizeGiB = (cdvVolume.cdvConfig && (cdvVolume.cdvConfig.allocatorSizeGiB || cdvVolume.cdvConfig.allocatorSizeGB)) || consts.CDV_MGMT_SIZE_GIB;
+	const allocatorSizeGiB = (cdvVolume.cdvConfig && (cdvVolume.cdvConfig.allocatorSizeGiB || cdvVolume.cdvConfig.allocatorSizeGiB)) || consts.CDV_MGMT_SIZE_GIB;
 	sat.capacity = allocatorSizeGiB * consts.GiB / consts.GB;
 	sat.volumeClass = consts.volumeClass.CDV_MGMT;
 	sat.parentCDVId = cdvVolume._id || cdvVolume.name;

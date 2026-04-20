@@ -1882,8 +1882,8 @@ scope.sendCDVAllocatorFreeAll = (cdvUUID, tpvUUID, cb = () => {}) => {
 				return cb();
 			}
 
-			const allocatorSizeGiB = cdv.cdvConfig && (cdv.cdvConfig.allocatorSizeGiB ?? cdv.cdvConfig.allocatorSizeGB) != null
-				? (cdv.cdvConfig.allocatorSizeGiB ?? cdv.cdvConfig.allocatorSizeGB) : 1;
+			const allocatorSizeGiB = cdv.cdvConfig && (cdv.cdvConfig.allocatorSizeGiB ?? cdv.cdvConfig.allocatorSizeGiB) != null
+				? (cdv.cdvConfig.allocatorSizeGiB ?? cdv.cdvConfig.allocatorSizeGiB) : 1;
 			const cdvExtentSizeMiB = cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMiB != null ? cdv.cdvConfig.cdvExtentSizeMiB : 64;
 
 			const nodeIds = (cdv.chunks && cdv.chunks[0])
