@@ -194,12 +194,12 @@ const CDVs = () => {
 		},
 		{
 			name: 'Extent Size',
-			field: 'cdvConfig.cdvExtentSizeMB',
+			field: 'cdvConfig.cdvExtentSizeMiB',
 			filterable: false,
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
-			value: cdvRow => cdvRow.cdvConfig?.cdvExtentSizeMB != null
-				? `${cdvRow.cdvConfig.cdvExtentSizeMB} MB`
+			value: cdvRow => cdvRow.cdvConfig?.cdvExtentSizeMiB != null
+				? `${cdvRow.cdvConfig.cdvExtentSizeMiB} MB`
 				: '—',
 		},
 		{
@@ -247,10 +247,10 @@ const CDVs = () => {
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
 			value: cdvRow => {
-				const { cdvExtentSizeMB, allocatorSizeGiB } = cdvRow.cdvConfig || {};
-				if (!cdvExtentSizeMB || !allocatorSizeGiB) return '—';
+				const { cdvExtentSizeMiB, allocatorSizeGiB } = cdvRow.cdvConfig || {};
+				if (!cdvExtentSizeMiB || !allocatorSizeGiB) return '—';
 				const satelliteEntries = Math.floor(allocatorSizeGiB * 1024 * 1024 * 1024 / 4096) - 1;
-				const maxSizeGiB = (satelliteEntries * cdvExtentSizeMB) / 1024;
+				const maxSizeGiB = (satelliteEntries * cdvExtentSizeMiB) / 1024;
 				return CapacityService.toBiggestUnit(maxSizeGiB, unitType);
 			},
 		},

@@ -329,7 +329,7 @@ const CreateEditVolume = ({
 		if (isCDV) {
 			toSubmit.volumeClass = consts.volumeClass.CDV;
 			toSubmit.cdvConfig = {
-				cdvExtentSizeMB: Number(data.cdvExtentSizeMB) || 1024,
+				cdvExtentSizeMiB: Number(data.cdvExtentSizeMiB) || 1024,
 				allocatorSizeGiB: data.allocatorSizeGiB || 1,
 				maxTPVs: data.maxTPVs || 512,
 			};
@@ -455,14 +455,14 @@ const CreateEditVolume = ({
 						{isCDV && (
 							<>
 								<FormControl
-									name="cdvExtentSizeMB"
+									name="cdvExtentSizeMiB"
 									label="CDV Extent Size"
-									errorMessage={formState.errors?.cdvExtentSizeMB?.message}
+									errorMessage={formState.errors?.cdvExtentSizeMiB?.message}
 								>
 									<Controller
 										control={control}
-										name="cdvExtentSizeMB"
-										defaultValue={volume.cdvConfig?.cdvExtentSizeMB || 1024}
+										name="cdvExtentSizeMiB"
+										defaultValue={volume.cdvConfig?.cdvExtentSizeMiB || 1024}
 										rules={{ required: isCDV ? 'Extent size is required' : false }}
 										render={({ field: { onChange, value } }) => (
 											<Select
@@ -470,7 +470,7 @@ const CreateEditVolume = ({
 												disabled={!isCreate}
 												value={value}
 												onChange={onChange}
-												options={consts.cdvExtentSizeMBValues.map(mb => ({
+												options={consts.cdvExtentSizeMiBValues.map(mb => ({
 													text: mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`,
 													value: mb
 												}))}

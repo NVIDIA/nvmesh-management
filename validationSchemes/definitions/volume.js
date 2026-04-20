@@ -43,7 +43,7 @@ const cdvConfigScheme = {
 	type: 'object',
 	unevaluatedProperties: false,
 	properties: {
-		cdvExtentSizeMB: { type: 'integer', enum: consts.cdvExtentSizeMBValues },
+		cdvExtentSizeMiB: { type: 'integer', enum: consts.cdvExtentSizeMiBValues },
 		// allocatorSizeGiB controls the size of the CDV_MGMT satellite volume in GiB; default 1.
 		// allocatorSizeGB is accepted as a backward-compatible alias for pre-rename records.
 		allocatorSizeGiB: { type: 'integer', default: 1, minimum: 1 },
@@ -125,14 +125,14 @@ const scheme = {
 			then: { required: ['RAIDLevel'] }
 		},
 		{
-			// CDV: cdvConfig required; cdvExtentSizeMB required within it.
+			// CDV: cdvConfig required; cdvExtentSizeMiB required within it.
 			// CDV name uses the stricter cdvVolumeName scheme (≤16 chars,
 			// no -mgmt suffix) so that '<cdvName>-mgmt' fits the volumeName limit.
 			if: isCDV,
 			then: {
 				required: ['cdvConfig'],
 				properties: {
-					cdvConfig: { required: ['cdvExtentSizeMB'] },
+					cdvConfig: { required: ['cdvExtentSizeMiB'] },
 					name: { $ref: consts.MANAGEMENT_DEFINITIONS + '/cdvVolumeName.js' }
 				}
 			}

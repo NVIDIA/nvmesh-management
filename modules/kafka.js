@@ -1884,7 +1884,7 @@ scope.sendCDVAllocatorFreeAll = (cdvUUID, tpvUUID, cb = () => {}) => {
 
 			const allocatorSizeGiB = cdv.cdvConfig && (cdv.cdvConfig.allocatorSizeGiB ?? cdv.cdvConfig.allocatorSizeGB) != null
 				? (cdv.cdvConfig.allocatorSizeGiB ?? cdv.cdvConfig.allocatorSizeGB) : 1;
-			const cdvExtentSizeMB = cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMB != null ? cdv.cdvConfig.cdvExtentSizeMB : 64;
+			const cdvExtentSizeMiB = cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMiB != null ? cdv.cdvConfig.cdvExtentSizeMiB : 64;
 
 			const nodeIds = (cdv.chunks && cdv.chunks[0])
 				? [...new Set(
@@ -1906,7 +1906,7 @@ scope.sendCDVAllocatorFreeAll = (cdvUUID, tpvUUID, cb = () => {}) => {
 
 				async.each(targets, (target, next) => {
 					scope.sendMessages(target.topics[consts.topicSuffix.TOMA_COMMANDS],
-						[new CDVAllocatorFreeAll(cdvUUID, tpvUUID, allocatorSizeGiB, cdvExtentSizeMB)], next);
+						[new CDVAllocatorFreeAll(cdvUUID, tpvUUID, allocatorSizeGiB, cdvExtentSizeMiB)], next);
 				}, () => cb());
 			});
 		});

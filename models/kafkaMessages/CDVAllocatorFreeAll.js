@@ -10,12 +10,12 @@ const { kafkaMessageTypes } = require('../../consts');
 // Instructs the CDV allocator to reclaim all CDV_extents owned by the given TPV UUID
 // and zero CDV_extent[0] (the flat-L1 tree) so the next TPV on this CDV starts clean.
 exports.CDVAllocatorFreeAll = class CDVAllocatorFreeAll extends KafkaMessage {
-	constructor(cdvUUID, tpvUUID, allocatorSizeGiB, cdvExtentSizeMB) {
+	constructor(cdvUUID, tpvUUID, allocatorSizeGiB, cdvExtentSizeMiB) {
 		super(kafkaMessageTypes.ManagementToTOMA.cdvAllocatorFreeAll, 1);
 		this.cdvUUID = cdvUUID;
 		this.tpvUUID = tpvUUID;
 		this.allocatorSizeGiB = allocatorSizeGiB;
-		this.cdvExtentSizeMB = cdvExtentSizeMB;
+		this.cdvExtentSizeMiB = cdvExtentSizeMiB;
 	}
 
 	toJSON() {
@@ -24,7 +24,7 @@ exports.CDVAllocatorFreeAll = class CDVAllocatorFreeAll extends KafkaMessage {
 			cdvUUID: this.cdvUUID,
 			tpvUUID: this.tpvUUID,
 			allocatorSizeGiB: this.allocatorSizeGiB,
-			cdvExtentSizeMB: this.cdvExtentSizeMB,
+			cdvExtentSizeMiB: this.cdvExtentSizeMiB,
 		};
 		return json;
 	}

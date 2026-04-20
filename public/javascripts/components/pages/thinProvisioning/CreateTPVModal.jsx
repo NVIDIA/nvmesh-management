@@ -68,7 +68,7 @@ const CreateTPVModal = ({
 		return { text: `${cdv.name} (${tpvUsage}${CapacityService.toBiggestUnit(cdv.capacity, unitType)})`, value: cdv._id };
 	});
 
-	const maxExtentKB = selectedCdv ? selectedCdv.cdvConfig?.cdvExtentSizeMB * 1024 : Infinity;
+	const maxExtentKB = selectedCdv ? selectedCdv.cdvConfig?.cdvExtentSizeMiB * 1024 : Infinity;
 	const extentSizeOptions = consts.tpvExtentSizeKBValues
 		.filter(kb => kb <= maxExtentKB)
 		.map(kb => ({
