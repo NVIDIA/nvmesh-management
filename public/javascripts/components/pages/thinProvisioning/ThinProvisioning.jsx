@@ -11,7 +11,7 @@ import { useConfirmationDialog } from '../../shared/ConfirmationDialog.jsx';
 import { VolumesService } from '../../services/api/volumes.service.js';
 import { extractErrorMsg, extractResults } from '../../utils.js';
 import NewButton from '../../shared/NewButton.jsx';
-import { useAppContext } from '../../App.jsx';
+import { useAppContext } from '../App.jsx';
 import CapacityService from '../../services/capacity.service.js';
 import { events, SocketService } from '../../services/socket.service.js';
 import CreateTPVModal from './CreateTPVModal.jsx';

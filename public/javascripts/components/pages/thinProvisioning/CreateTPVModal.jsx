@@ -11,7 +11,7 @@ import Input from '../../core/Input.jsx';
 import Select from '../../core/Select.jsx';
 import { VolumesService } from '../../services/api/volumes.service.js';
 import CapacityService from '../../services/capacity.service.js';
-import { useAppContext } from '../../App.jsx';
+import { useAppContext } from '../App.jsx';
 
 const { useForm, Controller } = ReactHookForm;
 const { useState, useEffect } = React;

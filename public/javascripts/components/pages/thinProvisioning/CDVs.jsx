@@ -12,7 +12,7 @@ import { VolumesService } from '../../services/api/volumes.service.js';
 import { extractErrorMsg, extractResults, ellipsis } from '../../utils.js';
 import NewButton from '../../shared/NewButton.jsx';
 import CreateEditVolumeModal from '../volumes/createEditModal/CreateEditVolumeModal.jsx';
-import { useAppContext } from '../../App.jsx';
+import { useAppContext } from '../App.jsx';
 import CapacityService from '../../services/capacity.service.js';
 import { AllocationService } from '../../services/allocation.service.js';
 import { events, SocketService } from '../../services/socket.service.js';
