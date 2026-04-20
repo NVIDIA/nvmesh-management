@@ -42,7 +42,7 @@ function makeCDV(name, capacityGB = 10) {
 		RAIDLevel: consts.RAIDLevel.CONCATENATED,
 		capacity: capacityGB,
 		volumeClass: consts.volumeClass.CDV,
-		cdvConfig: { cdvExtentSizeMiB: 1024 },
+		cdvConfig: { cdvExtentSizeMib: 1024 },
 		limitByNodes: [],
 		limitByDisks: [],
 		serverClasses: [],
@@ -116,11 +116,11 @@ describe('Thin Provisioning', () => {
 					});
 			});
 
-			it('CDV should persist cdvConfig.cdvExtentSizeMiB', () => {
+			it('CDV should persist cdvConfig.cdvExtentSizeMib', () => {
 				return getVolumeFromDB('cdv-create-test')
 					.then(doc => {
 						assert(doc.cdvConfig, 'cdvConfig should be present');
-						assert.strictEqual(doc.cdvConfig.cdvExtentSizeMiB, 1024);
+						assert.strictEqual(doc.cdvConfig.cdvExtentSizeMib, 1024);
 					});
 			});
 
@@ -416,15 +416,15 @@ describe('Thin Provisioning', () => {
 			.then(() => generateAndSaveTargets(1, 1))
 			.then(() => {
 				cdv = makeCDV('cdv-extent-check', 10);
-				cdv.cdvConfig.cdvExtentSizeMiB = 64; // 64 MB = 65536 KB
+				cdv.cdvConfig.cdvExtentSizeMib = 64; // 64 MB = 65536 KB
 				return saveVolume(cdv);
 			})
 		);
 
-		it('Should fail when tpvExtentSizeKB > cdvExtentSizeMiB * 1024', () => {
+		it('Should fail when tpvExtentSizeKB > cdvExtentSizeMib * 1024', () => {
 			// CDV extent is 64 MB = 65536 KB. TPV extent of 65536 KB is equal (OK), but we can't test larger
-			// since 65536 is max. Use cdvExtentSizeMiB = 64 and tpvExtentSizeKB = 65536 (equal, should pass)
-			// and test with a CDV where cdvExtentSizeMiB < max tpvExtentSizeKB
+			// since 65536 is max. Use cdvExtentSizeMib = 64 and tpvExtentSizeKB = 65536 (equal, should pass)
+			// and test with a CDV where cdvExtentSizeMib < max tpvExtentSizeKB
 			return saveVolume(makeTPV('tpv-extent-ok', cdv.name, 5))
 				.then(res => assert(res.success, `Expected success for equal extent, got: ${JSON.stringify(res.error)}`));
 		});
@@ -434,20 +434,20 @@ describe('Thin Provisioning', () => {
 			// CDV extent is 64 MB = 65536 KB. Set TPV extent to a value that would exceed it.
 			// We can't use a value larger than max enum, but we can use a smaller CDV extent.
 			// Actually, the makeTPV defaults tpvExtentSizeKB to 1024, which is fine.
-			// Let's create a CDV with cdvExtentSizeMiB = 64 (64 MB = 65536 KB) and TPV extent of 65536 KB
-			// That's equal, not exceeding. We need cdvExtentSizeMiB smaller.
-			// Use a CDV with cdvExtentSizeMiB = 64 and manually set tpvExtentSizeKB to something > 65536.
+			// Let's create a CDV with cdvExtentSizeMib = 64 (64 MB = 65536 KB) and TPV extent of 65536 KB
+			// That's equal, not exceeding. We need cdvExtentSizeMib smaller.
+			// Use a CDV with cdvExtentSizeMib = 64 and manually set tpvExtentSizeKB to something > 65536.
 			// But tpvExtentSizeKBValues max is 65536, so the schema would reject it.
-			// Bypass: save directly with a cdvExtentSizeMiB of 64 (=65536 KB) and set tpvExtentSizeKB = 65536
+			// Bypass: save directly with a cdvExtentSizeMib of 64 (=65536 KB) and set tpvExtentSizeKB = 65536
 			// This is equal, so it passes. We need to test with a truly smaller CDV extent.
-			// Let's make a new CDV with cdvExtentSizeMiB of 64 (but tpvExtentSizeKBValues includes 65536 which is equal).
+			// Let's make a new CDV with cdvExtentSizeMib of 64 (but tpvExtentSizeKBValues includes 65536 which is equal).
 			// Actually to properly test this, we need a value where KB > MB*1024.
-			// If cdvExtentSizeMiB = 64, then max KB = 65536. tpvExtentSizeKB of 65536 is exactly equal.
+			// If cdvExtentSizeMib = 64, then max KB = 65536. tpvExtentSizeKB of 65536 is exactly equal.
 			// There is no valid tpvExtentSizeKBValue that exceeds it because 65536 is the max.
 			// But if we test the logic directly by inserting a raw value:
 			tpv.tpvConfig.tpvExtentSizeKB = 999999; // exceeds 64 * 1024 = 65536
 			return saveVolume(tpv)
-				.then(res => assert(!res.success, 'Expected failure: tpvExtentSizeKB exceeds cdvExtentSizeMiB * 1024'));
+				.then(res => assert(!res.success, 'Expected failure: tpvExtentSizeKB exceeds cdvExtentSizeMib * 1024'));
 		});
 	});
 

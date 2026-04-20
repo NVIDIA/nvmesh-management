@@ -39,27 +39,27 @@ describe('consts — thin provisioning additions', () => {
 		});
 	});
 
-	describe('cdvExtentSizeMiBValues', () => {
+	describe('cdvExtentSizeMibValues', () => {
 		it('is a non-empty array', async() => {
-			assert.ok(Array.isArray(consts.cdvExtentSizeMiBValues));
-			assert.ok(consts.cdvExtentSizeMiBValues.length > 0);
+			assert.ok(Array.isArray(consts.cdvExtentSizeMibValues));
+			assert.ok(consts.cdvExtentSizeMibValues.length > 0);
 		});
 
 		it('all values are powers of 2', async() => {
-			for (const v of consts.cdvExtentSizeMiBValues) {
+			for (const v of consts.cdvExtentSizeMibValues) {
 				assert.ok(v > 0 && (v & (v - 1)) === 0, `${v} is not a power of 2`);
 			}
 		});
 
 		it('includes 1024 MB (1 GB — the default CDV extent size)', async() => {
-			assert.ok(consts.cdvExtentSizeMiBValues.includes(1024));
+			assert.ok(consts.cdvExtentSizeMibValues.includes(1024));
 		});
 
 		it('values are in ascending order', async() => {
-			for (let i = 1; i < consts.cdvExtentSizeMiBValues.length; i++) {
+			for (let i = 1; i < consts.cdvExtentSizeMibValues.length; i++) {
 				assert.ok(
-					consts.cdvExtentSizeMiBValues[i] > consts.cdvExtentSizeMiBValues[i - 1],
-					'cdvExtentSizeMiBValues should be sorted ascending'
+					consts.cdvExtentSizeMibValues[i] > consts.cdvExtentSizeMibValues[i - 1],
+					'cdvExtentSizeMibValues should be sorted ascending'
 				);
 			}
 		});
@@ -255,8 +255,8 @@ describe('CreateEditVolumeModal.jsx — CDV payload branch', () => {
 		if (isCDV) {
 			toSubmit.volumeClass = consts.volumeClass.CDV;
 			toSubmit.cdvConfig = {
-				cdvExtentSizeMiB: data.cdvExtentSizeMiB || 1024,
-				allocatorSizeGiB: data.allocatorSizeGiB || 1,
+				cdvExtentSizeMib: data.cdvExtentSizeMib || 1024,
+				allocatorSizeGib: data.allocatorSizeGib || 1,
 				maxTPVs: data.maxTPVs || 512,
 			};
 		}
@@ -264,28 +264,28 @@ describe('CreateEditVolumeModal.jsx — CDV payload branch', () => {
 	};
 
 	it('when isCDV=true: sets volumeClass to CDV', async() => {
-		const result = applyCDVProperties({}, true, { cdvExtentSizeMiB: 512 });
+		const result = applyCDVProperties({}, true, { cdvExtentSizeMib: 512 });
 		assert.strictEqual(result.volumeClass, consts.volumeClass.CDV);
 	});
 
-	it('when isCDV=true: sets cdvConfig.cdvExtentSizeMiB from form data', async() => {
-		const result = applyCDVProperties({}, true, { cdvExtentSizeMiB: 2048 });
-		assert.strictEqual(result.cdvConfig.cdvExtentSizeMiB, 2048);
+	it('when isCDV=true: sets cdvConfig.cdvExtentSizeMib from form data', async() => {
+		const result = applyCDVProperties({}, true, { cdvExtentSizeMib: 2048 });
+		assert.strictEqual(result.cdvConfig.cdvExtentSizeMib, 2048);
 	});
 
-	it('when isCDV=true: cdvExtentSizeMiB defaults to 1024 when not provided', async() => {
+	it('when isCDV=true: cdvExtentSizeMib defaults to 1024 when not provided', async() => {
 		const result = applyCDVProperties({}, true, {});
-		assert.strictEqual(result.cdvConfig.cdvExtentSizeMiB, 1024);
+		assert.strictEqual(result.cdvConfig.cdvExtentSizeMib, 1024);
 	});
 
-	it('when isCDV=true: sets cdvConfig.allocatorSizeGiB from form data', async() => {
-		const result = applyCDVProperties({}, true, { allocatorSizeGiB: 4 });
-		assert.strictEqual(result.cdvConfig.allocatorSizeGiB, 4);
+	it('when isCDV=true: sets cdvConfig.allocatorSizeGib from form data', async() => {
+		const result = applyCDVProperties({}, true, { allocatorSizeGib: 4 });
+		assert.strictEqual(result.cdvConfig.allocatorSizeGib, 4);
 	});
 
-	it('when isCDV=true: allocatorSizeGiB defaults to 1 when not provided', async() => {
+	it('when isCDV=true: allocatorSizeGib defaults to 1 when not provided', async() => {
 		const result = applyCDVProperties({}, true, {});
-		assert.strictEqual(result.cdvConfig.allocatorSizeGiB, 1);
+		assert.strictEqual(result.cdvConfig.allocatorSizeGib, 1);
 	});
 
 	it('when isCDV=true: sets cdvConfig.maxTPVs from form data', async() => {
@@ -299,12 +299,12 @@ describe('CreateEditVolumeModal.jsx — CDV payload branch', () => {
 	});
 
 	it('when isCDV=false: does not set volumeClass', async() => {
-		const result = applyCDVProperties({}, false, { cdvExtentSizeMiB: 512 });
+		const result = applyCDVProperties({}, false, { cdvExtentSizeMib: 512 });
 		assert.strictEqual(result.volumeClass, undefined);
 	});
 
 	it('when isCDV=false: does not set cdvConfig', async() => {
-		const result = applyCDVProperties({}, false, { cdvExtentSizeMiB: 512 });
+		const result = applyCDVProperties({}, false, { cdvExtentSizeMib: 512 });
 		assert.strictEqual(result.cdvConfig, undefined);
 	});
 });

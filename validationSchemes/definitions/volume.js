@@ -43,8 +43,8 @@ const cdvConfigScheme = {
 	type: 'object',
 	unevaluatedProperties: false,
 	properties: {
-		cdvExtentSizeMiB: { type: 'integer', enum: consts.cdvExtentSizeMiBValues },
-		allocatorSizeGiB: { type: 'integer', default: 1, minimum: 1 },
+		cdvExtentSizeMib: { type: 'integer', enum: consts.cdvExtentSizeMibValues },
+		allocatorSizeGib: { type: 'integer', default: 1, minimum: 1 },
 		maxTPVs: { type: 'integer', default: 512, minimum: 1 },
 		// Note: cdvConfig.admissionFloor is a server-owned field populated by
 		// prepareCDVForCreate and mutated only by preemptClientFromCDV in
@@ -122,14 +122,14 @@ const scheme = {
 			then: { required: ['RAIDLevel'] }
 		},
 		{
-			// CDV: cdvConfig required; cdvExtentSizeMiB required within it.
+			// CDV: cdvConfig required; cdvExtentSizeMib required within it.
 			// CDV name uses the stricter cdvVolumeName scheme (≤16 chars,
 			// no -mgmt suffix) so that '<cdvName>-mgmt' fits the volumeName limit.
 			if: isCDV,
 			then: {
 				required: ['cdvConfig'],
 				properties: {
-					cdvConfig: { required: ['cdvExtentSizeMiB'] },
+					cdvConfig: { required: ['cdvExtentSizeMib'] },
 					name: { $ref: consts.MANAGEMENT_DEFINITIONS + '/cdvVolumeName.js' }
 				}
 			}

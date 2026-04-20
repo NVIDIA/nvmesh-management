@@ -194,12 +194,12 @@ const CDVs = () => {
 		},
 		{
 			name: 'Extent Size',
-			field: 'cdvConfig.cdvExtentSizeMiB',
+			field: 'cdvConfig.cdvExtentSizeMib',
 			filterable: false,
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
-			value: cdvRow => cdvRow.cdvConfig?.cdvExtentSizeMiB != null
-				? `${cdvRow.cdvConfig.cdvExtentSizeMiB} MB`
+			value: cdvRow => cdvRow.cdvConfig?.cdvExtentSizeMib != null
+				? `${cdvRow.cdvConfig.cdvExtentSizeMib} MB`
 				: '—',
 		},
 		{
@@ -240,17 +240,17 @@ const CDVs = () => {
 		{
 			// Max CDV Size = (satellite entries) × cdvExtentSize.
 			// Satellite holds one 4 KiB cdv_extent_md block per data extent,
-			// minus 1 block for the header; size comes from cdvConfig.allocatorSizeGiB.
+			// minus 1 block for the header; size comes from cdvConfig.allocatorSizeGib.
 			name: 'Max CDV Size',
 			filterable: false,
 			sortable: false,
 			className: 'fixed-size-column sx-column',
 			rowClassName: 'fixed-size-column',
 			value: cdvRow => {
-				const { cdvExtentSizeMiB, allocatorSizeGiB } = cdvRow.cdvConfig || {};
-				if (!cdvExtentSizeMiB || !allocatorSizeGiB) return '—';
-				const satelliteEntries = Math.floor(allocatorSizeGiB * 1024 * 1024 * 1024 / 4096) - 1;
-				const maxSizeGiB = (satelliteEntries * cdvExtentSizeMiB) / 1024;
+				const { cdvExtentSizeMib, allocatorSizeGib } = cdvRow.cdvConfig || {};
+				if (!cdvExtentSizeMib || !allocatorSizeGib) return '—';
+				const satelliteEntries = Math.floor(allocatorSizeGib * 1024 * 1024 * 1024 / 4096) - 1;
+				const maxSizeGiB = (satelliteEntries * cdvExtentSizeMib) / 1024;
 				return CapacityService.toBiggestUnit(maxSizeGiB, unitType);
 			},
 		},

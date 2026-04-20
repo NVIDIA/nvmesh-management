@@ -329,8 +329,8 @@ const CreateEditVolume = ({
 		if (isCDV) {
 			toSubmit.volumeClass = consts.volumeClass.CDV;
 			toSubmit.cdvConfig = {
-				cdvExtentSizeMiB: Number(data.cdvExtentSizeMiB) || 1024,
-				allocatorSizeGiB: data.allocatorSizeGiB || 1,
+				cdvExtentSizeMib: Number(data.cdvExtentSizeMib) || 1024,
+				allocatorSizeGib: data.allocatorSizeGib || 1,
 				maxTPVs: data.maxTPVs || 512,
 			};
 		}
@@ -455,14 +455,14 @@ const CreateEditVolume = ({
 						{isCDV && (
 							<>
 								<FormControl
-									name="cdvExtentSizeMiB"
+									name="cdvExtentSizeMib"
 									label="CDV Extent Size"
-									errorMessage={formState.errors?.cdvExtentSizeMiB?.message}
+									errorMessage={formState.errors?.cdvExtentSizeMib?.message}
 								>
 									<Controller
 										control={control}
-										name="cdvExtentSizeMiB"
-										defaultValue={volume.cdvConfig?.cdvExtentSizeMiB || 1024}
+										name="cdvExtentSizeMib"
+										defaultValue={volume.cdvConfig?.cdvExtentSizeMib || 1024}
 										rules={{ required: isCDV ? 'Extent size is required' : false }}
 										render={({ field: { onChange, value } }) => (
 											<Select
@@ -470,7 +470,7 @@ const CreateEditVolume = ({
 												disabled={!isCreate}
 												value={value}
 												onChange={onChange}
-												options={consts.cdvExtentSizeMiBValues.map(mb => ({
+												options={consts.cdvExtentSizeMibValues.map(mb => ({
 													text: mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`,
 													value: mb
 												}))}
@@ -480,17 +480,17 @@ const CreateEditVolume = ({
 								</FormControl>
 
 								<FormControl
-									name="allocatorSizeGiB"
+									name="allocatorSizeGib"
 									label="Allocator Size (GiB)"
-									errorMessage={formState.errors?.allocatorSizeGiB?.message}
+									errorMessage={formState.errors?.allocatorSizeGib?.message}
 								>
 									<Input
-										name="allocatorSizeGiB"
+										name="allocatorSizeGib"
 										type="number"
 										className="form-control"
 										disabled={!isCreate}
-										{...register('allocatorSizeGiB', {
-											value: volume.cdvConfig?.allocatorSizeGiB || 1,
+										{...register('allocatorSizeGib', {
+											value: volume.cdvConfig?.allocatorSizeGib || 1,
 											min: { value: 1, message: 'Minimum is 1 GiB' },
 											valueAsNumber: true,
 										})}

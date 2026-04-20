@@ -1266,7 +1266,7 @@ consts.volumeClass = {
 consts.CDV_MGMT_SUFFIX = '-mgmt';
 
 // Default satellite (CDV-mgmt) volume size: 1 GiB. Holds the CDV allocator
-// header + cdv_extent_md[] array. Controlled by cdvConfig.allocatorSizeGiB.
+// header + cdv_extent_md[] array. Controlled by cdvConfig.allocatorSizeGib.
 consts.CDV_MGMT_SIZE_GIB = 1;
 
 // Max characters in a CDV name. Tighter than the regular volume name limit
@@ -1274,7 +1274,7 @@ consts.CDV_MGMT_SIZE_GIB = 1;
 consts.CDV_NAME_MAX_LENGTH = 16;
 
 // Valid power-of-2 values for CDV and TPV extent sizes
-consts.cdvExtentSizeMiBValues = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
+consts.cdvExtentSizeMibValues = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
 consts.tpvExtentSizeKBValues = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
 
 if (typeof module !== 'undefined' && typeof module.exports !== 'undefined')

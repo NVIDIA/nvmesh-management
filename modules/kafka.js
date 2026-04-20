@@ -1882,9 +1882,8 @@ scope.sendCDVAllocatorFreeAll = (cdvUUID, tpvUUID, cb = () => {}) => {
 				return cb();
 			}
 
-			const allocatorSizeGiB = cdv.cdvConfig && (cdv.cdvConfig.allocatorSizeGiB ?? cdv.cdvConfig.allocatorSizeGiB) != null
-				? (cdv.cdvConfig.allocatorSizeGiB ?? cdv.cdvConfig.allocatorSizeGiB) : 1;
-			const cdvExtentSizeMiB = cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMiB != null ? cdv.cdvConfig.cdvExtentSizeMiB : 64;
+			const allocatorSizeGib = (cdv.cdvConfig?.allocatorSizeGib) ?? 1;
+			const cdvExtentSizeMib = cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMib != null ? cdv.cdvConfig.cdvExtentSizeMib : 64;
 
 			const nodeIds = (cdv.chunks && cdv.chunks[0])
 				? [...new Set(
@@ -1906,7 +1905,7 @@ scope.sendCDVAllocatorFreeAll = (cdvUUID, tpvUUID, cb = () => {}) => {
 
 				async.each(targets, (target, next) => {
 					scope.sendMessages(target.topics[consts.topicSuffix.TOMA_COMMANDS],
-						[new CDVAllocatorFreeAll(cdvUUID, tpvUUID, allocatorSizeGiB, cdvExtentSizeMiB)], next);
+						[new CDVAllocatorFreeAll(cdvUUID, tpvUUID, allocatorSizeGib, cdvExtentSizeMib)], next);
 				}, () => cb());
 			});
 		});

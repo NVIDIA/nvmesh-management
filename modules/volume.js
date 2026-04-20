@@ -3513,9 +3513,9 @@ scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
 		const demandByCDV = Object.create(null);
 		for (const tpv of tpvs) {
 			const cdv = cdvs.find(c => c._id === tpv.tpvConfig.cdvId);
-			if (!cdv || !cdv.cdvConfig || !cdv.cdvConfig.cdvExtentSizeMiB) continue;
+			if (!cdv || !cdv.cdvConfig || !cdv.cdvConfig.cdvExtentSizeMib) continue;
 
-			const cdvExtentBytes = cdv.cdvConfig.cdvExtentSizeMiB * consts.MiB;
+			const cdvExtentBytes = cdv.cdvConfig.cdvExtentSizeMib * consts.MiB;
 			const tpvExtentKB = tpv.tpvConfig && tpv.tpvConfig.tpvExtentSizeKB;
 			const virtualBytes = (tpv.capacity || 0) * consts.GiB;
 			if (!tpvExtentKB || !virtualBytes || !cdvExtentBytes) continue;
@@ -3531,8 +3531,8 @@ scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
 		}
 
 		for (const cdv of cdvs) {
-			if (!cdv.cdvConfig || !cdv.cdvConfig.cdvExtentSizeMiB || !cdv.capacity) continue;
-			const cdvExtentBytes = cdv.cdvConfig.cdvExtentSizeMiB * consts.MiB;
+			if (!cdv.cdvConfig || !cdv.cdvConfig.cdvExtentSizeMib || !cdv.capacity) continue;
+			const cdvExtentBytes = cdv.cdvConfig.cdvExtentSizeMib * consts.MiB;
 			const totalDataExtents = Math.floor((cdv.capacity * consts.GiB) / cdvExtentBytes);
 			if (totalDataExtents <= 0) continue;
 			const demand = demandByCDV[cdv._id] || 0;
@@ -3552,11 +3552,10 @@ function prepareCDVForCreate(volume) {
 	volume.tpvCount = 0;
 	const cfg = volume.cdvConfig || {};
 	volume.cdvConfig = {
-		cdvExtentSizeMiB: cfg.cdvExtentSizeMiB,
-		// allocatorSizeGiB controls the size of the CDV_MGMT satellite volume.
+		cdvExtentSizeMib: cfg.cdvExtentSizeMib,
+		// allocatorSizeGib controls the size of the CDV_MGMT satellite volume.
 		// Defaults to CDV_MGMT_SIZE_GIB (1 GiB) if not supplied.
-		// Read allocatorSizeGiB too for backward compat with pre-rename DB records.
-		allocatorSizeGiB: cfg.allocatorSizeGiB || cfg.allocatorSizeGiB || consts.CDV_MGMT_SIZE_GIB,
+		allocatorSizeGib: cfg.allocatorSizeGib || consts.CDV_MGMT_SIZE_GIB,
 		maxTPVs: cfg.maxTPVs != null ? cfg.maxTPVs : 512,
 		// Per-client preempt admission gate (see TPV_PerClientCDVPreemption.md).
 		// Monotonic u64; bumped by preemptClientFromCDV. 0 is the sentinel
@@ -3565,11 +3564,11 @@ function prepareCDVForCreate(volume) {
 	};
 	delete volume.tpvConfig;
 
-	// Trim blocks so the CDV is an exact multiple of cdvExtentSizeMiB.  The CDV
+	// Trim blocks so the CDV is an exact multiple of cdvExtentSizeMib.  The CDV
 	// no longer reserves [0, A) for allocator metadata — that data lives on the
 	// satellite volume — so the entire CDV is data extents starting at offset 0.
-	if (volume.blocks && volume.cdvConfig.cdvExtentSizeMiB > 0) {
-		const extentBytes = volume.cdvConfig.cdvExtentSizeMiB * consts.MiB;
+	if (volume.blocks && volume.cdvConfig.cdvExtentSizeMib > 0) {
+		const extentBytes = volume.cdvConfig.cdvExtentSizeMib * consts.MiB;
 		const totalBytes = volume.blocks * consts.BLOCK_SIZE;
 		const fullExtents = Math.floor(totalBytes / extentBytes);
 		volume.blocks = Math.floor((fullExtents * extentBytes) / consts.BLOCK_SIZE);
@@ -3597,8 +3596,8 @@ function buildSatelliteVolumeForCDV(cdvVolume) {
 
 	sat.name = cdvVolume.name + consts.CDV_MGMT_SUFFIX;
 	// capacity is in decimal GB (utils.BtoGB uses consts.GB = 1000³); convert from GiB.
-	const allocatorSizeGiB = (cdvVolume.cdvConfig && cdvVolume.cdvConfig.allocatorSizeGiB) || consts.CDV_MGMT_SIZE_GIB;
-	sat.capacity = allocatorSizeGiB * consts.GiB / consts.GB;
+	const allocatorSizeGib = (cdvVolume.cdvConfig && cdvVolume.cdvConfig.allocatorSizeGib) || consts.CDV_MGMT_SIZE_GIB;
+	sat.capacity = allocatorSizeGib * consts.GiB / consts.GB;
 	sat.volumeClass = consts.volumeClass.CDV_MGMT;
 	sat.parentCDVId = cdvVolume._id || cdvVolume.name;
 	sat.description = `Allocator metadata satellite for CDV '${cdvVolume.name}'`;
@@ -3688,11 +3687,11 @@ function createTPV(volume, user, cb) {
 						.addInfo(Entities.Error, 'TPV capacity cannot exceed parent CDV capacity');
 					return next(true);
 				}
-				if (tpvExtentSizeKB > doc.cdvConfig.cdvExtentSizeMiB * 1024) {
-					const maxKB = doc.cdvConfig.cdvExtentSizeMiB * 1024;
+				if (tpvExtentSizeKB > doc.cdvConfig.cdvExtentSizeMib * 1024) {
+					const maxKB = doc.cdvConfig.cdvExtentSizeMib * 1024;
 					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
 						.addInfo(Entities.Volume.name, volume.name)
-						.addInfo(Entities.Error, `tpvExtentSizeKB (${tpvExtentSizeKB}) cannot exceed cdvExtentSizeMiB * 1024 (${maxKB})`);
+						.addInfo(Entities.Error, `tpvExtentSizeKB (${tpvExtentSizeKB}) cannot exceed cdvExtentSizeMib * 1024 (${maxKB})`);
 					return next(true);
 				}
 				cdv = doc;
@@ -3726,7 +3725,7 @@ function createTPV(volume, user, cb) {
 				// Repurposed: TPV extent size in KiB (passed to nvmeibc_tpv_attach).
 				stripeSize: tpvExtentSizeKB,
 				// Repurposed: CDV extent size in MiB (from parent CDV config).
-				dataBlocks: (cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMiB) || 64,
+				dataBlocks: (cdv.cdvConfig && cdv.cdvConfig.cdvExtentSizeMib) || 64,
 				// Repurposed: allocator area size in GiB within the CDV.  Under the
 				// satellite design, allocator metadata lives on the <cdv>-mgmt
 				// volume, so the entire CDV is data — A = 0.
@@ -3818,7 +3817,7 @@ function updateCDV(updateObj, user, cb) {
 		$set.description = updateObj.description;
 
 	// cdvConfig.maxTPVs is the only mutable CDV-specific config field;
-	// cdvExtentSizeMiB and allocatorSizeGiB are immutable after creation.
+	// cdvExtentSizeMib and allocatorSizeGib are immutable after creation.
 	if (updateObj.cdvConfig && 'maxTPVs' in updateObj.cdvConfig)
 		$set['cdvConfig.maxTPVs'] = updateObj.cdvConfig.maxTPVs;
 
