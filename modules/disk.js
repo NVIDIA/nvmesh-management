@@ -1831,7 +1831,7 @@ function shouldRetryReinstate(err, retryCount) {
 }
 
 function reinstateDrive(drive, callback, retryCount = 0) {
-	const { _id: driveID, uuid: driveUUID } = drive;
+	const { diskID: driveID, uuid: driveUUID } = drive;
 	const serverQuery = { 'disks.diskID': driveID, 'disks.uuid': driveUUID };
 	const preReplaceValidation = (disk, cb) => validateDriveToReinstate(disk, cb);
 

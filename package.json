@@ -18,7 +18,7 @@
     "name": "NVMesh Management",
     "title": "NVMesh Management API Documentation",
     "description": "NVMesh Management API Documentation",
-    "version": "17.2.1",
+    "version": "18.0.0",
     "sampleUrl": true,
     "template": {
       "withCompare": true

@@ -24,8 +24,8 @@ exports.evictDisk = function(disk, isAutoEvict) {
 	});
 };
 
-exports.reinstateDisk = function(disk) {
-	return new Promise(resolve => reinstateDrives([disk], logs => resolve(logs)));
+exports.reinstateDisks = function(disks) {
+	return new Promise(resolve => reinstateDrives(disks, logs => resolve(logs)));
 };
 
 exports.getDiskFromDB = function(diskID) {

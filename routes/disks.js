@@ -450,6 +450,45 @@ router.post('/evictDiskByDiskIDsAndUUIDs', isAdminRole, (req, res) => {
 });
 
 /**
+* @apiVersion 18.0.0
+* @api {post} /disks/reinstateDiskByDiskIDsAndUUIDs Reinstate disk
+* @apiName ReinstateDisk
+* @apiGroup disks
+* @apiDescription Reinstate an evicted disk in place.
+*
+* @apiBody {object[]} disks `disks` to reinstate.
+* @apiBody {string} disk.diskID The `diskID` of the `disk` to reinstate.
+* @apiBody {string} disk.uuid The `diskUUID` of the `disk` to reinstate.
+* @apiExample {string} Payload example
+* [{
+*		"diskID": "S23YNAAH200330.1"
+*		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
+* }]
+* @apiSuccessExample Example data on success
+* [{
+*	"_id": "PHMD614200A3400FGN.1",
+*   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefc",
+*	"success": true,
+*	"error": null,
+*	"payload": null
+* }]
+*/
+router.post('/reinstateDiskByDiskIDsAndUUIDs', isAdminRole, (req, res) => {
+	let disks = req.body;
+
+	let incomingRequestSystemAdminMessages = disks.map(disk =>
+		createAuditRequestLog(req, systemMessages.DISK_REINSTATE_REQUEST)
+			.addInfo(Entities.Drive.ID, disk.diskID)
+			.addInfo(Entities.Drive.UUID, disk.uuid));
+
+	utils.handleRESTAndLog(
+		incomingRequestSystemAdminMessages,
+		cb => diskModule.reinstateDrives(disks, cb),
+		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Drive.ID, Entities.Drive.UUID)))
+	);
+});
+
+/**
 * @apiVersion 17.0.0
 * @api {post} /disks/formatDiskByIDsAndUUIDs Format disk
 * @apiName FormatDisk

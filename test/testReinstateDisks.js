@@ -20,13 +20,12 @@ const {
 	assertVolumeStatusAndAction, assertSegmentCount, assertHasSegments
 } = require('./testUtils/volumeUtils.js');
 const {
-	evictDisk, reinstateDisk, evictDiskAndSyncTarget, getDiskFromDB, syncTargetDiskFromDB, findTargetWithDisk
+	evictDisk, reinstateDisks, evictDiskAndSyncTarget, getDiskFromDB, syncTargetDiskFromDB, findTargetWithDisk
 } = require('./testUtils/diskUtils.js');
 
 const consts = require('../consts.js');
 const systemMessages = require('../systemMessages.js');
 const diskModule = require('../modules/disk.js');
-const { reinstateDrives } = require('../modules/disk.js');
 const { checkAndResumeStuckReinstate } = require('../modules/sanityAndRecover.js');
 
 const EXPECTED_RAID1_SEGMENT_COUNT = 2;
@@ -83,7 +82,7 @@ describe('Reinstate Disks', () => {
 		});
 
 		it('Should create old+pending segment pairs on disk and volume after reinstate', async() => {
-			const logs = await reinstateDisk({ _id: evictedDiskID, uuid: evictedDiskUUID });
+			const logs = await reinstateDisks([{ diskID: evictedDiskID, uuid: evictedDiskUUID }]);
 			assert.strictEqual(logs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id, 'Expected DRIVE_REINSTATED message');
 
 			const disk = await getDiskFromDB(evictedDiskID);
@@ -249,12 +248,12 @@ describe('Reinstate Disks', () => {
 			const dbVolume = await Volume.getFromDB(volume.name);
 			const seg = dbVolume.chunks[0].pRaids[0].diskSegments[0];
 
-			const logs = await reinstateDisk({ _id: seg.diskID, uuid: seg.diskUUID });
+			const logs = await reinstateDisks([{ diskID: seg.diskID, uuid: seg.diskUUID }]);
 			assertIsCausedBy(logs[0], systemMessages.DRIVE_REINSTATE_NOT_OUT_OF_SERVICE);
 		});
 
 		it('Should reject reinstate if disk not found', async() => {
-			const logs = await reinstateDisk({ _id: 'NON_EXISTENT_DISK', uuid: 'fake-uuid' });
+			const logs = await reinstateDisks([{ diskID: 'NON_EXISTENT_DISK', uuid: 'fake-uuid' }]);
 			assertIsCausedBy(logs[0], systemMessages.DRIVE_NOT_FOUND);
 		});
 
@@ -270,7 +269,7 @@ describe('Reinstate Disks', () => {
 
 			await evictDisk({ diskID: seg.diskID, uuid: seg.diskUUID }, true);
 
-			const logs = await reinstateDisk({ _id: seg.diskID, uuid: seg.diskUUID });
+			const logs = await reinstateDisks([{ diskID: seg.diskID, uuid: seg.diskUUID }]);
 			assertIsCausedBy(logs[0], systemMessages.DRIVE_REINSTATE_NON_PROTECTED_SEGMENTS);
 		});
 	});
@@ -286,7 +285,7 @@ describe('Reinstate Disks', () => {
 			evictedDiskID = env.firstSegment.diskID;
 			evictedDiskUUID = env.firstSegment.diskUUID;
 
-			const logs = await reinstateDisk({ _id: evictedDiskID, uuid: evictedDiskUUID });
+			const logs = await reinstateDisks([{ diskID: evictedDiskID, uuid: evictedDiskUUID }]);
 			assert.strictEqual(logs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id, 'Reinstate should succeed');
 		});
 
@@ -318,7 +317,7 @@ describe('Reinstate Disks', () => {
 			const { volume, firstSegment } = await setupReinstateEnvironment('rstSanOrpV1');
 
 			const restore = stubMethod('../../modules/disk.js', 'updateVolumesAfterReinstate', (pairs, cb) => cb(new Error('simulated crash')));
-			await reinstateDisk({ _id: firstSegment.diskID, uuid: firstSegment.diskUUID });
+			await reinstateDisks([{ diskID: firstSegment.diskID, uuid: firstSegment.diskUUID }]);
 			restore();
 
 			const disk = await getDiskFromDB(firstSegment.diskID);
@@ -336,7 +335,7 @@ describe('Reinstate Disks', () => {
 		it('Should auto-trigger format when OOS disk has only pending segments', async() => {
 			const { targets, volume, firstSegment } = await setupReinstateEnvironment('rstSanFmV1');
 
-			const logs = await reinstateDisk({ _id: firstSegment.diskID, uuid: firstSegment.diskUUID });
+			const logs = await reinstateDisks([{ diskID: firstSegment.diskID, uuid: firstSegment.diskUUID }]);
 			assert.strictEqual(logs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id);
 
 			const evictTarget = findTargetWithDisk(targets, firstSegment.diskID);
@@ -368,7 +367,7 @@ describe('Reinstate Disks', () => {
 
 			const restore = stubMethod('../../modules/disk.js', 'resumeReinstateAfterFormat', () => {});
 
-			const logs = await reinstateDisk({ _id: firstSegment.diskID, uuid: firstSegment.diskUUID });
+			const logs = await reinstateDisks([{ diskID: firstSegment.diskID, uuid: firstSegment.diskUUID }]);
 			assert.strictEqual(logs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id);
 
 			await evictTarget.clearQueues();
@@ -443,12 +442,10 @@ describe('Reinstate Disks', () => {
 				await target2.sendReport();
 			}
 
-			const logs = await new Promise(resolve => {
-				reinstateDrives([
-					{ _id: disk1ID, uuid: disk1UUID },
-					{ _id: disk2ID, uuid: disk2UUID }
-				], resolve);
-			});
+			const logs = await reinstateDisks([
+				{ diskID: disk1ID, uuid: disk1UUID },
+				{ diskID: disk2ID, uuid: disk2UUID }
+			]);
 
 			assert.strictEqual(logs.length, 2);
 			assert.strictEqual(logs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id);

@@ -241,6 +241,24 @@ const Drives = () => {
 		});
 	};
 
+	const reinstateDrives = async() => {
+		const disks = selectedDrives.map(drive => ({ diskID: drive.disks.diskID, uuid: drive.disks.uuid }));
+
+		const confirmed = await confirm(`Are you sure you want to reinstate ${disks.length} drive(s)?`);
+		if (!confirmed) return;
+
+		const responses = await DisksService.reinstateDisks(disks);
+		const responsesBySuccess = extractResults(responses);
+
+		if (responsesBySuccess.success.length) {
+			successAlert(`Reinstate command sent for ${responsesBySuccess.success.length} Drive(s)`);
+			reloadTable();
+		}
+		Object.keys(responsesBySuccess.failed).forEach(errorMsg => {
+			errorAlert(`Failed to reinstate Drive - ${errorMsg}`);
+		});
+	};
+
 	const formatDrives = async() => {
 		const disks = selectedDrives.map(drive => ({ _id: drive.disks.diskID, uuid: drive.disks.uuid }));
 
@@ -279,6 +297,12 @@ const Drives = () => {
 					        selectedDrives.some(target => target.disks.isOutOfService || target.disks.isExcluded)}
 				        onClick={() => evictDrives()}>
 					Evict
+				</button>
+				<button className="btn multi-select-action-btn btn-info mgmt-btn-info"
+				        disabled={!currUser.isAdmin || !selectedDrives.length ||
+					        selectedDrives.some(target => !target.disks.isOutOfService || target.disks.isExcluded)}
+				        onClick={() => reinstateDrives()}>
+					Reinstate
 				</button>
 				<button className="btn multi-select-action-btn btn-info mgmt-btn-info"
 				        disabled={!currUser.isAdmin || !selectedDrives.length ||

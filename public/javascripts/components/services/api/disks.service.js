@@ -38,6 +38,10 @@ export const DisksService = {
 		return await apiService.post('/evictDiskByDiskIDsAndUUIDs', disks);
 	},
 
+	async reinstateDisks(disks) {
+		return await apiService.post('/reinstateDiskByDiskIDsAndUUIDs', disks);
+	},
+
 	async loadDiskSegments(diskID, serverID, filter, sort, page, count, options) {
 		return await apiService.get(`/segments/${page}/${count}`, { diskID, serverID, filter, sort }, options);
 	},

@@ -2337,6 +2337,29 @@ function validateVolumeLimitationsAndVPGExists(volume, db, cb) {
 	});
 }
 
+const isReinstateReplacementStatus = (status) =>
+	status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING ||
+	status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD;
+
+// Two segments form a reinstate twin pair when they share the same _id and one is the
+// deprecated original (MARKED_FOR_REBUILD_OLD) while the other is its in-place replacement:
+//   1st replacement: MARKED_FOR_REBUILD_PENDING paired with MARKED_FOR_REBUILD_OLD.
+//   2nd replacement: MARKED_FOR_REBUILD         paired with MARKED_FOR_REBUILD_OLD.
+scope.areReinstateTwinSegments = (segmentA, segmentB) => {
+	if (segmentA._id !== segmentB._id)
+		return false;
+
+	return (segmentA.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD && isReinstateReplacementStatus(segmentB.status)) ||
+		(segmentB.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD && isReinstateReplacementStatus(segmentA.status));
+};
+
+scope.isReinstateReplacementSegment = (segment, allSegments) => {
+	if (!isReinstateReplacementStatus(segment.status))
+		return false;
+
+	return allSegments.some(other => other !== segment && scope.areReinstateTwinSegments(segment, other));
+};
+
 function isSegmentOverlaps(disk, diskSegment) {
 	var overlapSegment = null;
 
@@ -2348,7 +2371,8 @@ function isSegmentOverlaps(disk, diskSegment) {
 			if ((diskSegment.lbs >= seg.lbs && diskSegment.lbs <= seg.lbe ||
 				diskSegment.lbe >= seg.lbs && diskSegment.lbe <= seg.lbe ||
 				seg.lbs >= diskSegment.lbs && seg.lbe <= diskSegment.lbs) &&
-				!(diskSegment.fromReserved && seg.isReserved))
+				!(diskSegment.fromReserved && seg.isReserved) &&
+				!scope.areReinstateTwinSegments(seg, diskSegment))
 				overlapSegment = seg;
 		});
 

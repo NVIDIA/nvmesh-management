@@ -3045,25 +3045,11 @@ scope.isEffectiveSegmentInPRaidStatus = (status) => {
 	return !ineffectiveSegmentStatuses.includes(status);
 };
 
-// During reinstate, old and new segment pairs share the same _id.
-// When the old segment is deprecated, the new one must not be removed:
-//   1st replacement: markedForRebuild_pending + markedForRebuild_old share _id — always protect pending.
-//   2nd replacement: markedForRebuild + markedForRebuild_old share _id — protect markedForRebuild only
-//            when an old twin is present (otherwise it's a normal rebuild and removal is allowed).
 function isSegmentEligibleForRemoval(segment, segmentIdToRemove, allSegments) {
 	if (segment._id !== segmentIdToRemove)
 		return false;
 
-	if (segment.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
-		return false;
-
-	if (segment.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD) {
-		const hasReinstateOldTwin = allSegments.some(s => s._id === segmentIdToRemove && s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
-		if (hasReinstateOldTwin)
-			return false;
-	}
-
-	return true;
+	return !utils.isReinstateReplacementSegment(segment, allSegments);
 }
 
 module.exports = scope;

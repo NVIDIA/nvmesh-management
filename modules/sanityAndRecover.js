@@ -541,7 +541,9 @@ scope.checkForZeroedLargestSegmentAvailable = function(cb) {
 			$or: [
 				{ 'diskSegments.type': consts.segmentTypes.DATA },
 				{ 'diskSegments.type': { $exists: false } }
-			]
+			],
+			// skip the PENDING partner of a reinstate pair; it shares the LBA range with its MARKED_FOR_REBUILD_OLD twin
+			'diskSegments.status': { $ne: consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING }
 		} },
 		{ $project: {
 			diskID: '$diskID',
@@ -1571,11 +1573,14 @@ scope.checkForOverlappingVolumes = function(cb) {
 					return callback();
 				}
 
-				if (firstSegment['chunks']['pRaids']['diskSegments'].diskID === secondSegment['chunks']['pRaids']['diskSegments'].diskID)
-					if (isFollowingSegmentsOverlapping(firstSegment['chunks']['pRaids']['diskSegments'], secondSegment['chunks']['pRaids']['diskSegments'])) {
+				const firstDS = firstSegment['chunks']['pRaids']['diskSegments'];
+				const secondDS = secondSegment['chunks']['pRaids']['diskSegments'];
+
+				if (firstDS.diskID === secondDS.diskID)
+					if (isFollowingSegmentsOverlapping(firstDS, secondDS) && !scope.areReinstateTwinSegments(firstDS, secondDS)) {
 						let err = new SystemAdminMessage(systemMessages.SANITY_OVERLAPPING_SEGMENTS)
-							.addInfo(Entities.DiskSegment.UUID, firstSegment['chunks']['pRaids']['diskSegments'].uuid, Differentiators.First)
-							.addInfo(Entities.DiskSegment.UUID, secondSegment['chunks']['pRaids']['diskSegments'].uuid, Differentiators.Second)
+							.addInfo(Entities.DiskSegment.UUID, firstDS.uuid, Differentiators.First)
+							.addInfo(Entities.DiskSegment.UUID, secondDS.uuid, Differentiators.Second)
 							.log();
 						shouldContinue = false;
 						return callback(err);
@@ -1875,8 +1880,12 @@ function calculateDiskUsableBlocks(disk) {
 	function filterDataOnly(segment) {
 		return (!segment.owner || segment.owner === consts.segmentOwners.NVMESH) && segment.type === consts.segmentTypes.DATA && !segment.fromReserved;
 	}
+	// filter out MARKED_FOR_REBUILD_PENDING segments that reuses the same LBA range as its MARKED_FOR_REBUILD_OLD partner on the same disk
+	function filterOutReinstatePending(segment) {
+		return segment.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING;
+	}
 
-	var nvmeshDataSegments = (disk.diskSegments || []).filter(filterDataOnly);
+	var nvmeshDataSegments = (disk.diskSegments || []).filter(filterDataOnly).filter(filterOutReinstatePending);
 	var totalSegmentsBlocks = nvmeshDataSegments.map(mapSegmentBlockSize).reduce(sum, 0);
 	return disk.usableBlocks - totalSegmentsBlocks;
 }

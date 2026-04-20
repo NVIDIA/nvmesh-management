@@ -2209,6 +2209,15 @@ var systemMessages = {
 		logLevel: consts.loggingLevel.INFO,
 		sysLogLevel: consts.loggingLevel.INFO
 	},
+	DISK_REINSTATE_REQUEST: {
+		message: 'REST API Request: Reinstate Drive',
+		id: 16312,
+		header: getAuditHeader(consts.entity.drive, consts.operation.reinstate),
+		logLevel: consts.loggingLevel.INFO,
+		sysLogLevel: consts.loggingLevel.INFO,
+		isAudit: true,
+		isSecurity: true
+	},
 	DRIVE_REINSTATE_FAILED: {
 		message: 'Failed to reinstate Drive',
 		id: 16332,
