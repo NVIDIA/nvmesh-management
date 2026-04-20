@@ -35,7 +35,7 @@ var errorModule = require('./modules/error.js');
 var logModule = require('./modules/log.js');
 var sanityAndRecover = require('./modules/sanityAndRecover.js');
 var volumeEncryptionModule = require('./modules/volumeEncryption.js');
-const upgradeModule = require('./modules/upgrade.js');
+require('./modules/upgrade.js');
 // cdvTomaAutoAttach intentionally not imported — CDV auto-attach to TOMAs has
 // been retired; the allocator-satellite volume is attached on-demand by the
 // elected allocator TOMA via Kafka. See SatelliteVolumeForCDVAlloc.md.
