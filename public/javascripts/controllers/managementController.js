@@ -286,6 +286,20 @@ managementApp.controller('managementController', [
 				caption: 'Volumes',
 				adminOnly: false
 			}, {
+				icon: 'fa-cubes',
+				caption: 'Thin Provisioning',
+				adminOnly: false,
+				url: '',
+				subItems: [{
+					url: '/thin-provisioning/cdv',
+					icon: 'fa fa-database',
+					caption: 'CDVs',
+				}, {
+					url: '/thin-provisioning/tpv',
+					icon: 'fa fa-database',
+					caption: 'TPVs',
+				}]
+			}, {
 				url: '/disks',
 				icon: 'fa-hdd-o filter:invert(1);',
 				caption: 'Drives',
