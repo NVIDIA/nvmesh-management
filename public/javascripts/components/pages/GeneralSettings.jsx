@@ -484,7 +484,7 @@ const GeneralSettings = () => {
 						</div>
 						<div className="col-lg-8">
 							<Input type="number"
-							       className="form-control sm-input"
+							       className="form-control inline sm-input"
 							       min="0"
 							       max="100"
 							       step="1"
@@ -499,7 +499,7 @@ const GeneralSettings = () => {
 						</div>
 						<div className="col-lg-8">
 							<Input type="number"
-							       className="form-control sm-input"
+							       className="form-control inline sm-input"
 							       min="0"
 							       max="100"
 							       step="1"
