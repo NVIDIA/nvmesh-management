@@ -289,6 +289,7 @@ managementApp.controller('managementController', [
 				icon: 'fa-cubes',
 				caption: 'Thin Provisioning',
 				adminOnly: false,
+				alpha: true,
 				url: '',
 				subItems: [{
 					url: '/thin-provisioning/cdv',

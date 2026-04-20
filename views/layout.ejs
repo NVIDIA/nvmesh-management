@@ -267,6 +267,7 @@ SPDX-License-Identifier: Apache-2.0
 							<a ng-hide="{{ link.adminOnly && !managementCtrl.user.isAdmin }}" ng-click="managementCtrl.toggleSubMenu($event, link)" ng-href="{{ link.url  }}">
 								<i class="{{'fa ' + link.icon}}"></i>
 								<span>{{ link.caption }}</span>
+								<span ng-if="link.alpha" style="font-size:13.5px;font-weight:bold;background:linear-gradient(135deg,#7B2FBE,#4A90D9);color:white;padding:1.5px 7.5px;border-radius:12px;margin-left:7.5px;letter-spacing:0.75px;vertical-align:middle;">α</span>
 								<i ng-if="link.subItems" class="fa pull-right fa-chevron-left sub-menu-arrow"></i>
 							</a>
 							<ul>
