@@ -192,6 +192,7 @@ scope.run = cb => {
 		scope.checkLastReservationVersionSentToTOMA,
 		scope.checkLastEmulationAttachmentsVersionSentToClient,
 		scope.checkAndResumeStuckUpgrades,
+		scope.checkForResendReport,
 		cleanupUnusedTopics,
 		scope.verifySegmentStatusAfterEvict
 	], err => {
@@ -3023,6 +3024,34 @@ scope.checkVPGReservedVolumeCapacitySync = function(cb) {
 			);
 		}, cb);
 	});
+};
+
+scope.checkForResendReport = (cb) => {
+	var db = app.get('db');
+	var serverCollection = db.collection('server');
+
+	serverCollection.find({ shouldSendResendReport: true })
+		.project({ node_id: 1, tomaToken: 1, topics: 1, kafkaMessageSequence: 1 })
+		.toArray((err, targets) => {
+			if (err) {
+				new MongoError(err).log();
+				return cb();
+			} else if (targets && targets.length) {
+				async.each(targets, (target, callback) => {
+					logger.sysDEBUG(`Sanity And Recover: asking for resend report for Target: ${target.node_id}`);
+					// send resend report with empty drives so Toma will resend a new full report which will recalculate and trigger the ResendReport again
+					targetModule.askForTomaReport(
+						target.node_id,
+						target.tomaToken,
+						target.kafkaMessageSequence[consts.kafkaMessageTypes.TOMAToManagament.reportTarget],
+						target.topics[consts.topicSuffix.TOMA_COMMANDS],
+						[],
+						'sanity and recover');
+					callback();
+				}, cb);
+			} else
+				return cb();
+		});
 };
 
 module.exports = scope;

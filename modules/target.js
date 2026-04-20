@@ -889,7 +889,7 @@ function increaseOriginTargetReappearingCounter(resendReportReappearingDrives, c
 	});
 }
 
-function sendResendReportMessageIfNeeded(resendReportDrives, targetID, tomaToken, topic) {
+function sendResendReportMessageIfNeeded(resendReportDrives, targetID, tomaToken, reportMessageSequence, topic) {
 	resendReportDrives.forEach(function(driveInfo) {
 		// convert vendor to hex value
 		driveInfo.vendor = consts.diskVendorNameToHex[driveInfo.vendor] || driveInfo.vendor;
@@ -897,7 +897,7 @@ function sendResendReportMessageIfNeeded(resendReportDrives, targetID, tomaToken
 	});
 
 	if (resendReportDrives.length) {
-		askForTomaReport(targetID, tomaToken, topic, resendReportDrives, 'reappearing counter out of sync');
+		scope.askForTomaReport(targetID, tomaToken, reportMessageSequence, topic, resendReportDrives, 'reappearing counter out of sync');
 	}
 }
 
@@ -967,13 +967,26 @@ function checkAndExcludeIfDriveChangedZone(dbDrive, driveToSave, oldZone, newZon
 	}
 }
 
-function askForTomaReport(targetID, tomaToken, topic, resendReportDrives, reason) {
+scope.askForTomaReport = (targetID, tomaToken, reportMessageSequence, topic, resendReportDrives, reason) => {
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+
 	logger.sysDEBUG('Asking toma: ' + targetID + ' to send full report with the tomaToken: ' + tomaToken + ' reason: ' + reason);
 
 	const message = new ResendReport(resendReportDrives ? resendReportDrives : [], tomaToken);
 
-	kafkaModule.sendMessages(topic, [message]);
-}
+	kafkaModule.sendMessages(topic, [message], (err) => {
+		if (!err)
+			serverCollection.updateOne(
+				{ _id: targetID, [`kafkaMessageSequence.${consts.kafkaMessageTypes.TOMAToManagament.reportTarget}`]: reportMessageSequence },
+				{ $set: { shouldSendResendReport: false } },
+				(err) => {
+					if (err)
+						new MongoError(err).log();
+				}
+			);
+	});
+};
 
 function validateLeaderKeepAlive(message) {
 	const missingKeys = [];
@@ -2070,6 +2083,9 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 				calcDelta.updateObjectInTarget(lastServer, 'kafkaMessageSequence', message.type, message.messageSequence);
 				calcDelta.updateTarget(lastServer, 'lastReceivedReport', currentTime);
 
+				calcDelta.updateTarget(lastServer, 'shouldSendResendReport',
+					!!(resendReportNewDrives.length + resendReportReappearingDrives.length + resendReportExistingDrives.length));
+
 				var queryParts = calcDelta.generateQueryParts();
 
 				serverCollection.updateOne(
@@ -2174,6 +2190,7 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 					resendReportDrives,
 					node.node_id,
 					lastServer.tomaToken || node.tomaToken,
+					message.messageSequence,
 					lastServer.topics[consts.topicSuffix.TOMA_COMMANDS]
 				);
 
