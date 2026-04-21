@@ -73,10 +73,19 @@ const ThinProvisioning = () => {
 			sort: 'asc',
 		},
 		{
-			name: 'Parent CDV',
+			name: 'Data CDV',
 			field: 'tpvConfig.cdvId',
 			placeholder: 'Search by CDV',
 			value: tpvRow => tpvRow.tpvConfig?.cdvName || tpvRow.tpvConfig?.cdvId || '—',
+		},
+		{
+			// TPV_MetadataCDV.md: '—' for single-CDV TPVs; the CDV name for
+			// split-mode TPVs. Data CDV column stays next to this one so the
+			// pair is obvious.
+			name: 'Metadata CDV',
+			field: 'tpvConfig.metaCdvId',
+			placeholder: 'Search by metadata CDV',
+			value: tpvRow => tpvRow.tpvConfig?.metaCdvName || tpvRow.tpvConfig?.metaCdvId || '—',
 		},
 		{
 			name: 'Virtual Size',
@@ -96,6 +105,20 @@ const ThinProvisioning = () => {
 			rowClassName: 'fixed-size-column',
 			value: tpvRow => {
 				const kb = tpvRow.tpvConfig?.tpvExtentSizeKB;
+				if (kb == null) return '—';
+				if (kb >= 1024 * 1024) return `${kb / (1024 * 1024)} GB`;
+				if (kb >= 1024) return `${kb / 1024} MB`;
+				return `${kb} KB`;
+			},
+		},
+		{
+			name: 'Meta Extent Size',
+			field: 'tpvConfig.metaTpvExtentSizeKB',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: tpvRow => {
+				const kb = tpvRow.tpvConfig?.metaTpvExtentSizeKB;
 				if (kb == null) return '—';
 				if (kb >= 1024 * 1024) return `${kb / (1024 * 1024)} GB`;
 				if (kb >= 1024) return `${kb / 1024} MB`;
