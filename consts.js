@@ -1273,8 +1273,16 @@ consts.CDV_MGMT_SIZE_GIB = 1;
 // so that '<cdvName>-mgmt' fits within the regular volume name limit.
 consts.CDV_NAME_MAX_LENGTH = 16;
 
-// Valid power-of-2 values for CDV and TPV extent sizes
-consts.cdvExtentSizeMibValues = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
+// Valid power-of-2 values for CDV and TPV extent sizes.
+//
+// cdvExtentSizeMibValues floor is 16 MiB. The 1 GiB satellite volume caps a
+// CDV at ~262k extents regardless of extent size, so 16 MiB × 262 143 ≈ 4 TiB
+// is the effective max CDV capacity at the floor; larger CDVs pick a larger
+// extent size. CDVs don't declare a role at creation — the same enum applies
+// to data and metadata CDVs alike (TPV_MetadataCDV.md). The finer floor lets
+// admins create compact metadata CDVs (e.g. 16 MiB extent on a 1 TiB mirror)
+// without the lumpy per-TPV reservation that 64 MiB incurs.
+consts.cdvExtentSizeMibValues = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
 consts.tpvExtentSizeKBValues = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
 
 if (typeof module !== 'undefined' && typeof module.exports !== 'undefined')
