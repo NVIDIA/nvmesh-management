@@ -42,10 +42,16 @@ exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 		preparedPayload['isHidden'] = payload.isHidden || false;
 		preparedPayload['cdvConfig'] = payload.cdvConfig || null;
 		preparedPayload['tpvConfig'] = payload.tpvConfig || null;
-		// mdvUUID is repurposed to carry the CDV UUID for TPV volumes so the
-		// kernel can look up the parent CDV (which is already attached) when
-		// it creates the nvmeibc_tpv object.
+		// mdvUUID is repurposed to carry the (data) CDV UUID for TPV volumes
+		// so the kernel can look up the parent CDV (which is already attached)
+		// when it creates the nvmeibc_tpv object.
 		preparedPayload['mdvUUID'] = payload.mdvUUID || '';
+		// Split-mode TPVs store their L1/L2 tree on a second CDV
+		// (TPV_MetadataCDV.md). metaCdvUUID is a new, dedicated CM field —
+		// a version gate in the kernel rejects split-mode attaches from old
+		// kernels that don't recognize it. Empty string for single-CDV TPVs
+		// and all non-TPV volumes.
+		preparedPayload['metaCdvUUID'] = payload.metaCdvUUID || '';
 
 		preparedPayload['chunks'] = payload.chunks.map(c => ({
 			uuid: c.uuid,

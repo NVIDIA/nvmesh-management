@@ -3845,9 +3845,12 @@ function createTPV(volume, user, cb) {
 				// in clnt_scheme.json.  The kernel checks this bit to identify TPV and
 				// route the attach request to nvmeibc_tpv_attach().
 				type: 'thin',
-				// mdvUUID is repurposed to carry the parent CDV's UUID so the kernel
-				// can look it up in the attached volumes list.
+				// mdvUUID is repurposed to carry the parent (data) CDV's UUID so
+				// the kernel can look it up in the attached volumes list.
 				mdvUUID: cdv.uuid,
+				// New dedicated field for the metadata CDV in split-mode TPVs.
+				// Empty for single-CDV TPVs. See TPV_MetadataCDV.md §5.2.
+				metaCdvUUID: isSplitMode ? metaCdv.uuid : '',
 				// sourceUUID is repurposed for TPVs to carry the L1 flush mode.
 				// 'sync_flush' = flush L1 metadata before forwarding data bios
 				// (default, safe); '' = deferred background flush (fast, risky).
