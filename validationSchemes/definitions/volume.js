@@ -58,9 +58,22 @@ const tpvConfigScheme = {
 	type: 'object',
 	unevaluatedProperties: false,
 	properties: {
+		// Data CDV (always present) — the existing names are treated as the
+		// "data" side by convention; see TPV_MetadataCDV.md.
 		cdvId: { type: 'string', minLength: 1 },
 		cdvUUID: { type: 'string' },
 		tpvExtentSizeKB: { type: 'integer', enum: consts.tpvExtentSizeKBValues },
+		// Metadata CDV (split mode; null/absent => single-CDV mode).
+		metaCdvId: { type: ['string', 'null'], default: null },
+		metaCdvUUID: { type: ['string', 'null'], default: null },
+		metaTpvExtentSizeKB: {
+			oneOf: [{ type: 'null' }, { type: 'integer', enum: consts.tpvExtentSizeKBValues }],
+			default: null,
+		},
+		// Server-owned: auto-computed by createTPV / extendTPV in modules/volume.js
+		// from (capacity, tpvExtentSizeKB, metaTpvExtentSizeKB). Only present in
+		// split mode. Read-only from the client's perspective (CLI / UI / CSI).
+		metaVirtualSizeGB: { type: ['integer', 'null'], default: null },
 		exclusiveClient: { type: ['string', 'null'], default: null },
 		exclusiveClientUUID: { type: ['string', 'null'], default: null },
 	},
@@ -135,7 +148,10 @@ const scheme = {
 			}
 		},
 		{
-			// TPV: tpvConfig required; cdvId and tpvExtentSizeKB required within it
+			// TPV: tpvConfig required; cdvId and tpvExtentSizeKB required within
+			// it. meta* fields are optional; if metaCdvId is provided then
+			// metaTpvExtentSizeKB must also be provided (enforced in
+			// modules/volume.js).
 			if: isTPV,
 			then: {
 				required: ['tpvConfig'],

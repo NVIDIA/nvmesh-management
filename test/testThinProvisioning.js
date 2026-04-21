@@ -11,7 +11,7 @@ const { setup } = require('./testUtils/setup.js');
 const { generateTargets } = require('./testUtils/entityGenerators.js');
 const lockUtils = require('./testUtils/lockUtils.js');
 const consts = require('../consts.js');
-const { saveVolumes, deleteTPVs, updateTPV, extendTPV, handleCDVCapacityWarning, updateVolumes, markVolumesForDeletion } = require('../modules/volume.js');
+const { saveVolumes, deleteTPVs, updateTPV, extendTPV, handleCDVCapacityWarning, updateVolumes, markVolumesForDeletion, computeMetaVirtualSizeGB } = require('../modules/volume.js');
 const { Entities } = require('../modules/error.js');
 
 const ZONE_1 = '1';
@@ -637,6 +637,42 @@ describe('Thin Provisioning', () => {
 					});
 				}
 			);
+		});
+	});
+
+	describe('TPV metadata CDV — auto-sizing', () => {
+		it('rounds up to 1 GiB for small TPVs', () => {
+			// 128 GiB / 64 KiB extent = 2 Mi entries × 8 B = 16 MiB L2; << 1 GiB
+			assert.strictEqual(computeMetaVirtualSizeGB(128, 64, 64), 1);
+		});
+
+		it('stays at 1 GiB at 1 TiB / 64 KiB', () => {
+			// 1024 GiB / 64 KiB = 16 Mi entries × 8 B = 128 MiB; << 1 GiB after rounding
+			assert.strictEqual(computeMetaVirtualSizeGB(1024, 64, 64), 1);
+		});
+
+		it('scales linearly past the 1 GiB threshold', () => {
+			// 10 TiB / 64 KiB = 160 Mi entries × 8 B = 1.28 GiB raw → +10% safety → 2 GiB
+			assert.strictEqual(computeMetaVirtualSizeGB(10240, 64, 64), 2);
+		});
+
+		it('larger data extents reduce metadata need', () => {
+			// 1 TiB / 1 MiB = 1 Mi entries × 8 B = 8 MiB; << 1 GiB
+			assert.strictEqual(computeMetaVirtualSizeGB(1024, 1024, 64), 1);
+		});
+
+		it('returns at least 1 GiB even for tiny TPVs', () => {
+			assert.strictEqual(computeMetaVirtualSizeGB(1, 64, 64), 1);
+		});
+
+		it('is monotonic in virtual size', () => {
+			const sizes = [1, 128, 1024, 10240, 102400];
+			let prev = 0;
+			for (const s of sizes) {
+				const got = computeMetaVirtualSizeGB(s, 64, 64);
+				assert(got >= prev, `non-monotonic at ${s}: ${prev} → ${got}`);
+				prev = got;
+			}
 		});
 	});
 });

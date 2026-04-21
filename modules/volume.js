@@ -93,6 +93,12 @@ scope.getAllVolumes = function(projection, page, count, filter, sort, cb) {
 			{ $lookup: { from: 'volume', localField: 'tpvConfig.cdvId', foreignField: '_id', as: '_cdv', pipeline: [{ $project: { name: 1 } }] } },
 			{ $addFields: { 'tpvConfig.cdvName': { $arrayElemAt: ['$_cdv.name', 0] } } },
 			{ $unset: '_cdv' },
+			// Denormalize metadata CDV name as well (split-mode TPVs).
+			// Single-CDV TPVs have metaCdvId === null and _metaCdv resolves to [],
+			// so tpvConfig.metaCdvName stays undefined — handled by UI / CLI.
+			{ $lookup: { from: 'volume', localField: 'tpvConfig.metaCdvId', foreignField: '_id', as: '_metaCdv', pipeline: [{ $project: { name: 1 } }] } },
+			{ $addFields: { 'tpvConfig.metaCdvName': { $arrayElemAt: ['$_metaCdv.name', 0] } } },
+			{ $unset: '_metaCdv' },
 			{ $lookup: {
 				from: 'client',
 				let: { exClient: '$tpvConfig.exclusiveClient', cdvUUID: '$tpvConfig.cdvUUID' },
@@ -2317,7 +2323,12 @@ scope.doAfterVolumeStatusChanged = function(volume, calcResult, user, lockedZone
 
 	if (calcResult.changedStatus && volume.volumeClass === consts.volumeClass.CDV) {
 		var volumeCollection = app.get('db').collection('volume');
-		volumeCollection.find({ 'tpvConfig.cdvId': volume._id }, { projection: { _id: 1 } }).toArray((err, tpvs) => {
+		// A CDV status change must propagate to every TPV backed by it — on
+		// either the data or metadata side (TPV_MetadataCDV.md §4).
+		volumeCollection.find(
+			{ $or: [{ 'tpvConfig.cdvId': volume._id }, { 'tpvConfig.metaCdvId': volume._id }] },
+			{ projection: { _id: 1 } }
+		).toArray((err, tpvs) => {
 			if (err || !tpvs || !tpvs.length) return callback(null);
 			async.each(tpvs, (tpv, eachCB) => scope.calculateAndUpdateVolumeStatus(tpv._id, null, eachCB), () => callback(null));
 		});
@@ -3494,8 +3505,10 @@ scope.rebuildVolumes = (requestVolumes, user, cb) => {
 //                 (plus 1 for an L2 index extent when > 1 L1 is needed)
 // where entriesPerL1 = floor(cdvExtentBytes / TPV_TREE_ENTRY_BYTES).
 // TPV_TREE_ENTRY_BYTES mirrors the kernel's `tpv_tree_entry` (see
-// nvmeibc_tpv.h); must be updated if the on-disk layout changes.
-const TPV_TREE_ENTRY_BYTES = 16;
+// nvmeibc_tpv.h); must be updated if the on-disk layout changes. TPV_L1_VERSION
+// 2 (compact format) uses { u64 cdv_offset; } = 8 bytes.
+const TPV_TREE_ENTRY_BYTES = 8;
+const TPV_L1_HEADER_BYTES = 64;
 
 scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
 	const cdvs = (volumes || []).filter(v => v && v.volumeClass === consts.volumeClass.CDV);
@@ -3504,30 +3517,59 @@ scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
 	const cdvIds = cdvs.map(c => c._id);
 	const db = app.get('db');
 	db.collection('volume').find(
-		{ volumeClass: consts.volumeClass.TPV, 'tpvConfig.cdvId': { $in: cdvIds } },
-		{ projection: { _id: 1, capacity: 1, 'tpvConfig.cdvId': 1, 'tpvConfig.tpvExtentSizeKB': 1 } }
+		{
+			volumeClass: consts.volumeClass.TPV,
+			$or: [
+				{ 'tpvConfig.cdvId': { $in: cdvIds } },
+				{ 'tpvConfig.metaCdvId': { $in: cdvIds } },
+			],
+		},
+		{ projection: {
+			_id: 1, capacity: 1,
+			'tpvConfig.cdvId': 1, 'tpvConfig.tpvExtentSizeKB': 1,
+			'tpvConfig.metaCdvId': 1, 'tpvConfig.metaTpvExtentSizeKB': 1,
+			'tpvConfig.metaVirtualSizeGB': 1,
+		} }
 	).toArray((err, tpvs) => {
 		if (err) return cb(new MongoError(err).log(), volumes);
 
 		// Volume `capacity` is stored in GiB (see createTPV line `blocks = capacity * GiB / BLOCK_SIZE`).
 		const demandByCDV = Object.create(null);
 		for (const tpv of tpvs) {
-			const cdv = cdvs.find(c => c._id === tpv.tpvConfig.cdvId);
-			if (!cdv || !cdv.cdvConfig || !cdv.cdvConfig.cdvExtentSizeMib) continue;
+			const cfg = tpv.tpvConfig || {};
+			const isSplit = !!cfg.metaCdvId;
+			const dataCdv = cdvs.find(c => c._id === cfg.cdvId);
+			const metaCdv = isSplit ? cdvs.find(c => c._id === cfg.metaCdvId) : null;
 
-			const cdvExtentBytes = cdv.cdvConfig.cdvExtentSizeMib * consts.MiB;
-			const tpvExtentKB = tpv.tpvConfig && tpv.tpvConfig.tpvExtentSizeKB;
 			const virtualBytes = (tpv.capacity || 0) * consts.GiB;
-			if (!tpvExtentKB || !virtualBytes || !cdvExtentBytes) continue;
+			if (!virtualBytes) continue;
 
-			const tpvExtentBytes = tpvExtentKB * 1024;
-			const dataExtents = Math.ceil(virtualBytes / cdvExtentBytes);
-			const entriesPerL1 = Math.floor(cdvExtentBytes / TPV_TREE_ENTRY_BYTES);
-			const coverPerL1 = entriesPerL1 * tpvExtentBytes;
-			const l1Extents = coverPerL1 > 0 ? Math.max(1, Math.ceil(virtualBytes / coverPerL1)) : 1;
-			const treeExtents = l1Extents + (l1Extents > 1 ? 1 : 0);
+			// Data-CDV contribution: user-data extents only. In split mode no
+			// L1/L2 lives on the data CDV; in single-CDV mode the tree is
+			// added below alongside data.
+			if (dataCdv && dataCdv.cdvConfig && dataCdv.cdvConfig.cdvExtentSizeMib) {
+				const dataExtentBytes = dataCdv.cdvConfig.cdvExtentSizeMib * consts.MiB;
+				const dataExtents = Math.ceil(virtualBytes / dataExtentBytes);
+				let treeExtents = 0;
+				if (!isSplit && cfg.tpvExtentSizeKB) {
+					const tpvExtentBytes = cfg.tpvExtentSizeKB * 1024;
+					const entriesPerL1 = Math.floor(dataExtentBytes / TPV_TREE_ENTRY_BYTES);
+					const coverPerL1 = entriesPerL1 * tpvExtentBytes;
+					const l1Extents = coverPerL1 > 0 ? Math.max(1, Math.ceil(virtualBytes / coverPerL1)) : 1;
+					treeExtents = l1Extents + (l1Extents > 1 ? 1 : 0);
+				}
+				demandByCDV[dataCdv._id] = (demandByCDV[dataCdv._id] || 0) + dataExtents + treeExtents;
+			}
 
-			demandByCDV[cdv._id] = (demandByCDV[cdv._id] || 0) + dataExtents + treeExtents;
+			// Metadata-CDV contribution: tree extents only. We already have a
+			// server-computed `metaVirtualSizeGB` figure; convert that to
+			// extents of the metadata CDV's size.
+			if (isSplit && metaCdv && metaCdv.cdvConfig && metaCdv.cdvConfig.cdvExtentSizeMib) {
+				const metaExtentBytes = metaCdv.cdvConfig.cdvExtentSizeMib * consts.MiB;
+				const metaBytes = (cfg.metaVirtualSizeGB || 1) * consts.GiB;
+				const metaExtents = Math.ceil(metaBytes / metaExtentBytes);
+				demandByCDV[metaCdv._id] = (demandByCDV[metaCdv._id] || 0) + metaExtents;
+			}
 		}
 
 		for (const cdv of cdvs) {
@@ -3649,52 +3691,118 @@ function allocateAndSliceIntoVolumes(slices, user, cb) {
 	});
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Metadata-CDV auto-sizing (TPV_MetadataCDV.md §3.3).
+//
+// Computes the metadata CDV virtual size required to hold the full L1/L2 tree
+// for a TPV of (virtualSizeGB, tpvExtentSizeKB), written on a metadata CDV
+// whose TPV-extent size is metaTpvExtentSizeKB. Result is in GiB, rounded up
+// to the 1 GiB NVMesh volume allocation quantum. A 10% safety multiplier is
+// applied — purely virtual cost, no physical penalty; see design §12.
+//
+// Kept in sync with kernel struct tpv_l1_header (nvmeibc_tpv.h) and struct
+// tpv_tree_entry (nvmeibc_tpv.h) — the constants TPV_TREE_ENTRY_BYTES and
+// TPV_L1_HEADER_BYTES are defined alongside annotateCDVsWithOverprovisionRatio
+// above.
+// ─────────────────────────────────────────────────────────────────────────────
+scope.computeMetaVirtualSizeGB = function (virtualSizeGB, tpvExtentSizeKB, metaTpvExtentSizeKB) {
+	const numVirtExtents = Math.ceil((virtualSizeGB * 1024 * 1024) / tpvExtentSizeKB);
+	const rawL2Bytes = numVirtExtents * TPV_TREE_ENTRY_BYTES;
+	const metaSlotBytes = metaTpvExtentSizeKB * 1024;
+	const numL2Tables = Math.ceil(rawL2Bytes / metaSlotBytes);
+	const rawL1Bytes = numL2Tables * TPV_TREE_ENTRY_BYTES + TPV_L1_HEADER_BYTES;
+	const rawTotalBytes = rawL1Bytes + rawL2Bytes;
+	const safetyBytes = Math.ceil((rawTotalBytes * 11) / 10);
+	return Math.max(1, Math.ceil(safetyBytes / consts.GiB));
+};
+
 function createTPV(volume, user, cb) {
 	var db = app.get('db');
 	var volumeCollection = db.collection('volume');
 	var message;
 	var cdv;
+	var metaCdv;
 
-	const { cdvId, tpvExtentSizeKB } = volume.tpvConfig || {};
+	const { cdvId, tpvExtentSizeKB, metaCdvId, metaTpvExtentSizeKB } = volume.tpvConfig || {};
 	const { capacity } = volume;
 	const isEncrypted = !!volume.isEncrypted;
 	const requestedHeaderSize = (volume.encryption && volume.encryption.headerSize) || 16;
+	// Split-mode discriminator: both meta fields present, or both absent.
+	const isSplitMode = !!metaCdvId;
+	var metaVirtualSizeGB = null;
+
+	const fail = (info) => {
+		message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
+			.addInfo(Entities.Volume.name, volume.name)
+			.addInfo(Entities.Error, info);
+	};
+
+	// Split-mode input validation before touching the DB.
+	if (isSplitMode) {
+		if (!metaTpvExtentSizeKB) {
+			fail('metaCdvId requires metaTpvExtentSizeKB');
+			return cb(message);
+		}
+		if (metaCdvId === cdvId) {
+			fail('metaCdvId and cdvId must differ — for a single-CDV TPV, omit metaCdvId');
+			return cb(message);
+		}
+	}
 
 	async.series([
 		function fetchAndValidateCDV(next) {
 			volumeCollection.findOne({ _id: cdvId, volumeClass: consts.volumeClass.CDV }, (err, doc) => {
 				if (err) {
-					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
-						.addInfo(Entities.Volume.name, volume.name)
-						.addInfo(Entities.Error, new MongoError(err).log());
+					fail(new MongoError(err).log());
 					return next(true);
 				}
 				if (!doc) {
-					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
-						.addInfo(Entities.Volume.name, volume.name)
-						.addInfo(Entities.Error, `Parent CDV '${cdvId}' not found`);
+					fail(`Parent CDV '${cdvId}' not found`);
 					return next(true);
 				}
 				if (doc.tpvCount >= doc.cdvConfig.maxTPVs) {
-					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
-						.addInfo(Entities.Volume.name, volume.name)
-						.addInfo(Entities.Error, `CDV is at capacity (${doc.cdvConfig.maxTPVs} TPVs)`);
+					fail(`CDV is at capacity (${doc.cdvConfig.maxTPVs} TPVs)`);
 					return next(true);
 				}
 				if (capacity > doc.capacity) {
-					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
-						.addInfo(Entities.Volume.name, volume.name)
-						.addInfo(Entities.Error, 'TPV capacity cannot exceed parent CDV capacity');
+					fail('TPV capacity cannot exceed parent CDV capacity');
 					return next(true);
 				}
 				if (tpvExtentSizeKB > doc.cdvConfig.cdvExtentSizeMib * 1024) {
 					const maxKB = doc.cdvConfig.cdvExtentSizeMib * 1024;
-					message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
-						.addInfo(Entities.Volume.name, volume.name)
-						.addInfo(Entities.Error, `tpvExtentSizeKB (${tpvExtentSizeKB}) cannot exceed cdvExtentSizeMib * 1024 (${maxKB})`);
+					fail(`tpvExtentSizeKB (${tpvExtentSizeKB}) cannot exceed cdvExtentSizeMib * 1024 (${maxKB})`);
 					return next(true);
 				}
 				cdv = doc;
+				next();
+			});
+		},
+		function fetchAndValidateMetaCDV(next) {
+			if (!isSplitMode) return next();
+			volumeCollection.findOne({ _id: metaCdvId, volumeClass: consts.volumeClass.CDV }, (err, doc) => {
+				if (err) {
+					fail(new MongoError(err).log());
+					return next(true);
+				}
+				if (!doc) {
+					fail(`Metadata CDV '${metaCdvId}' not found`);
+					return next(true);
+				}
+				if (doc.tpvCount >= doc.cdvConfig.maxTPVs) {
+					fail(`Metadata CDV is at capacity (${doc.cdvConfig.maxTPVs} TPVs)`);
+					return next(true);
+				}
+				if (metaTpvExtentSizeKB > doc.cdvConfig.cdvExtentSizeMib * 1024) {
+					const maxKB = doc.cdvConfig.cdvExtentSizeMib * 1024;
+					fail(`metaTpvExtentSizeKB (${metaTpvExtentSizeKB}) cannot exceed metadata CDV cdvExtentSizeMib * 1024 (${maxKB})`);
+					return next(true);
+				}
+				metaVirtualSizeGB = scope.computeMetaVirtualSizeGB(capacity, tpvExtentSizeKB, metaTpvExtentSizeKB);
+				if (metaVirtualSizeGB > doc.capacity) {
+					fail(`computed metadata capacity (${metaVirtualSizeGB} GiB) exceeds metadata CDV capacity (${doc.capacity} GiB)`);
+					return next(true);
+				}
+				metaCdv = doc;
 				next();
 			});
 		},
@@ -3761,6 +3869,10 @@ function createTPV(volume, user, cb) {
 					cdvId: cdvId,
 					cdvUUID: cdv.uuid,
 					tpvExtentSizeKB: tpvExtentSizeKB,
+					metaCdvId: isSplitMode ? metaCdvId : null,
+					metaCdvUUID: isSplitMode ? metaCdv.uuid : null,
+					metaTpvExtentSizeKB: isSplitMode ? metaTpvExtentSizeKB : null,
+					metaVirtualSizeGB: isSplitMode ? metaVirtualSizeGB : null,
 					exclusiveClient: null,
 					exclusiveClientUUID: null,
 				},
@@ -3790,6 +3902,14 @@ function createTPV(volume, user, cb) {
 				if (err)
 					sysERROR(`createTPV: failed to increment tpvCount for CDV ${cdvId}: ${err}`);
 				next(); // non-fatal — TPV was created; any discrepancy is caught by NVCK
+			});
+		},
+		function incrementMetaTpvCount(next) {
+			if (!isSplitMode) return next();
+			volumeCollection.updateOne({ _id: metaCdvId }, { $inc: { tpvCount: 1 } }, err => {
+				if (err)
+					sysERROR(`createTPV: failed to increment tpvCount for metadata CDV ${metaCdvId}: ${err}`);
+				next();
 			});
 		},
 	], () => {
@@ -3904,7 +4024,15 @@ scope.deleteTPVs = (tpvIds, user, cb) => {
 						return step(true);
 					}
 					tpv = doc;
-					kafkaModule.sendCDVAllocatorFreeAll(tpv.tpvConfig.cdvUUID, tpv.uuid, () => step());
+					// Split mode: fan out CDVAllocatorFreeAll to both CDV
+					// allocators. Order does not matter — each message is
+					// idempotent on the TOMA side. Per TPV_MetadataCDV.md §4.4.
+					kafkaModule.sendCDVAllocatorFreeAll(tpv.tpvConfig.cdvUUID, tpv.uuid, () => {
+						if (tpv.tpvConfig.metaCdvUUID)
+							kafkaModule.sendCDVAllocatorFreeAll(tpv.tpvConfig.metaCdvUUID, tpv.uuid, () => step());
+						else
+							step();
+					});
 				});
 			},
 			function deleteTPVRecord(step) {
@@ -3921,10 +4049,16 @@ scope.deleteTPVs = (tpvIds, user, cb) => {
 			},
 			function decrementTpvCount(step) {
 				const cdvId = tpv.tpvConfig.cdvId;
+				const metaCdvId = tpv.tpvConfig.metaCdvId;
 				volumeCollection.updateOne({ _id: cdvId }, { $inc: { tpvCount: -1 } }, err => {
 					if (err)
 						sysERROR(`deleteTPVs: failed to decrement tpvCount for CDV ${cdvId}: ${err}`);
-					step(); // non-fatal
+					if (!metaCdvId) return step(); // non-fatal
+					volumeCollection.updateOne({ _id: metaCdvId }, { $inc: { tpvCount: -1 } }, err2 => {
+						if (err2)
+							sysERROR(`deleteTPVs: failed to decrement tpvCount for metadata CDV ${metaCdvId}: ${err2}`);
+						step();
+					});
 				});
 			},
 		], () => {
@@ -3953,31 +4087,76 @@ scope.extendTPV = ({ tpvId, newSizeGB }, user, cb) => {
 				.addInfo(Entities.Volume.ID, tpvId)
 				.addInfo(Entities.Error, 'newSizeGB must be greater than current capacity'));
 
-		const $set = {
-			capacity: newSizeGB,
-			blocks: Math.floor(newSizeGB * 1024 * 1024 * 1024 / 4096),
-			modifiedBy: user.email,
-			dateModified: new Date(),
-		};
+		// Split mode: recompute metaVirtualSizeGB against the new virtual size.
+		// Per TPV_MetadataCDV.md §3.3, the metadata TPV must grow first so the
+		// tree can describe the new virtual address space before the data side
+		// is extended. We check capacity on the metadata CDV up front and fail
+		// the whole extend if it would overflow — no partial change.
+		const isSplitMode = !!(tpv.tpvConfig && tpv.tpvConfig.metaCdvId);
+		var newMetaVirtualSizeGB = null;
 
-		volumeCollection.findOneAndUpdate(
-			{ _id: tpvId },
-			{ $set },
-			{ returnDocument: consts.mongoReturnDocument.AFTER },
-			(err, updated) => {
-				if (err || !updated)
-					return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+		const applyExtend = () => {
+			const $set = {
+				capacity: newSizeGB,
+				blocks: Math.floor(newSizeGB * 1024 * 1024 * 1024 / 4096),
+				modifiedBy: user.email,
+				dateModified: new Date(),
+			};
+			if (isSplitMode && newMetaVirtualSizeGB !== null)
+				$set['tpvConfig.metaVirtualSizeGB'] = newMetaVirtualSizeGB;
+
+			volumeCollection.findOneAndUpdate(
+				{ _id: tpvId },
+				{ $set },
+				{ returnDocument: consts.mongoReturnDocument.AFTER },
+				(err, updated) => {
+					if (err || !updated)
+						return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+							.addInfo(Entities.Volume.ID, tpvId));
+
+					const respond = () => cb(new SystemAdminMessage(systemMessages.VOLUME_UPDATED)
 						.addInfo(Entities.Volume.ID, tpvId));
 
-				const respond = () => cb(new SystemAdminMessage(systemMessages.VOLUME_UPDATED)
-					.addInfo(Entities.Volume.ID, tpvId));
-
-				if (tpv.tpvConfig.exclusiveClient) {
-					const clientModule = require('./client');
-					clientModule.sendUpdateVolumesToClient(updated, respond);
-				} else {
-					respond();
+					if (tpv.tpvConfig.exclusiveClient) {
+						const clientModule = require('./client');
+						clientModule.sendUpdateVolumesToClient(updated, respond);
+					} else {
+						respond();
+					}
 				}
+			);
+		};
+
+		if (!isSplitMode) {
+			applyExtend();
+			return;
+		}
+
+		// Recompute metadata capacity for the new virtual size; if it exceeds
+		// the metadata CDV's free space, refuse the extend atomically.
+		newMetaVirtualSizeGB = scope.computeMetaVirtualSizeGB(
+			newSizeGB, tpv.tpvConfig.tpvExtentSizeKB, tpv.tpvConfig.metaTpvExtentSizeKB);
+
+		if (newMetaVirtualSizeGB <= (tpv.tpvConfig.metaVirtualSizeGB || 0)) {
+			// Requirement is still covered by the existing allocation.
+			newMetaVirtualSizeGB = null;
+			applyExtend();
+			return;
+		}
+
+		volumeCollection.findOne(
+			{ _id: tpv.tpvConfig.metaCdvId, volumeClass: consts.volumeClass.CDV },
+			(err, metaCdv) => {
+				if (err || !metaCdv)
+					return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+						.addInfo(Entities.Volume.ID, tpvId)
+						.addInfo(Entities.Error, 'metadata CDV not found'));
+				if (newMetaVirtualSizeGB > metaCdv.capacity)
+					return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+						.addInfo(Entities.Volume.ID, tpvId)
+						.addInfo(Entities.Error,
+							`extend requires ${newMetaVirtualSizeGB} GiB of metadata capacity; metadata CDV has ${metaCdv.capacity} GiB`));
+				applyExtend();
 			}
 		);
 	});
