@@ -5523,6 +5523,28 @@ scope.attachSatelliteForAllocator = (cdvUUID, tomaHostname, allocatorGeneration,
 	});
 };
 
+/*
+ * firstAttachError — scan scope.attachVolumes callback `logs` for a non-success
+ * entry. A successful attach emits VOLUME_STATE_ATTACHING per requested volume;
+ * any other message is an error (already-attached conflict, reservation
+ * mismatch, transport failure, etc.). Returns the first error message or null.
+ */
+function firstAttachError(logs) {
+	if (!Array.isArray(logs)) return null;
+	return logs.find(l => l && l.systemMessage &&
+		l.systemMessage.id !== systemMessages.VOLUME_STATE_ATTACHING.id) || null;
+}
+
+/*
+ * firstDetachError — mirror of firstAttachError for detach paths.
+ */
+function firstDetachError(logs) {
+	if (!Array.isArray(logs)) return null;
+	return logs.find(l => l && l.systemMessage &&
+		l.systemMessage.id !== systemMessages.VOLUME_STATE_DETACHING.id &&
+		l.systemMessage.id !== systemMessages.VOLUME_REMOVED_REF_ID.id) || null;
+}
+
 scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 	if (typeof options === 'function') { callback = options; options = {}; }
 	const syncFlush = options.syncFlush !== false;
@@ -5530,6 +5552,15 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 	const volumeCollection = db.collection('volume');
 	const clientCollection = db.collection('client');
 	let tpv, cdv, metaCdv;
+	/*
+	 * Rollback bookkeeping: if the pipeline aborts after data-CDV and/or
+	 * metadata-CDV ref stamps landed, we must drop those refs so the
+	 * evicted state is consistent. Without this a failed meta-CDV attach
+	 * or TPV attach would leave the data CDV attached-with-ref-to-a-TPV-
+	 * that-never-materialised, blocking future operations on that CDV.
+	 */
+	let dataRefStamped = false;
+	let metaRefStamped = false;
 
 	async.series([
 		function applySyncFlush(cb) {
@@ -5655,7 +5686,12 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 					mode: consts.reservationModeNames.SHARED_READ_WRITE,
 					version: admissionFloor,
 				}
-			}], () => cb());
+			}], logs => {
+				const err = firstAttachError(logs);
+				if (err) return cb(err);
+				dataRefStamped = true;
+				cb();
+			});
 		},
 		function attachMetaCDV(cb) {
 			// Split-mode: hidden-attach the metadata CDV as well, carrying the
@@ -5674,7 +5710,12 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 					mode: consts.reservationModeNames.SHARED_READ_WRITE,
 					version: metaFloor,
 				}
-			}], () => cb());
+			}], logs => {
+				const err = firstAttachError(logs);
+				if (err) return cb(err);
+				metaRefStamped = true;
+				cb();
+			});
 		},
 		function attachTPVVolume(cb) {
 			// Forward options.preempt into the TPV reservation so management's
@@ -5727,7 +5768,11 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 					chunks: metaCdv.chunks,
 				};
 			}
-			scope.attachVolumes(clientID, clientUUID, [attachEntry], () => cb(), false, { allowNonReady: !!options.allowNonReady });
+			scope.attachVolumes(clientID, clientUUID, [attachEntry], logs => {
+				const err = firstAttachError(logs);
+				if (err) return cb(err);
+				cb();
+			}, false, { allowNonReady: !!options.allowNonReady });
 		},
 		function setExclusiveClient(cb) {
 			volumeCollection.findOneAndUpdate(
@@ -5742,7 +5787,34 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 		function recalcTPVStatus(cb) {
 			volumeModule.calculateAndUpdateVolumeStatus(tpvName, null, () => cb());
 		}
-	], callback);
+	], err => {
+		if (!err) return callback();
+		/*
+		 * Rollback on mid-pipeline failure: drop any tpv:<uuid> references
+		 * we stamped so the attachment state mirrors "never attached".
+		 * Metadata-first to match the normal detach ordering (§4.5).
+		 * Errors during rollback are logged and ignored — we already have
+		 * a primary error to report.
+		 */
+		const rollback = [];
+		if (metaRefStamped && metaCdv) {
+			rollback.push(rbCb => scope.detachVolumes(clientID, clientUUID, [{
+				uuid: metaCdv.uuid,
+				name: metaCdv._id,
+				referenceID: `tpv:${tpv.uuid}`,
+			}], () => rbCb()));
+		}
+		if (dataRefStamped && cdv) {
+			rollback.push(rbCb => scope.detachVolumes(clientID, clientUUID, [{
+				uuid: cdv.uuid,
+				name: cdv._id,
+				referenceID: `tpv:${tpv.uuid}`,
+			}], () => rbCb()));
+		}
+		if (rollback.length === 0) return callback(err);
+		logger.sysERROR(`attachTPV ${tpvName}: rolling back ${rollback.length} CDV ref(s) after pipeline failure`);
+		async.series(rollback, () => callback(err));
+	});
 };
 
 scope.detachTPV = (clientID, clientUUID, tpvName, callback) => {
@@ -5775,7 +5847,20 @@ scope.detachTPV = (clientID, clientUUID, tpvName, callback) => {
 			});
 		},
 		function detachTPVVolume(cb) {
-			scope.detachVolumes(clientID, clientUUID, [{ uuid: tpv.uuid, name: tpv._id }], () => cb());
+			scope.detachVolumes(clientID, clientUUID, [{ uuid: tpv.uuid, name: tpv._id }], logs => {
+				const err = firstDetachError(logs);
+				if (err) {
+					/*
+					 * TPV detach itself failed (e.g. client unreachable). Abort
+					 * the pipeline — do NOT proceed to drop CDV refs, since the
+					 * client kernel may still hold the TPV gendisk and a CDV
+					 * detach would yank the CDV out from under live IO. Caller
+					 * retries after the transient clears.
+					 */
+					return cb(err);
+				}
+				cb();
+			});
 		},
 		function maybeDetachMetaCDV(cb) {
 			// Split-mode: release the tpv:<uuid> reference on the metadata CDV
