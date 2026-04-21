@@ -300,7 +300,10 @@ const CreateTPVModal = ({
 								errorMessage={formState.errors?.metaTpvExtentSizeKB?.message}
 								topHint={autoMetaSizeGB > 0
 									? <i className={metaOverCapacity ? 'text-danger' : 'text-muted'}>
-										Metadata capacity (auto-sized): {autoMetaSizeGB} {unitLabel}
+										{/* Always rendered in GiB — the 1 GiB volume-allocation
+										    quantum is what management reserves on the metadata
+										    CDV, regardless of the user's display unit preference. */}
+										Metadata capacity (auto-sized): {autoMetaSizeGB} GiB
 										{metaOverCapacity && selectedMetaCdv &&
 											` — exceeds metadata CDV capacity (${
 												CapacityService.toBiggestUnit(selectedMetaCdv.capacity, unitType)
