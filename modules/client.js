@@ -5529,7 +5529,7 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
 	const clientCollection = db.collection('client');
-	let tpv, cdv;
+	let tpv, cdv, metaCdv;
 
 	async.series([
 		function applySyncFlush(cb) {
@@ -5553,31 +5553,45 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 					if (err2) return cb(new MongoError(err2).log());
 					if (!cdvDoc) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, tpv.tpvConfig.cdvUUID));
 					cdv = cdvDoc;
-					cb();
+
+					// Split mode: load the metadata CDV too. Both CDVs are
+					// hidden-attached to the client in steps below, metadata
+					// first to keep the invariant that a client with the data
+					// CDV attached can always resolve TPV offsets through the
+					// metadata tree (TPV_MetadataCDV.md §4.2).
+					const metaUUID = tpv.tpvConfig.metaCdvUUID;
+					if (!metaUUID) return cb();
+					volumeCollection.findOne({ uuid: metaUUID, volumeClass: consts.volumeClass.CDV }, (err3, mDoc) => {
+						if (err3) return cb(new MongoError(err3).log());
+						if (!mDoc) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, metaUUID));
+						metaCdv = mDoc;
+						cb();
+					});
 				});
 			});
 		},
 		function checkNotEvictingFromCDV(cb) {
 			// Per-client CDV preempt (Step 2a of TPV_PerClientCDVPreemption.md):
-			// refuse the attach if this client has an in-flight eviction on this
-			// CDV. The gate is per-(client, CDV); an EVICTING state on another
-			// CDV does not block. The error is retriable — the client retries
-			// once the eviction clears (Step 14 cleanupDB) or the reaper (Step
-			// 14b) completes it.
-			//
-			// `attachments` is a UUID-keyed object (not an array) — see §3 of
-			// this file and the patterns at lines 1139, 3234. Access the CDV's
-			// attachment entry via attachments[cdv.uuid].
+			// refuse the attach if this client has an in-flight eviction on
+			// either CDV. For split mode both must be clear — if the metadata
+			// CDV is mid-eviction the TPV is equally unusable.
+			const projection = { [`attachments.${cdv.uuid}.action`]: 1 };
+			if (metaCdv) projection[`attachments.${metaCdv.uuid}.action`] = 1;
 			clientCollection.findOne(
 				{ _id: clientID },
-				{ projection: { [`attachments.${cdv.uuid}.action`]: 1 } },
+				{ projection },
 				(err, clientDoc) => {
 					if (err) return cb(new MongoError(err).log());
-					const attachment = clientDoc && clientDoc.attachments && clientDoc.attachments[cdv.uuid];
-					if (attachment && attachment.action === consts.volumeAttachmentActions.EVICTING) {
+					const attachments = (clientDoc && clientDoc.attachments) || {};
+					const isEvicting = (cdvDoc) => {
+						const a = attachments[cdvDoc.uuid];
+						return a && a.action === consts.volumeAttachmentActions.EVICTING;
+					};
+					const blockCdv = isEvicting(cdv) ? cdv : (metaCdv && isEvicting(metaCdv) ? metaCdv : null);
+					if (blockCdv) {
 						return cb(new SystemMessage(systemMessages.CLIENT_EVICTING_FROM_CDV)
 							.addInfo(Entities.Client.ID, clientID)
-							.addInfo(Entities.Volume.ID, cdv._id));
+							.addInfo(Entities.Volume.ID, blockCdv._id));
 					}
 					cb();
 				}
@@ -5586,36 +5600,40 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 		function preemptPreviousHolderIfAny(cb) {
 			// Attach-with-preempt (Step 15.3 of TPV_PerClientCDVPreemption.md):
 			// if the TPV is currently held by a different client, fence that
-			// client from the CDV via the narrow per-client primitive instead
-			// of the today's volume-wide reservation.version bump that disturbs
-			// every survivor on the CDV. options.preempt is the attacher's
-			// intent signal (set by callers that wish to displace a stale
-			// holder); without it we just proceed and let management's normal
-			// exclusiveClient conflict path reject.
+			// client from the CDV(s) via the narrow per-client primitive.
+			//
+			// Split mode: preempt the metadata CDV first (§4.5 of
+			// TPV_MetadataCDV.md) so the old holder cannot issue a trailing
+			// L1/L2 write after its data CDV is torn down.
 			const prevHolder = tpv.tpvConfig && tpv.tpvConfig.exclusiveClient;
 			if (!prevHolder || prevHolder === clientID || !options.preempt) return cb();
 
-			scope.preemptClientFromCDV(cdv.uuid, prevHolder, err => {
-				if (err) {
-					// Propagate preempt failure — MUST NOT proceed with the
-					// attach, otherwise the new client gets a floor-stamped
-					// CDV attach while the old client's reg_ctx may still
-					// exist on some TOMAs (both writing → corruption).
-					return cb(err);
-				}
-				// Reload cdv to pick up the new admission floor stamped by
-				// the preempt, and reload tpv to observe the cleared
-				// exclusiveClient.
-				volumeCollection.findOne({ _id: tpv._id, volumeClass: consts.volumeClass.TPV }, (err2, tpvDoc) => {
-					if (err2) return cb(new MongoError(err2).log());
-					if (tpvDoc) tpv = tpvDoc;
-					volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV }, (err3, cdvDoc) => {
-						if (err3) return cb(new MongoError(err3).log());
-						if (cdvDoc) cdv = cdvDoc;
-						cb();
+			const preemptFromData = (err) => {
+				if (err) return cb(err);
+				scope.preemptClientFromCDV(cdv.uuid, prevHolder, err2 => {
+					if (err2) return cb(err2);
+					// Reload tpv, cdv, metaCdv to pick up new admission floors
+					// and the cleared exclusiveClient.
+					volumeCollection.findOne({ _id: tpv._id, volumeClass: consts.volumeClass.TPV }, (errT, tpvDoc) => {
+						if (errT) return cb(new MongoError(errT).log());
+						if (tpvDoc) tpv = tpvDoc;
+						volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV }, (errC, cdvDoc) => {
+							if (errC) return cb(new MongoError(errC).log());
+							if (cdvDoc) cdv = cdvDoc;
+							const metaUUID = tpv.tpvConfig.metaCdvUUID;
+							if (!metaUUID) return cb();
+							volumeCollection.findOne({ uuid: metaUUID, volumeClass: consts.volumeClass.CDV }, (errM, mDoc) => {
+								if (errM) return cb(new MongoError(errM).log());
+								if (mDoc) metaCdv = mDoc;
+								cb();
+							});
+						});
 					});
 				});
-			});
+			};
+
+			if (metaCdv) scope.preemptClientFromCDV(metaCdv.uuid, prevHolder, preemptFromData);
+			else preemptFromData(null);
 		},
 		function attachCDV(cb) {
 			// attachVolumes handles both cases: new CDV attach and ref-only update
@@ -5636,6 +5654,25 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 				reservation: {
 					mode: consts.reservationModeNames.SHARED_READ_WRITE,
 					version: admissionFloor,
+				}
+			}], () => cb());
+		},
+		function attachMetaCDV(cb) {
+			// Split-mode: hidden-attach the metadata CDV as well, carrying the
+			// same tpv:<uuid> referenceID (separate attachment record — the CDV
+			// is keyed by its own UUID in client.attachments). Both CDVs must
+			// be present on the client before the TPV attach lands, otherwise
+			// the kernel cannot resolve L2 leaves (metadata CDV) against data
+			// offsets (data CDV). See TPV_MetadataCDV.md §4.2.
+			if (!metaCdv) return cb();
+			const metaFloor = (metaCdv.cdvConfig && metaCdv.cdvConfig.admissionFloor) || 0;
+			scope.attachVolumes(clientID, clientUUID, [{
+				uuid: metaCdv.uuid,
+				name: metaCdv._id,
+				referenceID: `tpv:${tpv.uuid}`,
+				reservation: {
+					mode: consts.reservationModeNames.SHARED_READ_WRITE,
+					version: metaFloor,
 				}
 			}], () => cb());
 		},
@@ -5673,7 +5710,7 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 			// path can attach a newly created, isReady=false encrypted TPV to
 			// the TOMA node for cryptsetup. For all other TPV attaches the
 			// option is absent and the normal isReady guard still applies.
-			scope.attachVolumes(clientID, clientUUID, [{
+			const attachEntry = {
 				uuid: tpv.uuid,
 				name: tpv._id,
 				reservation,
@@ -5681,8 +5718,16 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 					uuid: cdv.uuid,
 					name: cdv._id,
 					chunks: cdv.chunks,
-				}
-			}], () => cb(), false, { allowNonReady: !!options.allowNonReady });
+				},
+			};
+			if (metaCdv) {
+				attachEntry.metaCdvConf = {
+					uuid: metaCdv.uuid,
+					name: metaCdv._id,
+					chunks: metaCdv.chunks,
+				};
+			}
+			scope.attachVolumes(clientID, clientUUID, [attachEntry], () => cb(), false, { allowNonReady: !!options.allowNonReady });
 		},
 		function setExclusiveClient(cb) {
 			volumeCollection.findOneAndUpdate(
@@ -5703,7 +5748,7 @@ scope.attachTPV = (clientID, clientUUID, tpvName, options, callback) => {
 scope.detachTPV = (clientID, clientUUID, tpvName, callback) => {
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
-	let tpv, cdv;
+	let tpv, cdv, metaCdv;
 
 	async.series([
 		function loadTPVAndCDV(cb) {
@@ -5716,16 +5761,37 @@ scope.detachTPV = (clientID, clientUUID, tpvName, callback) => {
 					if (err2) return cb(new MongoError(err2).log());
 					if (!cdvDoc) return cb(new SystemMessage(systemMessages.VOLUME_NOT_FOUND).addInfo(Entities.Volume.UUID, tpv.tpvConfig.cdvUUID));
 					cdv = cdvDoc;
-					cb();
+					const metaUUID = tpv.tpvConfig.metaCdvUUID;
+					if (!metaUUID) return cb();
+					// Best-effort: if the metadata CDV is missing from Mongo
+					// (operator mishap), continue detach so we at least release
+					// the TPV + data CDV references. Log and move on.
+					volumeCollection.findOne({ uuid: metaUUID, volumeClass: consts.volumeClass.CDV }, (err3, mDoc) => {
+						if (err3) { new MongoError(err3).log(); return cb(); }
+						if (mDoc) metaCdv = mDoc;
+						cb();
+					});
 				});
 			});
 		},
 		function detachTPVVolume(cb) {
 			scope.detachVolumes(clientID, clientUUID, [{ uuid: tpv.uuid, name: tpv._id }], () => cb());
 		},
+		function maybeDetachMetaCDV(cb) {
+			// Split-mode: release the tpv:<uuid> reference on the metadata CDV
+			// first. Order matches the "metadata first" rule (§4.5) so the
+			// client can no longer write L1/L2 once the data CDV is gone.
+			if (!metaCdv) return cb();
+			scope.detachVolumes(clientID, clientUUID, [{
+				uuid: metaCdv.uuid,
+				name: metaCdv._id,
+				referenceID: `tpv:${tpv.uuid}`
+			}], () => cb());
+		},
 		function maybeDetachCDV(cb) {
-			// Remove tpv:<uuid> referenceID from CDV attachment. detachVolumes will send a full
-			// DetachVolumes message only if this was the last referenceID (no other tpv:* or toma:* refs).
+			// Remove tpv:<uuid> referenceID from data CDV attachment.
+			// detachVolumes sends a full DetachVolumes message only if this
+			// was the last reference (no other tpv:* or toma:* refs).
 			scope.detachVolumes(clientID, clientUUID, [{
 				uuid: cdv.uuid,
 				name: cdv._id,
@@ -5783,13 +5849,21 @@ function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
 			// client on each CDV at the TOMA layer BEFORE running per-TPV
 			// cleanup — otherwise a partitioned stale client's reg_ctx keeps
 			// living on TOMA and can continue issuing RDMA writes to already-
-			// mapped CDV extents (§2.10.4 Path 1 data-path hole).
-			const cdvUUIDs = [...new Set(
+			// mapped CDV extents (§2.10.4 Path 1 data-path hole). Split-mode
+			// TPVs are fenced on both the data and metadata CDV with the
+			// metadata side preempted first (TPV_MetadataCDV.md §4.5).
+			const metaCdvUUIDs = [...new Set(
+				tpvDocs.map(t => t.tpvConfig && t.tpvConfig.metaCdvUUID).filter(Boolean)
+			)];
+			const dataCdvUUIDs = [...new Set(
 				tpvDocs.map(t => t.tpvConfig && t.tpvConfig.cdvUUID).filter(Boolean)
 			)];
 
 			async.series([
-				preemptCb => async.eachSeries(cdvUUIDs, (cdvUUID, nextCDV) => {
+				preemptCb => async.eachSeries(metaCdvUUIDs, (cdvUUID, nextCDV) => {
+					scope.preemptClientFromCDV(cdvUUID, clientID, () => nextCDV());
+				}, preemptCb),
+				preemptCb => async.eachSeries(dataCdvUUIDs, (cdvUUID, nextCDV) => {
 					scope.preemptClientFromCDV(cdvUUID, clientID, () => nextCDV());
 				}, preemptCb),
 				perTpvCb => async.each(tpvDocs, (tpv, next) => {
@@ -5804,33 +5878,35 @@ function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
 						function recalcTPVStatus(cb) {
 							volumeModule.calculateAndUpdateVolumeStatus(tpv._id, null, () => cb());
 						},
-						function removeCDVReference(cb) {
+						function removeCDVReferences(cb) {
+							// Drop the tpv:<uuid> reference from both CDVs. Metadata first, mirroring
+							// preempt order. detachVolumes handles conditional CDV detach when no
+							// tpv:* or toma:* refs remain on this client for a given CDV.
 							if (!tpv.tpvConfig?.cdvUUID) return cb();
-
-							// Look up the CDV to get its _id
-							volumeCollection.findOne({ uuid: tpv.tpvConfig.cdvUUID, volumeClass: consts.volumeClass.CDV },
-								{ projection: { _id: 1, uuid: 1 } }, (err2, cdv) => {
-									if (err2 || !cdv) {
-										if (err2) new MongoError(err2).log();
-										return cb();
-									}
-
-									// Look up this client's UUID for the detachVolumes call
-									clientCollection.findOne({ _id: clientID }, { projection: { uuid: 1 } }, (err3, clientDoc) => {
-										if (err3 || !clientDoc) {
-											if (err3) new MongoError(err3).log();
-											return cb();
-										}
-
-										// Remove the tpv:<uuid> referenceID; detachVolumes handles conditional CDV detach
-										// when no tpv:* or toma:* refs remain on this client for this CDV.
+							clientCollection.findOne({ _id: clientID }, { projection: { uuid: 1 } }, (err3, clientDoc) => {
+								if (err3 || !clientDoc) {
+									if (err3) new MongoError(err3).log();
+									return cb();
+								}
+								const uuidsToResolve = [tpv.tpvConfig.cdvUUID];
+								if (tpv.tpvConfig.metaCdvUUID) uuidsToResolve.unshift(tpv.tpvConfig.metaCdvUUID);
+								volumeCollection.find(
+									{ uuid: { $in: uuidsToResolve }, volumeClass: consts.volumeClass.CDV },
+									{ projection: { _id: 1, uuid: 1 } }
+								).toArray((err4, cdvDocs) => {
+									if (err4) { new MongoError(err4).log(); return cb(); }
+									const ordered = uuidsToResolve
+										.map(u => (cdvDocs || []).find(c => c.uuid === u))
+										.filter(Boolean);
+									async.eachSeries(ordered, (cdvDoc, nextRef) => {
 										scope.detachVolumes(clientID, clientDoc.uuid, [{
-											uuid: cdv.uuid,
-											name: cdv._id,
+											uuid: cdvDoc.uuid,
+											name: cdvDoc._id,
 											referenceID: `tpv:${tpv.uuid}`
-										}], () => cb());
-									});
+										}], () => nextRef());
+									}, () => cb());
 								});
+							});
 						}
 					], next);
 				}, perTpvCb),
