@@ -48,10 +48,17 @@ exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 		preparedPayload['mdvUUID'] = payload.mdvUUID || '';
 		// Split-mode TPVs store their L1/L2 tree on a second CDV
 		// (TPV_MetadataCDV.md). metaCdvUUID is a new, dedicated CM field —
-		// a version gate in the kernel rejects split-mode attaches from old
-		// kernels that don't recognize it. Empty string for single-CDV TPVs
-		// and all non-TPV volumes.
+		// kernels without split-mode awareness decode it as '' and run in
+		// single-CDV mode. Empty string for single-CDV TPVs and all
+		// non-TPV volumes.
 		preparedPayload['metaCdvUUID'] = payload.metaCdvUUID || '';
+		// Metadata-side geometry. The kernel needs the meta CDV's own
+		// cdvExtentSizeMib (it may differ from the data CDV's) and the
+		// TPV's meta-side extent size to compute L2-slot physical
+		// offsets on the metadata CDV. Zero means "not split-mode" /
+		// "fall back to data-side values".
+		preparedPayload['metaCdvExtentSizeMib'] = payload.metaCdvExtentSizeMib || 0;
+		preparedPayload['metaTpvExtentSizeKb']   = payload.metaTpvExtentSizeKb || 0;
 
 		preparedPayload['chunks'] = payload.chunks.map(c => ({
 			uuid: c.uuid,

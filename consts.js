@@ -1277,10 +1277,10 @@ consts.CDV_NAME_MAX_LENGTH = 16;
 //
 // cdvExtentSizeMibValues floor is 16 MiB. The satellite (CDV-mgmt) volume,
 // sized at cdvConfig.allocatorSizeGib GiB (user-configurable, default 1),
-// holds one 4 KiB record per extent, so max extents ≈
-// allocatorSizeGib × 262 143. Admins who want a larger CDV at a small
-// extent size raise allocatorSizeGib at create time (e.g.
-// allocatorSizeGib = 4 + cdvExtentSizeMib = 16 → ~16 TiB CDV).
+// packs 32 × 128-byte records per 4 KiB block — max extents ≈
+// allocatorSizeGib × 8 388 576. At default allocatorSizeGib = 1 that's
+// ~8.4M extents, so a CDV at the 16 MiB floor holds up to ~128 TiB before
+// the satellite ceiling binds. Admins rarely need to raise allocatorSizeGib.
 //
 // CDVs don't declare a role at creation — the same enum applies to data
 // and metadata CDVs alike (TPV_MetadataCDV.md). The finer floor lets

@@ -1526,17 +1526,53 @@ scope.calculateAndUpdateVolumeStatus = function(volumeID, volume, callback) {
 				return cb(null, volume);
 
 			var cdvId = volume.tpvConfig && volume.tpvConfig.cdvId;
+			var metaCdvId = volume.tpvConfig && volume.tpvConfig.metaCdvId;
 			if (!cdvId) {
 				volume._parentCDVStatus = consts.volumeStatuses.UNAVAILABLE;
 				return cb(null, volume);
 			}
 
-			volumeCollection.findOne({ _id: cdvId, volumeClass: consts.volumeClass.CDV }, { projection: { status: 1 } }, function(err, cdv) {
-				if (err)
+			/*
+			 * Split-mode TPVs (TPV_MetadataCDV.md): the TPV is unusable
+			 * when EITHER CDV is non-ONLINE — a healthy data CDV with a
+			 * failed metadata CDV still can't flush L1/L2, and vice
+			 * versa. Pull both statuses and merge by severity so an
+			 * OFFLINE/DEGRADED on either side propagates to the TPV.
+			 */
+			var cdvIds = [cdvId];
+			if (metaCdvId) cdvIds.push(metaCdvId);
+			volumeCollection.find(
+				{ _id: { $in: cdvIds }, volumeClass: consts.volumeClass.CDV },
+				{ projection: { _id: 1, status: 1 } }
+			).toArray(function(err, cdvs) {
+				if (err) {
 					err = new MongoError(err);
-
-				volume._parentCDVStatus = (cdv && cdv.status) || consts.volumeStatuses.UNAVAILABLE;
-				cb(err, volume);
+					volume._parentCDVStatus = consts.volumeStatuses.UNAVAILABLE;
+					return cb(err, volume);
+				}
+				cdvs = cdvs || [];
+				// Treat a missing CDV row as UNAVAILABLE (catches the
+				// metadata-CDV-missing operator mishap case).
+				var dataStatus = (cdvs.find(c => c._id === cdvId) || {}).status
+					|| consts.volumeStatuses.UNAVAILABLE;
+				var metaStatus = null;
+				if (metaCdvId) {
+					metaStatus = (cdvs.find(c => c._id === metaCdvId) || {}).status
+						|| consts.volumeStatuses.UNAVAILABLE;
+				}
+				// Severity ranking for merge: pick the least-healthy
+				// status between the two CDVs. Matches the "TPV
+				// degrades on either CDV" invariant.
+				var sev = {};
+				sev[consts.volumeStatuses.ONLINE]      = 0;
+				sev[consts.volumeStatuses.INITIALIZING] = 1;
+				sev[consts.volumeStatuses.DEGRADED]    = 2;
+				sev[consts.volumeStatuses.OFFLINE]     = 3;
+				sev[consts.volumeStatuses.UNAVAILABLE] = 4;
+				var pickWorse = (a, b) => ((sev[a] || 0) >= (sev[b] || 0) ? a : b);
+				volume._parentCDVStatus = metaStatus
+					? pickWorse(dataStatus, metaStatus) : dataStatus;
+				cb(null, volume);
 			});
 		},
 		function calculateStatus(volume, cb) {
@@ -3848,9 +3884,16 @@ function createTPV(volume, user, cb) {
 				// mdvUUID is repurposed to carry the parent (data) CDV's UUID so
 				// the kernel can look it up in the attached volumes list.
 				mdvUUID: cdv.uuid,
-				// New dedicated field for the metadata CDV in split-mode TPVs.
-				// Empty for single-CDV TPVs. See TPV_MetadataCDV.md §5.2.
+				// Split-mode fields (TPV_MetadataCDV.md §5.2):
+				//   metaCdvUUID           — resolves the metadata CDV volume
+				//   metaCdvExtentSizeMib  — metadata CDV's own extent size
+				//                            (may differ from data CDV)
+				//   metaTpvExtentSizeKb   — TPV's meta-side slot size
+				// Zero / empty in single-CDV mode; the kernel treats all three
+				// as "not split-mode" and defers to data-side geometry.
 				metaCdvUUID: isSplitMode ? metaCdv.uuid : '',
+				metaCdvExtentSizeMib: isSplitMode ? metaCdv.cdvConfig.cdvExtentSizeMib : 0,
+				metaTpvExtentSizeKb: isSplitMode ? metaTpvExtentSizeKB : 0,
 				// sourceUUID is repurposed for TPVs to carry the L1 flush mode.
 				// 'sync_flush' = flush L1 metadata before forwarding data bios
 				// (default, safe); '' = deferred background flush (fast, risky).
