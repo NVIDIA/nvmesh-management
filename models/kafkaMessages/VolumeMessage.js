@@ -58,7 +58,7 @@ exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 		// offsets on the metadata CDV. Zero means "not split-mode" /
 		// "fall back to data-side values".
 		preparedPayload['metaCdvExtentSizeMib'] = payload.metaCdvExtentSizeMib || 0;
-		preparedPayload['metaTpvExtentSizeKb']   = payload.metaTpvExtentSizeKb || 0;
+		preparedPayload['metaTpvExtentSizeKb'] = payload.metaTpvExtentSizeKb || 0;
 
 		preparedPayload['chunks'] = payload.chunks.map(c => ({
 			uuid: c.uuid,

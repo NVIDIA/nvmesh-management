@@ -1564,10 +1564,10 @@ scope.calculateAndUpdateVolumeStatus = function(volumeID, volume, callback) {
 				// status between the two CDVs. Matches the "TPV
 				// degrades on either CDV" invariant.
 				var sev = {};
-				sev[consts.volumeStatuses.ONLINE]      = 0;
+				sev[consts.volumeStatuses.ONLINE] = 0;
 				sev[consts.volumeStatuses.INITIALIZING] = 1;
-				sev[consts.volumeStatuses.DEGRADED]    = 2;
-				sev[consts.volumeStatuses.OFFLINE]     = 3;
+				sev[consts.volumeStatuses.DEGRADED] = 2;
+				sev[consts.volumeStatuses.OFFLINE] = 3;
 				sev[consts.volumeStatuses.UNAVAILABLE] = 4;
 				var pickWorse = (a, b) => ((sev[a] || 0) >= (sev[b] || 0) ? a : b);
 				volume._parentCDVStatus = metaStatus
@@ -3561,9 +3561,12 @@ scope.annotateCDVsWithOverprovisionRatio = function(volumes, cb) {
 			],
 		},
 		{ projection: {
-			_id: 1, capacity: 1,
-			'tpvConfig.cdvId': 1, 'tpvConfig.tpvExtentSizeKB': 1,
-			'tpvConfig.metaCdvId': 1, 'tpvConfig.metaTpvExtentSizeKB': 1,
+			_id: 1,
+			capacity: 1,
+			'tpvConfig.cdvId': 1,
+			'tpvConfig.tpvExtentSizeKB': 1,
+			'tpvConfig.metaCdvId': 1,
+			'tpvConfig.metaTpvExtentSizeKB': 1,
 			'tpvConfig.metaVirtualSizeGB': 1,
 		} }
 	).toArray((err, tpvs) => {
@@ -3741,7 +3744,7 @@ function allocateAndSliceIntoVolumes(slices, user, cb) {
 // TPV_L1_HEADER_BYTES are defined alongside annotateCDVsWithOverprovisionRatio
 // above.
 // ─────────────────────────────────────────────────────────────────────────────
-scope.computeMetaVirtualSizeGB = function (virtualSizeGB, tpvExtentSizeKB, metaTpvExtentSizeKB) {
+scope.computeMetaVirtualSizeGB = function(virtualSizeGB, tpvExtentSizeKB, metaTpvExtentSizeKB) {
 	const numVirtExtents = Math.ceil((virtualSizeGB * 1024 * 1024) / tpvExtentSizeKB);
 	const rawL2Bytes = numVirtExtents * TPV_TREE_ENTRY_BYTES;
 	const metaSlotBytes = metaTpvExtentSizeKB * 1024;

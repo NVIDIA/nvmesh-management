@@ -11,7 +11,8 @@ const { setup } = require('./testUtils/setup.js');
 const { generateTargets } = require('./testUtils/entityGenerators.js');
 const lockUtils = require('./testUtils/lockUtils.js');
 const consts = require('../consts.js');
-const { saveVolumes, deleteTPVs, updateTPV, extendTPV, handleCDVCapacityWarning, updateVolumes, markVolumesForDeletion, computeMetaVirtualSizeGB } = require('../modules/volume.js');
+const { saveVolumes, deleteTPVs, updateTPV, extendTPV, handleCDVCapacityWarning, updateVolumes,
+	markVolumesForDeletion, computeMetaVirtualSizeGB } = require('../modules/volume.js');
 const { Entities } = require('../modules/error.js');
 
 const ZONE_1 = '1';
