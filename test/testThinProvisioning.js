@@ -642,31 +642,31 @@ describe('Thin Provisioning', () => {
 	});
 
 	describe('TPV metadata CDV - auto-sizing', () => {
-		it('rounds up to 1 GiB for small TPVs', async () => {
+		it('rounds up to 1 GiB for small TPVs', async() => {
 			// 128 GiB / 64 KiB extent = 2 Mi entries x 8 B = 16 MiB L2; << 1 GiB
 			assert.strictEqual(computeMetaVirtualSizeGB(128, 64, 64), 1);
 		});
 
-		it('stays at 1 GiB at 1 TiB / 64 KiB', async () => {
+		it('stays at 1 GiB at 1 TiB / 64 KiB', async() => {
 			// 1024 GiB / 64 KiB = 16 Mi entries x 8 B = 128 MiB; << 1 GiB after rounding
 			assert.strictEqual(computeMetaVirtualSizeGB(1024, 64, 64), 1);
 		});
 
-		it('scales linearly past the 1 GiB threshold', async () => {
+		it('scales linearly past the 1 GiB threshold', async() => {
 			// 10 TiB / 64 KiB = 160 Mi entries x 8 B = 1.28 GiB raw -> +10% safety -> 2 GiB
 			assert.strictEqual(computeMetaVirtualSizeGB(10240, 64, 64), 2);
 		});
 
-		it('larger data extents reduce metadata need', async () => {
+		it('larger data extents reduce metadata need', async() => {
 			// 1 TiB / 1 MiB = 1 Mi entries x 8 B = 8 MiB; << 1 GiB
 			assert.strictEqual(computeMetaVirtualSizeGB(1024, 1024, 64), 1);
 		});
 
-		it('returns at least 1 GiB even for tiny TPVs', async () => {
+		it('returns at least 1 GiB even for tiny TPVs', async() => {
 			assert.strictEqual(computeMetaVirtualSizeGB(1, 64, 64), 1);
 		});
 
-		it('is monotonic in virtual size', async () => {
+		it('is monotonic in virtual size', async() => {
 			const sizes = [1, 128, 1024, 10240, 102400];
 			let prev = 0;
 			for (const s of sizes) {
