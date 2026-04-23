@@ -5531,8 +5531,23 @@ scope.attachSatelliteForAllocator = (cdvUUID, tomaHostname, allocatorGeneration,
  */
 function firstAttachError(logs) {
 	if (!Array.isArray(logs)) return null;
+	/*
+	 * Success-path messages that attachVolumes can emit.  Anything
+	 * outside this allow-list is treated as a genuine error.
+	 *
+	 * - VOLUME_STATE_ATTACHING: a fresh CDV attach is in flight.
+	 * - ADDED_REF_ID: the target CDV was already attached to the client
+	 *   (sibling TPV holds it) and attachVolumes took the "update refID
+	 *   only" path.  Previously this path mis-classified it as an error,
+	 *   which broke attachTPV for every split-mode TPV that attached
+	 *   AFTER a sibling had already pulled its shared meta CDV in.
+	 */
+	const successIds = new Set([
+		systemMessages.VOLUME_STATE_ATTACHING.id,
+		systemMessages.ADDED_REF_ID.id,
+	]);
 	return logs.find(l => l && l.systemMessage &&
-		l.systemMessage.id !== systemMessages.VOLUME_STATE_ATTACHING.id) || null;
+		!successIds.has(l.systemMessage.id)) || null;
 }
 
 /*
