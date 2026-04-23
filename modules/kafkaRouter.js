@@ -202,6 +202,10 @@ function routeTOMAMessage(message, callback) {
 			volumeModule.handleCDVCapacityWarning(message, callback);
 			break;
 
+		case consts.kafkaMessageTypes.TOMAToManagement_TP.cdvCapacityRestore:
+			volumeModule.handleCDVCapacityRestore(message, callback);
+			break;
+
 		case consts.kafkaMessageTypes.TOMAToManagement_TP.cdvAllocatorStats:
 			volumeModule.handleCDVAllocatorStats(message, callback);
 			break;

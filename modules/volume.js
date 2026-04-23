@@ -4231,6 +4231,23 @@ scope.handleCDVCapacityWarning = (message, callback) => {
 	callback();
 };
 
+// Called by kafkaRouter when TOMA reports a previously-warned CDV has recovered
+// capacity headroom (usage fell back below the hysteresis-clear threshold).
+// Counterpart to handleCDVCapacityWarning - this clears any warning state raised
+// in response to the Warning event so the UI reflects the recovered state
+// without waiting for the next reconcile.
+scope.handleCDVCapacityRestore = (message, callback) => {
+	// Router constructs a generic MessageFromTOMA, not the CDVCapacityRestore
+	// subclass, so the typed getters are not in scope here.  Read the payload
+	// directly - same pattern we would need to apply to handleCDVCapacityWarning
+	// if that path were ever exercised beyond its log line.
+	const p = (message && message.payload) || {};
+	logger.sysINFO(`CDV capacity restored for CDV ${p.cdvUUID}: ${p.nAllocated}/${p.totalExtents} extents used (${p.usedPct}%)`);
+	// Auto-extend is disabled for WARNING (see above); no latched state to clear
+	// here either.  Hook left in place as a seam for when auto-extend lands.
+	callback();
+};
+
 // Called by kafkaRouter when TOMA reports current CDV allocation counters
 // (published after every CDV_ALLOC_EXTENT and CDV_FREE_EXTENT).
 scope.handleCDVAllocatorStats = (message, callback) => {

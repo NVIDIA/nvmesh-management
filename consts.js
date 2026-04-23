@@ -939,6 +939,7 @@ consts.kafkaMessageTypes = {
 	},
 	TOMAToManagement_TP: {
 		cdvCapacityWarning: 'cdvCapacityWarning',
+		cdvCapacityRestore: 'cdvCapacityRestore',
 		cdvAllocatorStats: 'cdvAllocatorStats',
 		attachSatelliteRequest: 'attachSatelliteRequest',
 		preemptClientFromCDVResponse: 'preemptClientFromCDVResponse',
