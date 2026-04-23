@@ -513,7 +513,7 @@ scope.setEncryptionCommand = (volume, command, executingTOMA, cb) => {
 		'encryption.command.status': consts.encryptionCommandStatuses.PENDING_SEND
 	};
 	// For TPVs management auto-attaches the TPV to the chosen TOMA so the
-	// encryption can run on /dev/nvmesh-tpv/<name>. Record the TOMA ID so
+	// encryption can run on /dev/nvmesh/<name>. Record the TOMA ID so
 	// handleCommandResponse (and startup recovery) can drive the symmetric
 	// detach. Absent on regular volumes.
 	if (volume.volumeClass === consts.volumeClass.TPV) {
@@ -625,7 +625,7 @@ scope.verifyEncryptionCommand = (volume, encryptionCommand) => {
 
 // TPV encryption runs on a TOMA that the chosen TOMA node has attached as if
 // it were a regular client: preempt+EXCLUSIVE_READ_WRITE on the TPV, so
-// /dev/nvmesh-tpv/<name> exists on the TOMA node and cryptsetup can run
+// /dev/nvmesh/<name> exists on the TOMA node and cryptsetup can run
 // against it directly. After the encryption response arrives (handleCommandResponse),
 // management detaches the TPV so the real client can reattach.
 //
@@ -702,7 +702,7 @@ scope.attachTPVToTOMAForEncryption = (dbVolume, executingTOMA, cb) => {
 // reattaching). It's set when mgmt decides to attach and is NEVER cleared
 // by a successful confirmation — the volume can be fully attached and the
 // action field will still say 'attaching'.  The authoritative signal that
-// the TOMA's client kernel actually owns the volume (and /dev/nvmesh-tpv/<name>
+// the TOMA's client kernel actually owns the volume (and /dev/nvmesh/<name>
 // is live) is an entry in the client's `block_devices` array with
 // `vol_status === ATTACHED` (consts.volumeAttachmentStatus.ATTACHED = 4).
 // That entry is only written once the client kernel sends updateAttachmentStatus
@@ -821,7 +821,7 @@ scope.runEncryptionCommand = (encryptionObj, command, cb) => {
 		(callback) => {
 			// TPV encryption prerequisite: attach the TPV to the chosen TOMA
 			// node with preempt=true, mode=EXCLUSIVE_READ_WRITE so that
-			// /dev/nvmesh-tpv/<name> exists on the TOMA and cryptsetup can
+			// /dev/nvmesh/<name> exists on the TOMA and cryptsetup can
 			// run against it. For non-TPV volumes this step is a no-op — the
 			// TOMA uses the existing shadow-volume mechanism.
 			if (!dbVolume || dbVolume.volumeClass !== consts.volumeClass.TPV) return callback();
@@ -881,7 +881,7 @@ scope.runEncryptionCommand = (encryptionObj, command, cb) => {
 		// Release the TPV here so the real client can reattach.
 		//
 		// IMPORTANT: only detach when !kafkaSent. If Kafka was delivered, TOMA
-		// is actively running cryptsetup against /dev/nvmesh-tpv/<name>;
+		// is actively running cryptsetup against /dev/nvmesh/<name>;
 		// detaching here would yank the block device out from under cryptsetup.
 		// In that case let handleCommandResponse (on response arrival) or
 		// cleanupTPVAutoAttachesAfterStartup (on management restart) drive the
