@@ -4497,6 +4497,40 @@ function checkIfBlockDevicesReachedState(clientID, volumeUUIDs, attachmentState,
 	});
 }
 
+/*
+ * checkIfSatelliteIoEnabled - true when the named client has reported the
+ * satellite block device as ATTACHED with ioEnabled=1 via its keepalive
+ * updateAttachmentStatus.
+ *
+ * Used by attachSatelliteForAllocator to confirm the target TOMA actually
+ * completed the PR handshake with the 4 disk-segment TOMAs (not just the
+ * management-side reservation update).  The distinction matters: a stale
+ * PR state on any target rejects the registration, the client then sits in
+ * partial-error with ioEnabled=0 indefinitely, and management would
+ * otherwise declare the attach a success.
+ */
+function checkIfSatelliteIoEnabled(clientID, satelliteUUID, callback) {
+	const db = app.get('db');
+	const clientCollection = db.collection('client');
+	clientCollection.findOne(
+		{ _id: clientID },
+		{ projection: {
+			'block_devices.uuid': 1,
+			'block_devices.ioEnabled': 1,
+			'block_devices.vol_status': 1,
+		} },
+		(err, clientDoc) => {
+			if (err) return callback(new MongoError(err));
+			if (!clientDoc || !clientDoc.block_devices) return callback(null, false);
+			const bd = clientDoc.block_devices.find(b => b.uuid === satelliteUUID);
+			if (!bd) return callback(null, false);
+			const ready = bd.ioEnabled === 1
+				&& bd.vol_status === consts.volumeAttachmentStatus.ATTACHED;
+			callback(null, ready);
+		}
+	);
+}
+
 scope.waitForAttachmentToReachState = function(clientID, volumeUUIDs, attachmentState, callback) {
 	const generalSettings = app.get('globalSettings');
 	const timer = new ExecutionTimer('snapshots.waitForVolumesToBeAttached');
@@ -5481,6 +5515,27 @@ scope.attachSatelliteForAllocator = (cdvUUID, tomaHostname, allocatorGeneration,
 					referenceID: `allocator:${cdvUUID}`,
 				}];
 
+				/*
+				 * Compensating detach when the attach lands halfway: either the
+				 * reservation did not settle on tomaHostname, or the client never
+				 * reported ioEnabled=1 within the timeout.  Without this rollback
+				 * the satellite's PR/lockset state on the 4 target TOMAs stays
+				 * stranded, the client spins in partial-error forever, and the
+				 * next allocator election cannot attach cleanly either -- the
+				 * bug we saw on cdv_test1-mgmt.  force=true so we clear state
+				 * even if the reservation has already drifted to another
+				 * holder.
+				 */
+				const rollbackSatelliteAttach = (reason, rollbackCb) => {
+					logger.sysERROR(`attachSatelliteForAllocator: rolling back ${sat._id} attach for ${tomaHostname}: ${reason}`);
+					scope.detachVolumes(tomaHostname, tomaClientUUID, [{
+						uuid: sat.uuid,
+						name: sat._id,
+						referenceID: `allocator:${cdvUUID}`,
+						force: true,
+					}], () => rollbackCb());
+				};
+
 				scope.attachVolumes(tomaHostname, tomaClientUUID, requestedVolumes, msgs => {
 				// scope.attachVolumes does not directly return success/failure data;
 				// poll the satellite document to obtain the new reservation.version.
@@ -5496,26 +5551,59 @@ scope.attachSatelliteForAllocator = (cdvUUID, tomaHostname, allocatorGeneration,
 							const heldBy = satAfter.reservation && satAfter.reservation.reservedBy;
 							const errMsg = `Satellite attach for ${tomaHostname} did not result in exclusive hold (current reservedBy=${heldBy})`;
 							logger.sysDEBUG(`attachSatelliteForAllocator: ${errMsg}`);
-							return cb(new SystemMessage(systemMessages.BUILD_RESPONSES_ERROR).addInfo(Entities.Error, errMsg));
+							return rollbackSatelliteAttach(errMsg, () =>
+								cb(new SystemMessage(systemMessages.BUILD_RESPONSES_ERROR).addInfo(Entities.Error, errMsg)));
 						}
 
-						const satelliteTargets = [];
-						(satAfter.chunks || []).forEach(chunk => {
-							(chunk.pRaids || []).forEach(praid => {
-								(praid.diskSegments || []).forEach(seg => {
-									if (seg.nodeUUID && !satelliteTargets.includes(seg.nodeUUID))
-										satelliteTargets.push(seg.nodeUUID);
-								});
-							});
-						});
+						/*
+						 * The DB reservation says we own the satellite, but that
+						 * only reflects management-side bookkeeping -- the client
+						 * may still be mid-handshake with the 4 target TOMAs
+						 * that hold the actual disk segments.  A stale PR state
+						 * on any target rejects the registration and the
+						 * satellite stays in partial-error with no automatic
+						 * recovery.  Wait for the client to actually report
+						 * ioEnabled=1 (via its updateAttachmentStatus keepalive)
+						 * before declaring success; roll back on timeout.
+						 *
+						 * 30 s is comfortably above a healthy attach (~200-500 ms
+						 * per segment registration + PR update on 4 targets) and
+						 * short enough that a failed allocator election re-tries
+						 * within the RAFT keepalive window.
+						 */
+						const backoff = new Backoff({ maxBackoff: 2000, maxTimeout: 30000 });
+						utils.waitForState(
+							backoff,
+							`attachSatelliteForAllocator: wait ioEnabled cdv=${cdvUUID} sat=${sat.uuid} toma=${tomaHostname}`,
+							stateCb => checkIfSatelliteIoEnabled(tomaHostname, sat.uuid, stateCb),
+							waitErr => {
+								if (waitErr) {
+									return rollbackSatelliteAttach(
+										`ioEnabled timeout on ${tomaHostname} (${waitErr instanceof BackoffError ? 'timeout' : waitErr})`,
+										() => cb(new SystemMessage(systemMessages.BUILD_RESPONSES_ERROR)
+											.addInfo(Entities.Error, `Satellite attach did not reach IO-enabled state on ${tomaHostname} within timeout`))
+									);
+								}
 
-						cb(null, {
-							satelliteUUID: satAfter.uuid,
-							satelliteTargets: satelliteTargets,
-							reservationVersion: satAfter.reservation.version,
-							allocatorGeneration: allocatorGeneration,
-							messages: msgs,
-						});
+								const satelliteTargets = [];
+								(satAfter.chunks || []).forEach(chunk => {
+									(chunk.pRaids || []).forEach(praid => {
+										(praid.diskSegments || []).forEach(seg => {
+											if (seg.nodeUUID && !satelliteTargets.includes(seg.nodeUUID))
+												satelliteTargets.push(seg.nodeUUID);
+										});
+									});
+								});
+
+								cb(null, {
+									satelliteUUID: satAfter.uuid,
+									satelliteTargets: satelliteTargets,
+									reservationVersion: satAfter.reservation.version,
+									allocatorGeneration: allocatorGeneration,
+									messages: msgs,
+								});
+							}
+						);
 					});
 				});
 			});
