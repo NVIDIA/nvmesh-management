@@ -128,7 +128,22 @@ scope.getAllVolumes = function(projection, page, count, filter, sort, cb) {
 			{ $addFields: {
 				isEvicting: { $ifNull: [{ $arrayElemAt: ['$_clientEvict.isEvicting', 0] }, false] },
 			} },
-			{ $unset: '_clientEvict' }
+			{ $unset: '_clientEvict' },
+			/*
+			 * Step 3 of TPV_Trimming.md: advertise discard support on TPV
+			 * volume responses.  REST consumers (CSI, CLI, UI) can rely on
+			 * `discardsAllowed === true` to know that DISCARD/UNMAP against
+			 * this volume will actually reclaim CDV capacity (wired in
+			 * kernel commit 264b61f927 via blk_queue discard_granularity)
+			 * and `unmap_size_in_bytes` to size their discard alignment.
+			 *
+			 * Only TPVs advertise this; CDVs and regular volumes keep the
+			 * fields absent so the existing code paths remain unchanged.
+			 */
+			{ $addFields: {
+				discardsAllowed: true,
+				unmap_size_in_bytes: { $multiply: ['$tpvConfig.tpvExtentSizeKB', 1024] },
+			} }
 		);
 	}
 
