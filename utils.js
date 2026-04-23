@@ -2154,6 +2154,12 @@ function createVolumeByRAIDLevel(lockedZone, volume, zonesToIgnore, allocationCa
 	var err;
 	var allocateBlocksTimer;
 
+	if (volume.RAIDLevel === consts.RAIDLevel.STRIPED_ERASURE_CODING && volume.stripeSize) {
+		const stripedECBlockSetSize = scope.getVolumeBlockSetSize(volume);
+
+		volume.stripeSize = Math.ceil(volume.stripeSize / stripedECBlockSetSize) * stripedECBlockSetSize;
+	}
+
 	function unknownRaidLevelError(volume) {
 		err = new SystemMessage(systemMessages.UNKNOWN_RAID_LEVEL).addInfo(Entities.Volume.RAIDLevel, volume.RAIDLevel).log();
 		var noZone = null;
@@ -2494,9 +2500,18 @@ function getNumberOfRequiredDisksByVolume(volume) {
 	return numberOfDataSegments;
 }
 
-function receivedEnoughDataDisks(disks, threshold) {
-	return disks && disks.filter(function(e) { return e.disks.largestSegmentAvailable.blocks >= consts.BLOCK_SET_SIZE; }).length >= threshold;
+function receivedEnoughDataDisks(disks, threshold, volume) {
+	let blockSetSize = scope.getVolumeBlockSetSize(volume);
+
+	return disks && disks.filter(function(e) { return e.disks.largestSegmentAvailable.blocks >= blockSetSize; }).length >= threshold;
 }
+
+scope.getVolumeBlockSetSize = function(volume) {
+	if (volume && volume.RAIDLevel === consts.RAIDLevel.STRIPED_ERASURE_CODING)
+		return consts.BLOCK_SET_SIZE * (volume.dataBlocks || 1);
+
+	return consts.BLOCK_SET_SIZE;
+};
 
 scope.getRedundancyToTotalRatio = function(volume) {
 	const ratio = scope.getRedundancyRatio(volume);
@@ -2523,7 +2538,7 @@ scope.getRedundancyRatio = (volume) => {
 scope.allocateBlocks = function(lockedZone, volume, blocks, zonesToIgnore, allocationCB) {
 	const isMaxAllocation = getIsMaxAllocation(volume);
 	var GLOBAL_SETTINGS = app.get('globalSettings');
-	var blocksToAllocate = scope.roundBlocksToNearestBlockSet(blocks);
+	var blocksToAllocate = scope.roundBlocksToNearestBlockSet(blocks, volume);
 	var originalBlockToAllocate = blocksToAllocate;
 
 	var failed = false;
@@ -2568,7 +2583,7 @@ scope.allocateBlocks = function(lockedZone, volume, blocks, zonesToIgnore, alloc
 							lockedZone = lockedZone || zone;
 
 							let notEnoughDrives = (!data
-								|| !receivedEnoughDataDisks(data, numberOfDisks)
+								|| !receivedEnoughDataDisks(data, numberOfDisks, volume)
 								|| data.length < numberOfDisks
 							);
 
@@ -2593,7 +2608,7 @@ scope.allocateBlocks = function(lockedZone, volume, blocks, zonesToIgnore, alloc
 								shouldTryNextZone = false;
 
 							var hasChance = !triedToTakeChunkFromUsedResources
-								|| receivedEnoughDataDisks(data, numberOfDisks)
+								|| receivedEnoughDataDisks(data, numberOfDisks, volume)
 								&& data.length >= numberOfDisks;
 
 							triedToTakeChunkFromUsedResources = true;
@@ -2631,12 +2646,13 @@ scope.allocateBlocks = function(lockedZone, volume, blocks, zonesToIgnore, alloc
 					var smallestSegment = Math.min.apply(null,
 						results.map(function(e) { return e.disks.largestSegmentAvailable.blocks; }));
 
+					var blockSetSize = scope.getVolumeBlockSetSize(volume);
 					var blocks = blocksToAllocate <= smallestSegment && !isMaxAllocation
 						? blocksToAllocate
 						: volume.numberOfMirrors && volume.numberOfMirrors > 0
-							? Math.floor(smallestSegment / consts.BLOCK_SET_SIZE) * consts.BLOCK_SET_SIZE
-							: Math.floor(Math.floor(smallestSegment / (volume.stripeSize || 1)) * (volume.stripeSize || 1) / consts.BLOCK_SET_SIZE)
-							* consts.BLOCK_SET_SIZE;
+							? Math.floor(smallestSegment / blockSetSize) * blockSetSize
+							: Math.floor(Math.floor(smallestSegment / (volume.stripeSize || 1)) * (volume.stripeSize || 1) / blockSetSize)
+							* blockSetSize;
 
 					chunk.vlbe = chunk.vlbs + blocks * (((volume.dataBlocks * volume.stripeWidth) || volume.stripeWidth) || 1) - 1;
 
@@ -2909,8 +2925,10 @@ scope.createJBOD = function(lockedZone, volume, zonesToIgnore, callback) {
 	});
 };
 
-scope.roundBlocksToNearestBlockSet = function(blocks) {
-	return (Math.floor(blocks / consts.BLOCK_SET_SIZE) * consts.BLOCK_SET_SIZE) || 1;
+scope.roundBlocksToNearestBlockSet = function(blocks, volume) {
+	let blockSetSize = scope.getVolumeBlockSetSize(volume);
+
+	return (Math.floor(blocks / blockSetSize) * blockSetSize) || 1;
 };
 
 //Return reserved segments of the VPG in the current disk.

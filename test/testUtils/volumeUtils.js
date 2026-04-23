@@ -8,10 +8,12 @@ const consts = require('../../consts.js');
 const assert = require('assert');
 const { PRaidReport, UpdatePRaidReportBuilder } = require('../kafkaMessages/fromTOMA/tomaMessageBuilders.js');
 const volumeModule = require('../../modules/volume.js');
+const utils = require('../../utils.js');
 
-exports.validateAllocatedBlocksAgainstCapacity = function(requestedCapacity, blocks) {
+exports.validateAllocatedBlocksAgainstCapacity = function(requestedCapacity, blocks, volume) {
 	// Actual allocated capacity could be smaller by up to BLOCK_SET_SIZE * BLOCK_SIZE difference
-	let blockSetInBytes = consts.BLOCK_SIZE * consts.BLOCK_SET_SIZE;
+
+	let blockSetInBytes = consts.BLOCK_SIZE * utils.getVolumeBlockSetSize(volume);
 	let blocksCapacityInBytes = blocks * blockSetInBytes;
 	let actualDifference = requestedCapacity - blocksCapacityInBytes;
 	assert(actualDifference <= blockSetInBytes, 'Volume blocks do not match the expected capacity');
