@@ -736,6 +736,28 @@ scope.handleClientKeepalive = (message, callback) => {
 
 	update.$set.isNewClient = '$$REMOVE'; // as we can't use $unset is not supported in update aggregation pipeline, we must remove isNewClient that way
 
+	// TPV_Trimming.md Step 4: the client piggybacks per-TPV compaction
+	// progress in its keepalive payload as an ARRAY (per CM codec scheme
+	// client_keep_alive.compactionProgress).  Fan each entry out to the
+	// existing TPVCompactionStats handler so volume.compactionJob.state /
+	// progress / progressUpdatedAt all update along the same path that
+	// reconciliation depends on.  Best-effort - handler errors must not
+	// fail the keepalive.  Each entry carries its own tpvUUID; we do
+	// NOT key by an outer map index.
+	const cp = message.payload && message.payload.compactionProgress;
+	if (Array.isArray(cp)) {
+		cp.forEach(entry => {
+			if (!entry || typeof entry !== 'object' || !entry.tpvUUID) return;
+			try {
+				volumeModule.handleTPVCompactionStats({
+					payload: entry,
+				}, () => {});
+			} catch (e) {
+				logger.sysDEBUG(`${logPrefix} handleTPVCompactionStats fanout failed: ${e && e.message}`);
+			}
+		});
+	}
+
 	// adopt attachmnetsVersion of client if client deleted from db.
 	update.$set.attachmentsVersion = {
 		$cond: {
@@ -1275,14 +1297,46 @@ function setVolumeReservationOnClientRemoval(clientID, attachment, cb) {
 	);
 }
 
+/*
+ * Per-TPV-name staging for compaction fields that need to ride on the next
+ * AttachVolumes/UpdateVolumes Kafka message for that TPV.  Populated by
+ * scope.attachCompactionTPV BEFORE the attach runs and consumed by
+ * setAttachmentOnConfigResponses when the config-response is built.
+ * Keyed by TPV name because we don't know the client-side uuid reliably
+ * at attach-compaction time, and only one compaction attach per TPV is
+ * allowed.  Entries auto-clear once consumed.
+ */
+const pendingCompactionAttaches = {};
+function stagePendingCompaction(tpvName, aggressiveness) {
+	pendingCompactionAttaches[tpvName] = {
+		isCompaction: true,
+		compactionAggressiveness: aggressiveness || 0,
+	};
+}
+function consumePendingCompaction(tpvName) {
+	const v = pendingCompactionAttaches[tpvName];
+	if (v) delete pendingCompactionAttaches[tpvName];
+	return v;
+}
+
 function setAttachmentOnConfigResponses(configResponse, attachingVolumes) {
 	let attachingVolumesMap = {};
 	attachingVolumes.forEach(volume => { attachingVolumesMap[volume.uuid] = volume; });
 
 	configResponse.forEach(res => {
 		if (res.volumes)
-			res.volumes = res.volumes.map(volume => (
-				{
+			res.volumes = res.volumes.map(volume => {
+				// Stamp compaction flags onto the volume dict so
+				// VolumeMessage.preparePayload serializes them into
+				// the AttachVolumes / UpdateVolumes payload (kernel
+				// side uses them to auto-kick tpv_compaction_run on
+				// attach).  Staged per-TPV by attachCompactionTPV.
+				const pc = consumePendingCompaction(volume.name);
+				if (pc) {
+					volume.isCompaction = true;
+					volume.compactionAggressiveness = pc.compactionAggressiveness;
+				}
+				return {
 					_id: volume.name,
 					uuid: volume.uuid,
 					configuration: volume,
@@ -1293,8 +1347,8 @@ function setAttachmentOnConfigResponses(configResponse, attachingVolumes) {
 						referenceIDs: attachingVolumesMap[volume.uuid].referenceIDs,
 						...(attachingVolumesMap[volume.uuid].isHidden && { isHidden: true })
 					}
-				}
-			));
+				};
+			});
 	});
 }
 
@@ -3561,6 +3615,32 @@ scope.attachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 	const db = app.get('db');
 	const clientCollection = db.collection('client');
 
+	// TPV_Trimming.md Step 4 asymmetric-preempt rule:
+	// If any requested volume currently has a compaction attachment
+	// (isCompaction=true) on any client, detach it first so the
+	// guest attach can proceed cleanly.  No-op for guest attaches
+	// that don't target a TPV under compaction.
+	if (!attachOptions.isCompaction && !attachOptions._compactionPreemptDone) {
+		const volNames = (requestedVolumes || [])
+			.map(v => v && (v.name || v.volumeName))
+			.filter(Boolean);
+		if (volNames.length) {
+			const async = require('async');
+			return async.each(volNames, (name, next) => {
+				if (typeof scope.preemptCompactionAttachIfAny === 'function')
+					scope.preemptCompactionAttachIfAny(name, () => next());
+				else
+					next();
+			}, () => {
+				// Re-enter this function with isCompaction set so we
+				// don't re-preempt ourselves recursively.
+				scope.attachVolumes(clientID, clientUUID, requestedVolumes,
+					callback, isSnapshotAttach,
+					Object.assign({}, attachOptions, { _compactionPreemptDone: true }));
+			});
+		}
+	}
+
 	let deletedVolumes = [];
 	let deletedVolumesInBuildResponses = [];
 	let attachingVolumes = [];
@@ -4073,18 +4153,27 @@ scope.attach = (clientID, clientUUID, requestedVolumes, options, cb) => {
 					// conflict path, which either failed silently or evicted
 					// the wrong client (the new attacher, not the old holder).
 					const preempt = !!(vol.reservation && vol.reservation.preempt);
-					scope.attachTPV(clientID, clientUUID, vol.name, { syncFlush: vol.syncFlush, preempt }, attachErr => {
-						const msg = attachErr
-							? new SystemAdminMessage(systemMessages.BUILD_RESPONSES_ERROR)
-								.addInfo(Entities.Volume.ID, vol.name)
-								.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
-								.addInfo(Entities.Client.ID, clientID)
-							: new SystemAdminMessage(systemMessages.VOLUME_STATE_ATTACHING)
-								.addInfo(Entities.Volume.ID, vol.name)
-								.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
-								.addInfo(Entities.Client.ID, clientID);
-						allMessages.push(msg);
-						eachCb();
+					// Asymmetric-preempt rule: a guest attach wins over an
+					// in-flight compaction attach on this TPV. The
+					// scope.attach REST entry point is the narrow path for
+					// guest attaches (isCompaction=false by construction),
+					// so firing preempt here is sufficient and avoids the
+					// recursive-guard dance attachVolumes needs. The
+					// preempt is a no-op when no compaction attach exists.
+					scope.preemptCompactionAttachIfAny(vol.name, () => {
+						scope.attachTPV(clientID, clientUUID, vol.name, { syncFlush: vol.syncFlush, preempt }, attachErr => {
+							const msg = attachErr
+								? new SystemAdminMessage(systemMessages.BUILD_RESPONSES_ERROR)
+									.addInfo(Entities.Volume.ID, vol.name)
+									.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+									.addInfo(Entities.Client.ID, clientID)
+								: new SystemAdminMessage(systemMessages.VOLUME_STATE_ATTACHING)
+									.addInfo(Entities.Volume.ID, vol.name)
+									.addInfo(Entities.Volume.UUID, classMap[vol.name]?.uuid)
+									.addInfo(Entities.Client.ID, clientID);
+							allMessages.push(msg);
+							eachCb();
+						});
 					});
 				}, next);
 			},
@@ -6101,5 +6190,137 @@ function cleanupTPVReferencesForDetachedClient(clientID, attachments, done) {
 			], done);
 		});
 }
+
+// ----------------------------------------------------------------------
+// Compaction attach plumbing (TPV_Trimming.md Step 4).
+//
+// attachTPV with { isCompaction: true, compactionJobId, displayName }
+// flags the attachment record for the management-layer asymmetric-preempt
+// rule.  The kernel sees a plain attach.
+//
+// INTEGRATION: the integration points are:
+//   1. The existing scope.attachTPV (defined earlier in this file)
+//      must accept the extra fields and persist them on the attachment
+//      record, or wrap it with scope.attachCompactionTPV below, which
+//      sets them after the successful attach.
+//   2. The existing scope.attachVolumes (guest-attach path) must, before
+//      performing an attach, call scope.preemptCompactionAttachIfAny
+//      for the target TPV; if a compaction attach exists, detach it
+//      first, then continue.
+// ----------------------------------------------------------------------
+
+scope.preemptCompactionAttachIfAny = function preemptCompactionAttachIfAny(volumeName, done) {
+	done = done || function() {};
+	const db = app.get('db');
+	// Look up the TPV doc directly by compactionJob - this is durable
+	// (set by startTPVCompaction) and cannot race with the kernel
+	// keepalive the way client.block_devices.isCompaction can. The
+	// block_devices flag is only stamped after the client keepalive
+	// has added the entry; between compactionJob.state='running' and
+	// that stamp landing, a keyed-on-block_devices lookup misses and
+	// the preempt silently no-ops.
+	db.collection('volume').findOne({
+		_id: volumeName,
+		'compactionJob.state': { $in: ['attaching', 'running', 'aborting'] },
+	}, function(vErr, tpv) {
+		if (vErr) return done(vErr);
+		if (!tpv || !tpv.compactionJob || !tpv.compactionJob.clientId) return done();
+		const clientID = tpv.compactionJob.clientId;
+		db.collection('client').findOne({ _id: clientID }, function(cErr, clientDoc) {
+			if (cErr) return done(cErr);
+			if (!clientDoc) return done();
+			scope.detachVolumes(
+				clientID,
+				clientDoc.uuid,
+				[{ uuid: tpv.uuid, name: tpv._id }],
+				function(logs) {
+					const dErr = firstDetachError(logs);
+					const smId = dErr && dErr.systemMessage && dErr.systemMessage.id;
+					const benign = !dErr || smId === systemMessages.VOLUME_NOT_ATTACHED.id;
+					// Finalize compactionJob so it cannot wedge at
+					// 'running'. On a clean preempt we record
+					// 'aborted' with a reason; on a detach error we
+					// mark 'failed' with the underlying message.
+					// Guard with $nin:terminal so a concurrent
+					// 'done' / 'aborted' / 'failed' stat that won
+					// the race is not clobbered.
+					const set = {
+						'compactionJob.state': benign ? 'aborted' : 'failed',
+						'compactionJob.finishedAt': new Date(),
+					};
+					set['compactionJob.lastError'] = benign ?
+						'preempted-by-guest-attach' :
+						((dErr.systemMessage && dErr.systemMessage.message)
+							|| dErr.toString());
+					db.collection('volume').updateOne(
+						{
+							_id: tpv._id,
+							'compactionJob.state': { $nin: ['completed', 'aborted', 'failed'] },
+						},
+						{ $set: set },
+						function() { done(); }
+					);
+				}
+			);
+		});
+	});
+};
+
+scope.attachCompactionTPV = function attachCompactionTPV(
+	{ clientID, clientUUID, tpvName, compactionJobId, aggressiveness,
+	  displayName }, done
+) {
+	// Stage isCompaction + aggressiveness so setAttachmentOnConfigResponses
+	// picks them up when this attach's AttachVolumes message is built.
+	// Carrying the flags in the attach payload lets the kernel auto-kick
+	// tpv_compaction_run the moment the TPV's CDV(s) are IO-enabled -
+	// no userspace agent is needed.  (Legacy note: earlier design had an
+	// agent poking /proc; now handled by __setup_tpv -> tpv_compaction_kick
+	// from the attach payload.)
+	stagePendingCompaction(tpvName, aggressiveness || 4);
+	scope.attachTPV(clientID, clientUUID, tpvName, { syncFlush: true }, function(err) {
+		if (err) {
+			// Clear staging on failure so a stale entry doesn't
+			// taint the next unrelated attach for this tpvName.
+			consumePendingCompaction(tpvName);
+			return done(err);
+		}
+		const db = app.get('db');
+		// Stamp isCompaction on the block_devices record for mgmt
+		// bookkeeping (UI render, asymmetric-preempt decisions in
+		// scope.attachVolumes).  This is *mgmt-only* state; the
+		// kernel-facing flag already rode in the AttachVolumes Kafka
+		// message above via staging+setAttachmentOnConfigResponses.
+		db.collection('client').updateOne(
+			{ _id: clientID, 'block_devices.name': tpvName },
+			{ $set: {
+				'block_devices.$.isCompaction': true,
+				'block_devices.$.compactionJobId': compactionJobId,
+				'block_devices.$.compactionAggressiveness': aggressiveness || 4,
+				'block_devices.$.displayName': displayName,
+			} },
+			done
+		);
+	});
+};
+
+scope.detachCompactionAttach = function detachCompactionAttach(
+	{ tpvId, clientID }, done
+) {
+	done = done || function() {};
+	const db = app.get('db');
+	db.collection('volume').findOne({ _id: tpvId }, function(err, tpv) {
+		if (err || !tpv) return done(err);
+		db.collection('client').findOne({ _id: clientID }, function(err2, clientDoc) {
+			if (err2 || !clientDoc) return done(err2);
+			scope.detachVolumes(
+				clientID,
+				clientDoc.uuid,
+				[{ uuid: tpv.uuid, name: tpv._id }],
+				logs => done(firstDetachError(logs))
+			);
+		});
+	});
+};
 
 module.exports = scope;

@@ -565,9 +565,11 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 * @apiBody (TPV) {object} [volumes.tpvConfig] TPV configuration. <strong>Required when `volumeClass` is `'TPV'`</strong>.
 * @apiBody (TPV) {string} volumes.tpvConfig.cdvId The `_id` of the parent CDV.
 * @apiBody (TPV) {string} volumes.tpvConfig.cdvUUID The `uuid` of the parent CDV.
-* @apiBody (TPV) {integer} volumes.tpvConfig.tpvExtentSizeKB TPV extent size in KiB. Must be a power of 2 in the range [64, 65536] and must not exceed `cdvExtentSizeMib * 1024`.
+* @apiBody (TPV) {integer} volumes.tpvConfig.tpvExtentSizeKB TPV extent size in KiB.
+*   Must be a power of 2 in the range [64, 65536] and must not exceed `cdvExtentSizeMib * 1024`.
 * @apiBody (TPV) {number} volumes.tpvConfig.virtualSizeGB Virtual size of the TPV in GiB. Must not exceed the parent CDV capacity.
-* @apiBody (TPV) {string} [volumes.tpvConfig.metaCdvId] `_id` of a second CDV used for metadata extents in split-mode. When provided, `metaTpvExtentSizeKB` is also required.
+* @apiBody (TPV) {string} [volumes.tpvConfig.metaCdvId] `_id` of a second CDV used for metadata extents in split-mode.
+*   When provided, `metaTpvExtentSizeKB` is also required.
 * @apiBody (TPV) {string} [volumes.tpvConfig.metaCdvUUID] `uuid` of the metadata CDV.
 * @apiBody (TPV) {integer} [volumes.tpvConfig.metaTpvExtentSizeKB] Extent size for the metadata CDV in split-mode. Required when `metaCdvId` is set.
 * @apiBody (Allocation) {string[]} [diskClasses] Limit `volume` allocation to specific `diskClasses`.
@@ -1093,15 +1095,15 @@ router.post('/tpv/compact', isAdminRole, function(req, res) {
 	let body = req.body || {};
 	let tpvId = body.tpvId;
 	if (!tpvId)
-		return res.status(400).json({ error: 'missing-tpvId' });
+		return res.status(400).json([{ _id: null, success: false, error: 'missing-tpvId' }]);
 	if (body.abort) {
 		return volumeModule.abortTPVCompaction({
 			tpvId: tpvId,
 			user: req.user,
 		}, function(err) {
 			if (err)
-				return res.status(err.httpStatus || 500).json({ error: err.code || 'internal-error', message: err.message });
-			return res.status(200).json({ ok: true });
+				return res.status(err.httpStatus || 500).json([{ _id: tpvId, success: false, error: err.code || 'internal-error', message: err.message }]);
+			return res.status(200).json([{ _id: tpvId, success: true, error: null }]);
 		});
 	}
 	volumeModule.startTPVCompaction({
@@ -1111,8 +1113,8 @@ router.post('/tpv/compact', isAdminRole, function(req, res) {
 		user: req.user,
 	}, function(err, result) {
 		if (err)
-			return res.status(err.httpStatus || 500).json({ error: err.code || 'internal-error', message: err.message });
-		return res.status(202).json(result);
+			return res.status(err.httpStatus || 500).json([{ _id: tpvId, success: false, error: err.code || 'internal-error', message: err.message }]);
+		return res.status(200).json([Object.assign({ _id: tpvId, success: true, error: null }, result || {})]);
 	});
 });
 
@@ -1134,13 +1136,12 @@ router.post('/tpv/compact', isAdminRole, function(req, res) {
 router.post('/tpv/compactShow', function(req, res) {
 	let tpvId = (req.body || {}).tpvId;
 	if (!tpvId)
-		return res.status(400).json({ error: 'missing-tpvId' });
+		return res.status(400).json([{ _id: null, success: false, error: 'missing-tpvId' }]);
 	volumeModule.getTPVCompaction(tpvId, function(err, job) {
 		if (err)
-			return res.status(err.httpStatus || 500).json({ error: err.code || 'internal-error', message: err.message });
-		if (!job)
-			return res.json({ state: 'idle' });
-		return res.json(job);
+			return res.status(err.httpStatus || 500).json([{ _id: tpvId, success: false, error: err.code || 'internal-error', message: err.message }]);
+		let envelope = { _id: tpvId, success: true, error: null, state: 'idle' };
+		return res.json([Object.assign(envelope, job || {})]);
 	});
 });
 

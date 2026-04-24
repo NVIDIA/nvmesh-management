@@ -103,6 +103,10 @@ function routeAgentMessage(message, callback) {
 			volumeModule.handleTPVStats(message, callback);
 			break;
 		}
+		case msgType.tpvCompactionStats: {
+			volumeModule.handleTPVCompactionStats(message, callback);
+			break;
+		}
 		default: {
 			new SystemMessage(systemMessages.KAFKA_UNKNOWN_MESSAGE_TYPE)
 				.addInfo(Entities.KafkaMessage.messageType, message.type)

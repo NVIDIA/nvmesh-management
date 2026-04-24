@@ -359,7 +359,6 @@ function doAfterDatabasesArePopulatedAndConnected() {
 		routerAPI.use('/mongoDB', mongoDB);
 		routerAPI.use('/techniciansScreen', techniciansScreen);
 		routerAPI.use('/kafka', kafkaRoutes);
-
 		app.use('/thin-provisioning', isAuthenticated, shouldChangePassword, thinProvisioning);
 		app.use('/', routerAPI);
 		app.use('/', isAuthenticated, shouldChangePassword, routes);
@@ -424,6 +423,21 @@ function doAfterDatabasesArePopulatedAndConnected() {
 
 			function connectionEstablished(port) {
 				logger.logToConsole('Listening on port ' + port);
+				// TPV_Trimming.md Step 4: reconcile any compaction jobs
+				// that were in flight when management was restarted, and
+				// start the live heartbeat watchdog so jobs whose client
+				// dies while mgmt stays up don't wedge at 'running'.
+				try {
+					const volumeModule = require('./modules/volume.js');
+					if (typeof volumeModule.reconcileCompactionJobsOnStartup === 'function') {
+						volumeModule.reconcileCompactionJobsOnStartup(() => {});
+					}
+					if (typeof volumeModule.startCompactionHeartbeatWatchdog === 'function') {
+						volumeModule.startCompactionHeartbeatWatchdog();
+					}
+				} catch (e) {
+					logger.logToConsole('compaction reconcile/watchdog init failed: ' + e.message);
+				}
 			}
 
 			function setServerTimeout(server) {

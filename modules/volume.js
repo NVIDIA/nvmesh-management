@@ -4323,4 +4323,533 @@ scope.fetchVolumeVersionByUUID = function fetchVolumeVersionByUUID(uuid, cb) {
 	});
 };
 
+scope.fetchVolumeByID = function(id, cb) {
+	utils.fetchEntityByID('volume', id, false, {}, systemMessages.VOLUME_NOT_FOUND, cb);
+};
+
+// ----------------------------------------------------------------------
+// TPV offline compaction (TPV_Trimming.md Step 4).
+//
+// The Mongo volume doc for a TPV gains a compactionJob subdocument:
+//
+//   compactionJob: {
+//     state,           // pending | attaching | running | aborting |
+//                      //   completed | failed | aborted
+//     clientId,        // target-hosted compaction-client hostname
+//     startedAt,
+//     progress: { relocated, plannedRelocations, reclaimed },
+//     progressUpdatedAt,
+//     lastError,
+//   }
+//
+// Control plane: the attach record with isCompaction=true triggers
+// the client kernel to run the work; its agent publishes
+// TPVCompactionStats Kafka.  Management observes terminal state and
+// detaches.  TOMA is not in the loop.
+// ----------------------------------------------------------------------
+
+const DEFAULT_MAX_JOBS_PER_CLIENT = 4;
+const RECONCILE_DEADLINE_MS = 30 * 1000;
+
+// Live heartbeat watchdog (runs while mgmt is up).
+// TPVCompactionStats ticks update compactionJob.progressUpdatedAt every
+// ~5 s. If no tick arrives for HEARTBEAT_TIMEOUT_MS the client or its
+// agent is considered dead; the watchdog marks the job 'failed' and
+// force-detaches so the TPV isn't wedged at 'running'/'attaching'/
+// 'aborting' until the next mgmt restart (when
+// reconcileCompactionJobsOnStartup would eventually pick it up).
+// Threshold is intentionally wider than the 5 s tick to tolerate
+// transient Kafka or mongo hiccups.
+const HEARTBEAT_TICK_MS = 30 * 1000;
+const HEARTBEAT_TIMEOUT_MS = 60 * 1000;
+
+/*
+ * Compute a completion percent from the job's progress counters.
+ * Clamped to [0, 100].  Returned as an integer so the GUI can render
+ * it verbatim.
+ */
+function compactionPercent(job) {
+	var p = job && job.progress;
+	if (!p || !p.plannedRelocations || p.plannedRelocations <= 0)
+		return 0;
+	var v = Math.floor((p.relocated || 0) * 100 / p.plannedRelocations);
+	if (v < 0) return 0;
+	if (v > 100) return 100;
+	return v;
+}
+
+function decorateCompactionJob(job) {
+	if (!job) return job;
+	// Shallow copy so we don't mutate the Mongo doc in memory.
+	var out = Object.assign({}, job);
+	out.percent = compactionPercent(job);
+	return out;
+}
+
+function compactionErr(httpStatus, code, message) {
+	var e = new Error(message || code);
+	e.httpStatus = httpStatus;
+	e.code = code;
+	return e;
+}
+
+function countActiveJobsOnClient(clientId, cb) {
+	var db = app.get('db');
+	db.collection('volume').countDocuments({
+		'compactionJob.clientId': clientId,
+		'compactionJob.state': { $in: ['pending', 'attaching', 'running', 'aborting'] },
+	}, cb);
+}
+
+function maxJobsPerClientSetting(cb) {
+	var db = app.get('db');
+	db.collection('globalSettings').findOne(
+		{},
+		{ projection: { tpvOfflineCompactionMaxJobsPerClient: 1 } },
+		(err, s) => {
+			if (err) return cb(err);
+			var v = s && s.tpvOfflineCompactionMaxJobsPerClient;
+			cb(null, typeof v === 'number' ? v : DEFAULT_MAX_JOBS_PER_CLIENT);
+		}
+	);
+}
+
+function listUpCompactionClients(cb) {
+	// Returns hostnames of currently-up NVMesh clients eligible to host
+	// a compaction attach.  Compaction runs on the client that has the
+	// TPV attached with isCompaction=true; the kernel-side compaction
+	// driver is part of the client module, so we need a node running the
+	// client daemon that is currently healthy.  The agent on that node
+	// translates the attach into a /proc write that kicks the kernel
+	// worker.  Target-side reachability to the CDV is the agent's
+	// concern once the attach lands.
+	var db = app.get('db');
+	db.collection('client').find({ health: 'healthy' }).toArray((err, clients) => {
+		if (err) return cb(err);
+		cb(null, (clients || []).map(c => c.node_id || c._id || c.hostname));
+	});
+}
+
+function selectCompactionClient(requested, cb) {
+	maxJobsPerClientSetting((err, max) => {
+		if (err) return cb(err);
+		listUpCompactionClients((err2, upNodes) => {
+			if (err2) return cb(err2);
+			if (requested) {
+				if (!upNodes.includes(requested))
+					return cb(compactionErr(503, 'client-not-available'));
+				countActiveJobsOnClient(requested, (err3, n) => {
+					if (err3) return cb(err3);
+					if (n >= max)
+						return cb(compactionErr(503, 'client-busy'));
+					cb(null, requested);
+				});
+				return;
+			}
+			// Random pick among up target nodes below the cap
+			var candidates = [];
+			var remaining = upNodes.length;
+			if (remaining === 0) return cb(compactionErr(503, 'no-client-available'));
+			upNodes.forEach(t => {
+				countActiveJobsOnClient(t, (err3, n) => {
+					if (!err3 && n < max)
+						candidates.push(t);
+					if (--remaining === 0) {
+						if (candidates.length === 0)
+							return cb(compactionErr(503, 'no-client-available'));
+						cb(null, candidates[Math.floor(Math.random() * candidates.length)]);
+					}
+				});
+			});
+		});
+	});
+}
+
+// POST /thinProvisioning/tpv/:id/compaction
+scope.startTPVCompaction = function({ tpvId, client, aggressiveness, user }, cb) {
+	var db = app.get('db');
+	var volumes = db.collection('volume');
+	var gs = db.collection('globalSettings');
+
+	gs.findOne({}, { projection: { tpvOfflineCompactionEnabled: 1 } }, (err, s) => {
+		if (err) return cb(err);
+		if (s && s.tpvOfflineCompactionEnabled === false)
+			return cb(compactionErr(503, 'tpv-offline-compaction-disabled'));
+
+		scope.fetchVolumeByID(tpvId, (err2, tpv) => {
+			if (err2) return cb(err2);
+			if (!tpv || tpv.volumeClass !== consts.volumeClass.TPV)
+				return cb(compactionErr(404, 'tpv-not-found'));
+			// Reject if already attached to a guest
+			if (tpv.tpvConfig && tpv.tpvConfig.exclusiveClient)
+				return cb(compactionErr(409, 'tpv-attached'));
+			// Reject if a compaction job is already in flight
+			var j = tpv.compactionJob;
+			if (j && ['pending', 'attaching', 'running', 'aborting'].includes(j.state))
+				return cb(compactionErr(409, 'tpv-in-offline-compaction'));
+
+			selectCompactionClient(client, (err3, chosenClient) => {
+				if (err3) return cb(err3);
+
+				var job = {
+					state: 'attaching',
+					clientId: chosenClient,
+					aggressiveness: aggressiveness || 4,
+					startedAt: new Date(),
+					progress: { relocated: 0, plannedRelocations: 0, reclaimed: 0 },
+				};
+				volumes.updateOne({ _id: tpv._id }, { $set: { compactionJob: job } }, (err4) => {
+					if (err4) return cb(err4);
+					// Attach the TPV to the chosen client with isCompaction=true
+					// and aggressiveness stamped on the attach record.  The
+					// client agent on that host sees the flag, triggers the
+					// kernel worker via /proc, and begins publishing
+					// TPVCompactionStats Kafka.  TOMA is not involved.
+					var clientModule = require('./client.js');
+					db.collection('server').findOne(
+						{ node_id: chosenClient },
+						{ projection: { node_id: 1, uuid: 1 } },
+						(errSrv, srv) => {
+							if (errSrv || !srv) {
+								volumes.updateOne({ _id: tpv._id }, { $set: {
+									'compactionJob.state': 'failed',
+									'compactionJob.lastError': errSrv ? errSrv.message : 'chosen-client-not-found',
+								} });
+								return cb(errSrv || compactionErr(503, 'client-not-available'));
+							}
+							clientModule.attachCompactionTPV({
+								clientID: chosenClient,
+								clientUUID: srv.uuid,
+								tpvName: tpv.name,
+								compactionJobId: tpv._id.toString(),
+								aggressiveness: aggressiveness || 4,
+								displayName: tpv.name + '-compaction',
+								user: user,
+							}, (errA) => {
+								if (errA) {
+									volumes.updateOne({ _id: tpv._id }, { $set: {
+										'compactionJob.state': 'failed',
+										'compactionJob.lastError': errA.message,
+									} });
+									return cb(errA);
+								}
+								// Attach initiated; flip state to 'running'.
+								// The first TPVCompactionStats tick will populate
+								// progress and confirm the worker is alive.
+								volumes.updateOne({ _id: tpv._id }, { $set: {
+									'compactionJob.state': 'running',
+								} });
+								cb(null, { clientId: chosenClient, state: 'running' });
+							});
+						});
+				});
+			});
+		});
+	});
+};
+
+// GET /thinProvisioning/tpv/:id/compaction
+scope.getTPVCompaction = function(tpvId, cb) {
+	scope.fetchVolumeByID(tpvId, (err, tpv) => {
+		if (err) return cb(err);
+		if (!tpv || !tpv.compactionJob) return cb(null, null);
+		cb(null, decorateCompactionJob(tpv.compactionJob));
+	});
+};
+
+// DELETE /thinProvisioning/tpv/:id/compaction.
+//
+// Abort = detach the compaction attach.  The client kernel's detach
+// path calls nvmeibc_tpv_abort_any_compaction_for(tpv); the worker
+// exits at the next batch boundary; the agent publishes one final
+// TPVCompactionStats with state=aborted; handleTPVCompactionStats
+// flips compactionJob.state.  Idempotent.
+scope.abortTPVCompaction = function({ tpvId }, cb) {
+	var db = app.get('db');
+	var volumes = db.collection('volume');
+	scope.fetchVolumeByID(tpvId, (err, tpv) => {
+		if (err) return cb(err);
+		if (!tpv || !tpv.compactionJob)
+			return cb(compactionErr(404, 'no-compaction-job'));
+		var j = tpv.compactionJob;
+		if (!['pending', 'attaching', 'running', 'aborting'].includes(j.state))
+			return cb(null);	// idempotent no-op on terminal
+		volumes.updateOne({ _id: tpv._id }, { $set: { 'compactionJob.state': 'aborting' } });
+		var clientModule = require('./client.js');
+		clientModule.detachCompactionAttach({
+			tpvId: tpv._id,
+			clientID: j.clientId,
+		}, function(detachErr) {
+			// Whatever the detach outcome, finalize the job state so
+			// it cannot get wedged at 'aborting':
+			//   - detach succeeded / volume was already not attached
+			//     -> the user's intent is satisfied; transition to
+			//     'aborted'.  The kernel stops emitting
+			//     TPVCompactionStats once the TPV is detached, so
+			//     nothing else would ever advance past 'aborting'.
+			//   - detach failed with some other error -> we still
+			//     can't leave the job stuck; transition to 'failed'
+			//     and stash the reason in lastError.  A human can
+			//     inspect; a next compaction attempt can proceed
+			//     because 'failed' is terminal.
+			// Guard both updates with $nin:terminal so a late 'done'
+			// or 'failed' stat that won the race is not clobbered.
+			var smId = detachErr && detachErr.systemMessage && detachErr.systemMessage.id;
+			var benign = !detachErr || smId === systemMessages.VOLUME_NOT_ATTACHED.id;
+			var finalState = benign ? 'aborted' : 'failed';
+			var set = {
+				'compactionJob.state': finalState,
+				'compactionJob.finishedAt': new Date(),
+			};
+			if (!benign) {
+				set['compactionJob.lastError'] =
+					(detachErr.systemMessage && detachErr.systemMessage.message)
+						|| detachErr.toString();
+			}
+			volumes.updateOne(
+				{
+					_id: tpv._id,
+					'compactionJob.state': { $nin: ['completed', 'aborted', 'failed'] },
+				},
+				{ $set: set },
+				function() {
+					if (benign) return cb(null);
+					cb(compactionErr(500, 'abort-detach-failed',
+						set['compactionJob.lastError']));
+				}
+			);
+		});
+	});
+};
+
+// GET /thinProvisioning/compaction/jobs
+scope.listTPVCompactionJobs = function({ state }, cb) {
+	var db = app.get('db');
+	var q = { compactionJob: { $exists: true } };
+	if (state) q['compactionJob.state'] = state;
+	db.collection('volume').find(q, {
+		projection: { name: 1, uuid: 1, compactionJob: 1 },
+	}).toArray((err, rows) => {
+		if (err) return cb(err);
+		(rows || []).forEach(r => {
+			if (r.compactionJob)
+				r.compactionJob = decorateCompactionJob(r.compactionJob);
+		});
+		cb(null, rows);
+	});
+};
+
+// ----------------------------------------------------------------------
+// Kafka inbound handler for TPVCompactionStats (client agent -> mgmt).
+// Wired from modules/kafkaRouter.js.
+//
+// On every tick, update compactionJob.progress + progressUpdatedAt.
+// When state is terminal (done / failed / aborted), flip
+// compactionJob.state accordingly and issue a detach of the compaction
+// attach.  Idempotent on repeated terminal ticks.
+// ----------------------------------------------------------------------
+
+scope.handleTPVCompactionStats = function(message, callback) {
+	var db = app.get('db');
+	var p = (message && message.payload) || {};
+	var now = new Date();
+	var isTerminal = ['done', 'failed', 'aborted'].includes(p.state);
+	var percent = compactionPercent({ progress: {
+		relocated: p.relocated,
+		plannedRelocations: p.plannedRelocations,
+	} });
+
+	var update = {
+		'compactionJob.progress.relocated': p.relocated,
+		'compactionJob.progress.plannedRelocations': p.plannedRelocations,
+		'compactionJob.progress.reclaimed': p.reclaimed,
+		'compactionJob.progressUpdatedAt': now,
+	};
+	if (isTerminal) {
+		// Map 'done' to 'completed' to match the existing state
+		// vocabulary; keep 'failed' and 'aborted' as-is.
+		update['compactionJob.state'] = (p.state === 'done') ? 'completed' : p.state;
+	}
+
+	/*
+	 * Idempotence: the kernel keeps reporting state='done' on every
+	 * keepalive between compaction completion and the detach landing
+	 * asynchronously.  Without this filter we'd fire detachCompactionAttach
+	 * on every tick in that window.  Skip the update (and thus the
+	 * detach call) whenever compactionJob is already in a terminal
+	 * state; res.value becomes null and the handler returns cleanly.
+	 */
+	db.collection('volume').findOneAndUpdate(
+		{
+			uuid: p.tpvUUID,
+			'compactionJob.state': { $nin: ['completed', 'aborted', 'failed'] },
+		},
+		{ $set: update },
+		{ returnDocument: consts.mongoReturnDocument.AFTER },
+		(err, res) => {
+			if (err || !res || !res.value) return callback();
+			var vol = res.value;
+			// Stamp percent + state on the attachment record so the
+			// Clients-page render is trivial: block_device.name =
+			// "<tpv>(<percent>%)" with a spinner icon.  Keeping the
+			// DB stamp in sync means the UI reads it straight from
+			// the client doc; no per-render join needed.
+			var clientModule = require('./client.js');
+			var cid = (vol.compactionJob || {}).clientId;
+			if (cid) {
+				db.collection('client').updateOne(
+					{ _id: cid, 'block_devices.name': vol.name, 'block_devices.isCompaction': true },
+					{ $set: {
+						'block_devices.$.compactionPercent': percent,
+						'block_devices.$.compactionState': p.state,
+					} },
+					() => {}
+				);
+			}
+			if (!isTerminal)
+				return callback();
+			clientModule.detachCompactionAttach({
+				tpvId: vol._id,
+				clientID: cid,
+			}, () => callback());
+		},
+	);
+};
+
+// ----------------------------------------------------------------------
+// Startup reconciliation (TPV_Trimming.md Step 4 Restart and crash recovery).
+// On mgmt restart, for every volume with compactionJob.state in
+// {attaching, running, aborting}, poll the compaction TOMA for the
+// task.  If unknown, mark failed + force-detach.
+// ----------------------------------------------------------------------
+
+scope.reconcileCompactionJobsOnStartup = function(cb) {
+	var db = app.get('db');
+	db.collection('volume').find({
+		'compactionJob.state': { $in: ['attaching', 'running', 'aborting'] },
+	}).toArray((err, stale) => {
+		if (err) return cb(err);
+		if (!stale || stale.length === 0)
+			return cb(null);
+
+		// Liveness signal: TPVCompactionStats ticks update
+		// compactionJob.progressUpdatedAt every ~5 s.  If no update
+		// within the deadline, the client or its agent died.
+		// Force-fail + force-detach.
+		var async = require('async');
+		var clientModule = require('./client.js');
+		async.eachSeries(stale, (tpv, next) => {
+			var j = tpv.compactionJob;
+			var lastProgress = j.progressUpdatedAt;
+			setTimeout(() => {
+				db.collection('volume').findOne({ _id: tpv._id }, (err2, fresh) => {
+					if (err2 || !fresh) return next();
+					var j2 = fresh.compactionJob || {};
+					if (!['attaching', 'running', 'aborting'].includes(j2.state))
+						return next();	// transitioned on its own
+					var progressed = j2.progressUpdatedAt &&
+						(!lastProgress ||
+						 j2.progressUpdatedAt > lastProgress);
+					if (progressed)
+						return next();	// still alive
+					db.collection('volume').updateOne({ _id: fresh._id }, { $set: {
+						'compactionJob.state': 'failed',
+						'compactionJob.lastError': 'mgmt-restart-reconcile: no progress after deadline',
+					} });
+					clientModule.detachCompactionAttach({
+						tpvId: fresh._id,
+						clientID: (j2 || j).clientId,
+						force: true,
+					}, () => next());
+				});
+			}, RECONCILE_DEADLINE_MS);
+		}, cb);
+	});
+};
+
+// ----------------------------------------------------------------------
+// Live heartbeat watchdog (runs while mgmt is up).
+// Periodically scans compactionJob docs whose state is still in-flight
+// and whose progressUpdatedAt is older than HEARTBEAT_TIMEOUT_MS. Such
+// jobs have lost their client heartbeat — mark failed + force-detach.
+// Startup reconciliation (reconcileCompactionJobsOnStartup) handles the
+// mgmt-restart case; this handles the stays-up-but-client-dies case
+// that would otherwise wedge the TPV at 'running' indefinitely.
+// ----------------------------------------------------------------------
+
+var compactionHeartbeatWatchdogTimer = null;
+
+function runCompactionHeartbeatWatchdogTick() {
+	var db = app.get('db');
+	var volumes = db.collection('volume');
+	var cutoff = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS);
+	// A job is stale if its "last known alive" timestamp is older than
+	// cutoff. Last-known-alive is progressUpdatedAt when it exists (set
+	// by every kernel stats tick), else startedAt (set by
+	// startTPVCompaction). Using startedAt as the floor is important:
+	// without it, a freshly-started compaction whose first stats tick
+	// hasn't landed yet matches $exists:false and the watchdog
+	// misfires seconds after startTPVCompaction.
+	volumes.find({
+		'compactionJob.state': { $in: ['attaching', 'running', 'aborting'] },
+		$expr: {
+			$lt: [
+				{ $ifNull: [
+					'$compactionJob.progressUpdatedAt',
+					'$compactionJob.startedAt',
+				] },
+				cutoff,
+			],
+		},
+	}).toArray(function(err, stale) {
+		if (err || !stale || stale.length === 0) return;
+		var clientModule = require('./client.js');
+		stale.forEach(function(tpv) {
+			var j = tpv.compactionJob || {};
+			// Defensively avoid clobbering a terminal state set by
+			// any racing path (user abort, kernel 'done' stat, the
+			// preempt path).
+			volumes.updateOne(
+				{
+					_id: tpv._id,
+					'compactionJob.state': { $in: ['attaching', 'running', 'aborting'] },
+				},
+				{ $set: {
+					'compactionJob.state': 'failed',
+					'compactionJob.lastError': 'heartbeat-timeout: no progress for >'
+						+ Math.round(HEARTBEAT_TIMEOUT_MS / 1000) + 's',
+					'compactionJob.finishedAt': new Date(),
+				} },
+				function(uErr, res) {
+					if (uErr || !res || !res.modifiedCount) return;
+					// Only force-detach if we actually won the state
+					// transition; otherwise someone else is handling
+					// the terminal flow.
+					if (j.clientId) {
+						clientModule.detachCompactionAttach({
+							tpvId: tpv._id,
+							clientID: j.clientId,
+						}, function() {});
+					}
+				}
+			);
+		});
+	});
+}
+
+scope.startCompactionHeartbeatWatchdog = function() {
+	if (compactionHeartbeatWatchdogTimer) return;
+	compactionHeartbeatWatchdogTimer = setInterval(
+		runCompactionHeartbeatWatchdogTick, HEARTBEAT_TICK_MS);
+	// Don't pin the process alive solely for this timer.
+	if (compactionHeartbeatWatchdogTimer.unref)
+		compactionHeartbeatWatchdogTimer.unref();
+};
+
+scope.stopCompactionHeartbeatWatchdog = function() {
+	if (!compactionHeartbeatWatchdogTimer) return;
+	clearInterval(compactionHeartbeatWatchdogTimer);
+	compactionHeartbeatWatchdogTimer = null;
+};
+
 module.exports = scope;

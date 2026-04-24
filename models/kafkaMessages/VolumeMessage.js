@@ -60,6 +60,15 @@ exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 		preparedPayload['metaCdvExtentSizeMib'] = payload.metaCdvExtentSizeMib || 0;
 		preparedPayload['metaTpvExtentSizeKb'] = payload.metaTpvExtentSizeKb || 0;
 
+		// Offline compaction (TPV_Trimming.md Step 4).  Carried on the
+		// AttachVolumes / UpdateVolumes message so the kernel can auto-kick
+		// tpv_compaction_run the moment the TPV's CDV(s) are IO-enabled,
+		// with no separate userspace agent needed to poke /proc.  Both
+		// fields default to the "not compacting" identity so existing
+		// volumes and kernels without compaction support see them as no-ops.
+		preparedPayload['isCompaction'] = payload.isCompaction || false;
+		preparedPayload['compactionAggressiveness'] = payload.compactionAggressiveness || 0;
+
 		preparedPayload['chunks'] = payload.chunks.map(c => ({
 			uuid: c.uuid,
 			vlbs: c.vlbs,

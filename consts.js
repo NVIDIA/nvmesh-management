@@ -884,6 +884,7 @@ consts.kafkaMessageTypes = {
 		updateConfigProfileUserOverride: 'updateConfigProfileUserOverride',
 		updateKeys: 'updateKeys',
 		tpvStats: 'tpvStats',
+		tpvCompactionStats: 'tpvCompactionStats',
 	},
 	ClientToManagement: {
 		keepalive: 'keepalive',
