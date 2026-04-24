@@ -146,6 +146,41 @@ router.get('/getCounters', function(req, res) {
 	});
 });
 
+/**
+* @apiVersion 17.1.0
+* @api {get} /getVolumeCounters Get volume health counters
+* @apiName getVolumeCounters
+* @apiGroup index
+* @apiDescription Get health-bucketed counts for regular volumes, CDVs, and TPVs.
+* Each counter object contains a `total` and per-health-state counts.
+* CDVs include an `almost_full` bucket (CDV extent usage above warning threshold).
+* TPVs include a `detached` bucket (TPVs with no attached client).
+*
+* @apiSuccess {object} volumeCount Health counters for regular volumes.
+* @apiSuccess {integer} volumeCount.total Total regular volume count.
+* @apiSuccess {integer} volumeCount.healthy Healthy volumes.
+* @apiSuccess {integer} volumeCount.alarm Volumes in alarm state.
+* @apiSuccess {integer} volumeCount.critical Volumes in critical state.
+* @apiSuccess {object} cdvCount Health counters for CDVs.
+* @apiSuccess {integer} cdvCount.total Total CDV count.
+* @apiSuccess {integer} cdvCount.healthy Healthy CDVs.
+* @apiSuccess {integer} cdvCount.almost_full CDVs above the extent-usage warning threshold.
+* @apiSuccess {integer} cdvCount.alarm CDVs in alarm state.
+* @apiSuccess {integer} cdvCount.critical CDVs in critical state.
+* @apiSuccess {object} tpvCount Health counters for TPVs.
+* @apiSuccess {integer} tpvCount.total Total TPV count.
+* @apiSuccess {integer} tpvCount.healthy Healthy TPVs.
+* @apiSuccess {integer} tpvCount.alarm TPVs in alarm state.
+* @apiSuccess {integer} tpvCount.critical TPVs in critical state.
+* @apiSuccess {integer} tpvCount.detached TPVs with no attached client.
+*
+* @apiSuccessExample Example data on success
+* {
+*   "volumeCount": { "total": 5, "healthy": 4, "alarm": 1, "critical": 0 },
+*   "cdvCount":    { "total": 2, "healthy": 1, "almost_full": 1, "alarm": 0, "critical": 0 },
+*   "tpvCount":    { "total": 3, "healthy": 2, "alarm": 0, "critical": 0, "detached": 1 }
+* }
+*/
 router.get('/getVolumeCounters', function(req, res) {
 	async.parallel({
 		volumeCount: cb => volumeModule.calculateVolumeCounters(cb),

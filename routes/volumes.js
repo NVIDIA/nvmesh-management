@@ -48,16 +48,19 @@ router.get('/nvmfDefault', function(req, res) {
 
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.1.0
 * @api {get} /volumes/all/:page/:count?filter={}&sort={} Get volumes
 * @apiName GetVolumes
 * @apiGroup volumes
 * @apiDescription Get `volumes` by `page` and `count`.
+* CDV_MGMT satellite volumes are hidden by default; pass `?includeSatellites=true` to include them.
+* CDV responses include a computed `overProvisionRatio` field.
 *
 * @apiParam {integer} page The `page` number to fetch.
 * @apiParam {integer} count Number of records per `page`.
 * @apiParam {object} [filter] `Filter` before fetching. <small><i>--MongoDB filter obj</i></small>
 * @apiParam {object} [sort] `Sort` before fetching. <small><i>--MongoDB sort obj</i></small>
+* @apiParam {boolean} [includeSatellites=false] When `true`, CDV_MGMT satellite volumes are included in results.
 * @apiParamExample {object[]} Example request
 * /volumes/all/0/15?filter={"_id":"V1"}&sort={}
 *
@@ -512,13 +515,15 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 });
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.1.0
 * @api {post} /volumes/save Save volumes
 * @apiName SaveVolumes
 * @apiGroup volumes
-* @apiDescription Create one or more volumes.
+* @apiDescription Create one or more volumes, including Capacity Data Volumes (CDV) and Thin-Provisioned Volumes (TPV).
 * At a minimum, `name` and `capacity` are required.
 * You must also specify allocation rules, either by providing a `VPG` or by specifying `RAIDLevel` and other parameters.
+* To create a CDV, set `volumeClass` to `'CDV'` and populate `cdvConfig`.
+* To create a TPV, set `volumeClass` to `'TPV'` and populate `tpvConfig` (no RAID fields or `capacity` needed).
 *
 * @apiParam {object[]} volumes `volumes` to create.
 * @apiParam {string} volumes.name <strong>Required</strong>. Name of the `volume`. The name must be unique, as it will become the `ID` of the `volume`.
@@ -546,13 +551,26 @@ router.post('/rebuildVolumes', isAdminRole, function(req, res) {
 * @apiParam {boolean} [volumes.enableNVMf=false] Enable NVMf exposure for the `volume`. If true, `selectedClientsForNvmf` is required.
 * @apiParam {string[]} [volumes.selectedClientsForNvmf] Expose the `volume` as NVMf target for specific `clients`.
 * <strong>Required if `enableNVMf` is true.</strong>
-* @apiParam {boolean} [volumes.isEncrypted=false] Create an encrypted volume.
-* @apiParam {object} [volumes.encryption] Encryption options. <strong>Available when `isEncrypted` is true.</strong>
-* @apiParam {integer} [volumes.encryption.headerSize=16] Volume encryption header size in MiB.
-* @apiParam {object} [volumes.metadata={}] An Object containing `volume`'s metadata. (Max size: 256KB)
-* @apiParam {boolean} [volumes.use_debug_di=false] Use debug disk information for the `volume`. <br/><strong> Internal use only !</strong>
-*
-* @apiParam (Allocation) {string[]} [diskClasses] Limit `volume` allocation to specific `diskClasses`.
+* @apiBody {boolean} [volumes.isEncrypted=false] Create an encrypted volume.
+* @apiBody {object} [volumes.encryption] Encryption options. <strong>Available when `isEncrypted` is true.</strong>
+* @apiBody {integer} [volumes.encryption.headerSize=16] Volume encryption header size in MiB.
+* @apiBody {object} [volumes.metadata={}] An Object containing `volume`'s metadata. (Max size: 256KB)
+* @apiBody {boolean} [volumes.use_debug_di=false] Use debug disk information for the `volume`. <br/><strong> Internal use only !</strong>
+* @apiBody (CDV) {string} [volumes.volumeClass] Set to `'CDV'` to create a Capacity Data Volume (backing store for TPVs).
+* @apiBody (CDV) {object} [volumes.cdvConfig] CDV configuration. <strong>Required when `volumeClass` is `'CDV'`</strong>.
+* @apiBody (CDV) {integer} volumes.cdvConfig.cdvExtentSizeMib CDV extent size in MiB. Must be a power of 2 in the range [16, 65536].
+* @apiBody (CDV) {integer} [volumes.cdvConfig.allocatorSizeGib=1] Size in GiB of the allocator satellite volume created alongside the CDV.
+* @apiBody (CDV) {integer} [volumes.cdvConfig.maxTPVs=512] Maximum number of TPVs that may be backed by this CDV.
+* @apiBody (TPV) {string} [volumes.volumeClass] Set to `'TPV'` to create a Thin-Provisioned Volume.
+* @apiBody (TPV) {object} [volumes.tpvConfig] TPV configuration. <strong>Required when `volumeClass` is `'TPV'`</strong>.
+* @apiBody (TPV) {string} volumes.tpvConfig.cdvId The `_id` of the parent CDV.
+* @apiBody (TPV) {string} volumes.tpvConfig.cdvUUID The `uuid` of the parent CDV.
+* @apiBody (TPV) {integer} volumes.tpvConfig.tpvExtentSizeKB TPV extent size in KiB. Must be a power of 2 in the range [64, 65536] and must not exceed `cdvExtentSizeMib * 1024`.
+* @apiBody (TPV) {number} volumes.tpvConfig.virtualSizeGB Virtual size of the TPV in GiB. Must not exceed the parent CDV capacity.
+* @apiBody (TPV) {string} [volumes.tpvConfig.metaCdvId] `_id` of a second CDV used for metadata extents in split-mode. When provided, `metaTpvExtentSizeKB` is also required.
+* @apiBody (TPV) {string} [volumes.tpvConfig.metaCdvUUID] `uuid` of the metadata CDV.
+* @apiBody (TPV) {integer} [volumes.tpvConfig.metaTpvExtentSizeKB] Extent size for the metadata CDV in split-mode. Required when `metaCdvId` is set.
+* @apiBody (Allocation) {string[]} [diskClasses] Limit `volume` allocation to specific `diskClasses`.
 * <br/><strong>Not allowed if `VPG` is set.</strong>
 * @apiParam (Allocation) {string[]} [limitByDisks] Limit `volume` allocation to specific `disks`. <br/><strong>Not allowed if `VPG` is set.</strong>
 * @apiParam (Allocation) {string[]} [limitByNodes] Limit `volume` allocation to specific `nodes`. <br/><strong>Not allowed if `VPG` is set.</strong>
@@ -964,12 +982,18 @@ router.post('/delete', isAdminRole, function(req, res) {
 });
 
 /**
+* @apiVersion 17.1.0
 * @api {post} /volumes/tpv/update Update a TPV
 * @apiName UpdateTPV
 * @apiGroup volumes
-* @apiDescription Update mutable fields of a Thin-Provisioned Volume (description).
-* @apiBody {string} _id TPV ID.
+* @apiDescription Update mutable fields of a Thin-Provisioned Volume. Only `description` can be changed after creation.
+* @apiBody {string} _id TPV `ID`.
 * @apiBody {string} [description] New description.
+* @apiExample {object} Payload example
+* { "_id": "myTPV", "description": "updated description" }
+* @apiSuccess {object[]} results Success statuses.
+* @apiSuccessExample Example data on success
+* [{ "_id": "myTPV", "uuid": "...", "success": true, "error": null }]
 */
 router.post('/tpv/update', isAdminRole, function(req, res) {
 	let updateObj = req.body;
@@ -986,12 +1010,19 @@ router.post('/tpv/update', isAdminRole, function(req, res) {
 });
 
 /**
+* @apiVersion 17.1.0
 * @api {post} /volumes/tpv/delete Delete TPVs
 * @apiName DeleteTPVs
 * @apiGroup volumes
 * @apiDescription Delete one or more Thin-Provisioned Volumes. Each TPV must be detached before deletion.
-* @apiBody {object[]} tpvIds Array of TPV IDs to delete.
-* @apiBody {string} tpvIds._id TPV ID.
+* @apiBody {object[]} volumes Array of TPVs to delete.
+* @apiBody {string} volumes._id TPV `ID`.
+* @apiBody {string} volumes.uuid TPV `UUID`.
+* @apiExample {object[]} Payload example
+* [{ "_id": "myTPV", "uuid": "..." }]
+* @apiSuccess {object[]} results Success statuses.
+* @apiSuccessExample Example data on success
+* [{ "_id": "myTPV", "uuid": "...", "success": true, "error": null }]
 */
 router.post('/tpv/delete', isAdminRole, function(req, res) {
 	let tpvIds = req.body;
@@ -1008,13 +1039,18 @@ router.post('/tpv/delete', isAdminRole, function(req, res) {
 });
 
 /**
+* @apiVersion 17.1.0
 * @api {post} /volumes/tpv/extend Extend a TPV
 * @apiName ExtendTPV
 * @apiGroup volumes
-* @apiDescription Increase the virtual size of a Thin-Provisioned Volume.
-* The new size must be larger than the current size.
-* @apiBody {string} tpvId TPV ID to extend.
-* @apiBody {number} newSizeGB New virtual size in GB.
+* @apiDescription Increase the virtual size of a Thin-Provisioned Volume. The new size must be larger than the current size.
+* @apiBody {string} tpvId TPV `ID` to extend.
+* @apiBody {number} newSizeGB New virtual size in GiB. Must be greater than the current virtual size.
+* @apiExample {object} Payload example
+* { "tpvId": "myTPV", "newSizeGB": 200 }
+* @apiSuccess {object[]} results Success statuses.
+* @apiSuccessExample Example data on success
+* [{ "_id": "myTPV", "uuid": "...", "success": true, "error": null }]
 */
 router.post('/tpv/extend', isAdminRole, function(req, res) {
 	let { tpvId, newSizeGB } = req.body;
@@ -1028,6 +1064,104 @@ router.post('/tpv/extend', isAdminRole, function(req, res) {
 		cb => volumeModule.extendTPV({ tpvId, newSizeGB }, user, m => cb([m])),
 		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Volume.ID, Entities.Volume.UUID)))
 	);
+});
+
+// --- Offline compaction (TPV_Trimming.md Step 4) ---
+
+/**
+* @apiVersion 17.1.0
+* @api {post} /volumes/tpv/compact Start or abort TPV compaction
+* @apiName CompactTPV
+* @apiGroup volumes
+* @apiDescription Start an offline compaction job for a Thin-Provisioned Volume to reclaim unused extents,
+* or abort a running compaction job. Compaction requires the TPV to be detached or attached to the specified client only.
+* @apiBody {string} tpvId TPV `ID` to compact.
+* @apiBody {boolean} [abort=false] When `true`, abort the running compaction job for this TPV.
+* @apiBody {string} [client] Client `ID` that will perform the compaction I/O. Required when the TPV is attached.
+* @apiBody {string} [aggressiveness] Compaction aggressiveness level.
+* <small><i>Options: `low`, `medium` (default), `high`</i></small>
+* @apiExample {object} Start compaction
+* { "tpvId": "myTPV", "client": "nvme1.acme.com", "aggressiveness": "medium" }
+* @apiExample {object} Abort compaction
+* { "tpvId": "myTPV", "abort": true }
+* @apiSuccessExample {object} Started (HTTP 202)
+* { "jobId": "myTPV", "state": "running", "tpvId": "myTPV" }
+* @apiSuccessExample {object} Aborted (HTTP 200)
+* { "ok": true }
+*/
+router.post('/tpv/compact', isAdminRole, function(req, res) {
+	let body = req.body || {};
+	let tpvId = body.tpvId;
+	if (!tpvId)
+		return res.status(400).json({ error: 'missing-tpvId' });
+	if (body.abort) {
+		return volumeModule.abortTPVCompaction({
+			tpvId: tpvId,
+			user: req.user,
+		}, function(err) {
+			if (err)
+				return res.status(err.httpStatus || 500).json({ error: err.code || 'internal-error', message: err.message });
+			return res.status(200).json({ ok: true });
+		});
+	}
+	volumeModule.startTPVCompaction({
+		tpvId: tpvId,
+		client: body.client,
+		aggressiveness: body.aggressiveness,
+		user: req.user,
+	}, function(err, result) {
+		if (err)
+			return res.status(err.httpStatus || 500).json({ error: err.code || 'internal-error', message: err.message });
+		return res.status(202).json(result);
+	});
+});
+
+/**
+* @apiVersion 17.1.0
+* @api {post} /volumes/tpv/compactShow Get TPV compaction status
+* @apiName CompactShowTPV
+* @apiGroup volumes
+* @apiDescription Get the current compaction job state for a Thin-Provisioned Volume.
+* Returns `{ "state": "idle" }` when no job is running.
+* @apiBody {string} tpvId TPV `ID` to query.
+* @apiExample {object} Payload example
+* { "tpvId": "myTPV" }
+* @apiSuccessExample {object} Job running
+* { "jobId": "myTPV", "state": "running", "tpvId": "myTPV", "aggressiveness": "medium" }
+* @apiSuccessExample {object} No active job
+* { "state": "idle" }
+*/
+router.post('/tpv/compactShow', function(req, res) {
+	let tpvId = (req.body || {}).tpvId;
+	if (!tpvId)
+		return res.status(400).json({ error: 'missing-tpvId' });
+	volumeModule.getTPVCompaction(tpvId, function(err, job) {
+		if (err)
+			return res.status(err.httpStatus || 500).json({ error: err.code || 'internal-error', message: err.message });
+		if (!job)
+			return res.json({ state: 'idle' });
+		return res.json(job);
+	});
+});
+
+/**
+* @apiVersion 17.1.0
+* @api {get} /volumes/compactionJobs List compaction jobs
+* @apiName ListCompactionJobs
+* @apiGroup volumes
+* @apiDescription List all TPV compaction jobs, optionally filtered by state.
+* @apiParam {string} [state] Filter by job state (e.g. `running`).
+* @apiParamExample Example request
+* /volumes/compactionJobs?state=running
+* @apiSuccessExample {object[]} Example data on success
+* [{ "jobId": "myTPV", "state": "running", "tpvId": "myTPV", "aggressiveness": "medium" }]
+*/
+router.get('/compactionJobs', function(req, res) {
+	volumeModule.listTPVCompactionJobs({ state: req.query.state }, function(err, jobs) {
+		if (err)
+			return res.status(500).json({ error: 'internal-error', message: err.message });
+		return res.json(jobs || []);
+	});
 });
 
 /**

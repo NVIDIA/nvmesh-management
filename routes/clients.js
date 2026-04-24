@@ -256,7 +256,7 @@ router.post('/delete', isAdminRole, function(req, res) {
 router.get('/count', getCountEntitiesHandler('client'));
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.1.0
 * @api {post} /clients/attach Attach Volumes
 * @apiName AttachVolumes
 * @apiGroup clients
@@ -278,7 +278,8 @@ router.get('/count', getCountEntitiesHandler('client'));
 * @apiParam {string} [attach.volumes.emulation.mode] The `emulation` mode of the `volume`, available only for UM clients.
 * @apiParam {string} [attach.volumes.referenceID] The `referenceID` of the `volume`, used in a multi-attach mode.
 * <small><i>Available options are: `NONE` (default), `STATIC` or `HOTPLUG`</i></small>
-* @apiParamExample {string} Payload example
+* @apiBody {boolean} [attach.adminManualOperation=false] When `true`, marks this as an admin-initiated manual operation in the audit log.
+* @apiExample {string} Payload example
 * {
 * 	"client": "nvme21.acme.com",
 * 	"clientUUID": "f02abf10-6bfb-11ed-a62f-d1b4ca08eef3",
@@ -307,17 +308,25 @@ router.get('/count', getCountEntitiesHandler('client'));
 */
 
 /**
- * Per-client CDV preempt admin endpoint (TPV_PerClientCDVPreemption.md §2.10
- * Step 16). Forcibly evicts a client from a CDV: raises admission_floor on
- * every TOMA, terminates the client's reg_ctx on every CDV segment, clears
- * tpvConfig.exclusiveClient on every TPV the client held on this CDV, and
- * removes the (client, CDV) attachment from Mongo.
- *
- * Body-based POST (not path-parameterized) so the CLI layer can template
- * the payload via Jinja — CLI route fields are not rendered.
- *
- * Body: { clientID: string, cdvID: string, reason: string }
- */
+* @apiVersion 17.1.0
+* @api {post} /clients/preemptFromCDV Preempt client from CDV
+* @apiName PreemptClientFromCDV
+* @apiGroup clients
+* @apiDescription Forcibly evict a client from a Capacity Data Volume (CDV).
+* This raises the admission floor on every TOMA, terminates the client's registration context on every CDV segment,
+* clears `tpvConfig.exclusiveClient` on every TPV the client held on this CDV,
+* and removes the client-CDV attachment record from the database.
+* Use this as a recovery action when a client holding TPVs on a CDV is unresponsive.
+*
+* @apiBody {string} clientID The `ID` of the client to evict.
+* @apiBody {string} cdvID The `_id` of the CDV from which the client should be evicted.
+* @apiBody {string} [reason] Human-readable reason for the preempt (written to the audit log).
+* @apiExample {object} Payload example
+* { "clientID": "nvme21.acme.com", "cdvID": "myBackingCDV", "reason": "node maintenance" }
+* @apiSuccess {object[]} results Success statuses.
+* @apiSuccessExample Example data on success
+* [{ "_id": "nvme21.acme.com", "success": true, "error": null }]
+*/
 router.post('/preemptFromCDV', isAdminRole, (req, res) => {
 	const { clientID, cdvID, reason } = req.body || {};
 
@@ -389,22 +398,22 @@ router.post('/attach', isAdminRole, (req, res) => {
 
 
 /**
-* @apiVersion 1.0.0
+* @apiVersion 17.1.0
 * @api {post} /clients/detach Detach Volumes
 * @apiName DetachVolumes
 * @apiGroup clients
 * @apiDescription Detach `volumes` from a `client`
 *
-* @apiParam {object} detach detach `volumes` from a `client`
-* @apiParam {string} detach.client `client ID` to update
-* @apiParam {string} detach.clientUUID `client UUID` to update
-* @apiParam {object[]} detach.volumes Array of `volumes`
-* @apiParam {string} detach.volumes.name `volume ID` to `detach`
-* @apiParam {string} detach.volumes.uuid `volume UUID` to `detach`
-* @apiParam {boolean} [detach.volumes.force] force `detach`
-* @apiParam {string} [detach.volumes.referenceID] The `referenceID` of the `volume`, used in a multi-attach mode.
-
-* @apiParamExample {string} Payload example
+* @apiBody {object} detach detach `volumes` from a `client`
+* @apiBody {string} detach.client `client ID` to update
+* @apiBody {string} detach.clientUUID `client UUID` to update
+* @apiBody {object[]} detach.volumes Array of `volumes`
+* @apiBody {string} detach.volumes.name `volume ID` to `detach`
+* @apiBody {string} detach.volumes.uuid `volume UUID` to `detach`
+* @apiBody {boolean} [detach.volumes.force] force `detach`
+* @apiBody {string} [detach.volumes.referenceID] The `referenceID` of the `volume`, used in a multi-attach mode.
+* @apiBody {boolean} [detach.adminManualOperation=false] When `true`, marks this as an admin-initiated manual operation in the audit log.
+* @apiExample {string} Payload example
 * {
 * 	"client": "nvme21.acme.com",
 * 	"clientUUID": "f02abf10-6bfb-11ed-a62f-d1b4ca08eef3",

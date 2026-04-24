@@ -25,4 +25,7 @@ router.get('/tpv', function(req, res) {
 	res.render('react', renderData);
 });
 
+// Offline-compaction REST endpoints live under /volumes/... to match the
+// URL the CLI constructs (TPV entity.route = "volumes").  See routes/volumes.js.
+
 module.exports = router;
