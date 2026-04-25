@@ -69,6 +69,20 @@ exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 		preparedPayload['isCompaction'] = payload.isCompaction || false;
 		preparedPayload['compactionAggressiveness'] = payload.compactionAggressiveness || 0;
 
+		// Online compaction (TPV_Trimming.md Step 5, Phase D).  Per-TPV
+		// knobs pulled out of tpvConfig so the CM codec sees them as
+		// flat fields matching clnt_scheme.json.  Defaults here match
+		// the CM scheme's WithDefaultCodec defaults, so an old management
+		// that never sets these still produces today's kernel behavior
+		// (module params tpv_online_arm_high_pct/tpv_online_arm_low_pct).
+		const tpvCfg = payload.tpvConfig || {};
+		preparedPayload['onlineCompactionEnabled'] =
+			tpvCfg.onlineCompactionEnabled === false ? 0 : 1;
+		preparedPayload['onlineCompactionArmHighPct'] =
+			Number.isInteger(tpvCfg.onlineCompactionArmHighPct) ? tpvCfg.onlineCompactionArmHighPct : 30;
+		preparedPayload['onlineCompactionArmLowPct'] =
+			Number.isInteger(tpvCfg.onlineCompactionArmLowPct) ? tpvCfg.onlineCompactionArmLowPct : 15;
+
 		preparedPayload['chunks'] = payload.chunks.map(c => ({
 			uuid: c.uuid,
 			vlbs: c.vlbs,

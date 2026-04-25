@@ -76,6 +76,13 @@ const tpvConfigScheme = {
 		metaVirtualSizeGB: { type: ['integer', 'null'], default: null },
 		exclusiveClient: { type: ['string', 'null'], default: null },
 		exclusiveClientUUID: { type: ['string', 'null'], default: null },
+		// Online-compaction knobs (TPV_Trimming.md Phase D). Range and
+		// armLow < armHigh ordering are enforced in modules/volume.js
+		// (resolveOnlineCompactionConfig); kept loose here to surface a
+		// clean validation error rather than a generic AJV message.
+		onlineCompactionEnabled: { type: 'boolean' },
+		onlineCompactionArmHighPct: { type: 'integer' },
+		onlineCompactionArmLowPct: { type: 'integer' },
 	},
 };
 

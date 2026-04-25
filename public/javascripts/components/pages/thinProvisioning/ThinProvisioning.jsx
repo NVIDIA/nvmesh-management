@@ -150,6 +150,20 @@ const ThinProvisioning = () => {
 			},
 		},
 		{
+			name: 'Online Compaction',
+			field: 'tpvConfig.onlineCompactionEnabled',
+			filterable: false,
+			className: 'fixed-size-column sx-column',
+			rowClassName: 'fixed-size-column',
+			value: tpvRow => {
+				const cfg = tpvRow.tpvConfig;
+				if (!cfg?.onlineCompactionEnabled) return 'Off';
+				const low = cfg.onlineCompactionArmLowPct ?? '?';
+				const high = cfg.onlineCompactionArmHighPct ?? '?';
+				return `On ${low}-${high}%`;
+			},
+		},
+		{
 			name: 'Client',
 			field: 'tpvConfig.exclusiveClient',
 			placeholder: 'Search by Client',

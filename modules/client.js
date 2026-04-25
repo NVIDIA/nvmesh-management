@@ -2495,6 +2495,25 @@ scope.getClientConfigurationByVolumes = function(volumeReservationResult, cb, cl
 			});
 		}
 
+		// Denormalize per-TPV online-compaction knobs from tpvConfig onto
+		// the top-level volume dict.  AttachVolumes / UpdateVolumes set
+		// payload = confObj directly (no VolumeMessage.preparePayload), so
+		// the CM codec encodes from these volume dicts and clnt_scheme.json
+		// expects the fields at the top level (matching the kernel struct
+		// nvmeibc_volume_conf).  Without this, the codec falls back to
+		// WithDefaultCodec defaults (enabled=1, armHigh=30, armLow=15)
+		// regardless of what is stored on the TPV.
+		results.forEach(v => {
+			if (v.volumeClass === consts.volumeClass.TPV && v.tpvConfig) {
+				if (v.tpvConfig.onlineCompactionEnabled !== undefined)
+					v.onlineCompactionEnabled = v.tpvConfig.onlineCompactionEnabled ? 1 : 0;
+				if (Number.isInteger(v.tpvConfig.onlineCompactionArmHighPct))
+					v.onlineCompactionArmHighPct = v.tpvConfig.onlineCompactionArmHighPct;
+				if (Number.isInteger(v.tpvConfig.onlineCompactionArmLowPct))
+					v.onlineCompactionArmLowPct = v.tpvConfig.onlineCompactionArmLowPct;
+			}
+		});
+
 		volumesTimer.stop();
 		executionTimer.stop();
 		cb(errors.length ? errors : null, results.length ? { volumes: results } : null);
@@ -3927,7 +3946,7 @@ scope.attachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 					attachingVolumes.forEach(attachingVolume => {
 						const volumeName = attachingVolume.name;
 						const volumeUUID = attachingVolume.uuid;
-						let originalAttachment = dbClient.attachments[volumeUUID];
+						let originalAttachment = dbClient.attachments[volumeUUID] || {};
 
 						attachingVolume.version = originalAttachment.version ? originalAttachment.version + 1 : 1;
 						attachingVolume.attachmentsVersionRef = dbClient.attachmentsVersion;

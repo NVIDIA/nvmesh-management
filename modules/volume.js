@@ -3759,6 +3759,28 @@ function allocateAndSliceIntoVolumes(slices, user, cb) {
 // TPV_L1_HEADER_BYTES are defined alongside annotateCDVsWithOverprovisionRatio
 // above.
 // ─────────────────────────────────────────────────────────────────────────────
+// TPV Phase D: normalize + validate per-TPV online-compaction knobs.
+// Returns { enabled, armHighPct, armLowPct, error? }.  Defaults mirror the
+// kernel module params (tpv_online_arm_high_pct=30, tpv_online_arm_low_pct=15).
+// The CM codec has matching defaults, so omitting fields here is safe.
+scope.DEFAULT_ONLINE_COMPACTION = { enabled: true, armHighPct: 30, armLowPct: 15 };
+scope.resolveOnlineCompactionConfig = function(tpvConfig) {
+	const out = { ...scope.DEFAULT_ONLINE_COMPACTION };
+	if (tpvConfig.onlineCompactionEnabled !== undefined)
+		out.enabled = !!tpvConfig.onlineCompactionEnabled;
+	if (tpvConfig.onlineCompactionArmHighPct !== undefined)
+		out.armHighPct = tpvConfig.onlineCompactionArmHighPct;
+	if (tpvConfig.onlineCompactionArmLowPct !== undefined)
+		out.armLowPct = tpvConfig.onlineCompactionArmLowPct;
+	if (!Number.isInteger(out.armHighPct) || out.armHighPct < 1 || out.armHighPct > 100)
+		return { ...out, error: `onlineCompactionArmHighPct must be an integer in [1, 100] (got ${tpvConfig.onlineCompactionArmHighPct})` };
+	if (!Number.isInteger(out.armLowPct) || out.armLowPct < 0 || out.armLowPct > 99)
+		return { ...out, error: `onlineCompactionArmLowPct must be an integer in [0, 99] (got ${tpvConfig.onlineCompactionArmLowPct})` };
+	if (out.armLowPct >= out.armHighPct)
+		return { ...out, error: `onlineCompactionArmLowPct (${out.armLowPct}) must be strictly less than onlineCompactionArmHighPct (${out.armHighPct})` };
+	return out;
+};
+
 scope.computeMetaVirtualSizeGB = function(virtualSizeGB, tpvExtentSizeKB, metaTpvExtentSizeKB) {
 	const numVirtExtents = Math.ceil((virtualSizeGB * 1024 * 1024) / tpvExtentSizeKB);
 	const rawL2Bytes = numVirtExtents * TPV_TREE_ENTRY_BYTES;
@@ -3785,6 +3807,8 @@ function createTPV(volume, user, cb) {
 	const isSplitMode = !!metaCdvId;
 	var metaVirtualSizeGB = null;
 
+	const onlineCompaction = scope.resolveOnlineCompactionConfig(volume.tpvConfig || {});
+
 	const fail = (info) => {
 		message = new SystemAdminMessage(systemMessages.VOLUME_SAVE_FAILED)
 			.addInfo(Entities.Volume.name, volume.name)
@@ -3801,6 +3825,11 @@ function createTPV(volume, user, cb) {
 			fail('metaCdvId and cdvId must differ — for a single-CDV TPV, omit metaCdvId');
 			return cb(message);
 		}
+	}
+
+	if (onlineCompaction.error) {
+		fail(onlineCompaction.error);
+		return cb(message);
 	}
 
 	async.series([
@@ -3939,6 +3968,9 @@ function createTPV(volume, user, cb) {
 					metaVirtualSizeGB: isSplitMode ? metaVirtualSizeGB : null,
 					exclusiveClient: null,
 					exclusiveClientUUID: null,
+					onlineCompactionEnabled: onlineCompaction.enabled,
+					onlineCompactionArmHighPct: onlineCompaction.armHighPct,
+					onlineCompactionArmLowPct: onlineCompaction.armLowPct,
 				},
 				isEncrypted: isEncrypted,
 				...(isEncrypted && {
@@ -4032,32 +4064,108 @@ function updateCDV(updateObj, user, cb) {
 scope.updateTPV = (updateObj, user, cb) => {
 	var db = app.get('db');
 	var volumeCollection = db.collection('volume');
-	var $set = {};
 
-	// Mutable: description
-	// volumeClass and tpvConfig.cdvId are immutable — ignored if present
-	if ('description' in updateObj)
-		$set.description = updateObj.description;
+	// Mutable: description, online compaction knobs.
+	// volumeClass, tpvConfig.cdvId, tpvConfig.tpvExtentSizeKB, virtualSizeGB,
+	// and all split-mode meta fields are immutable (ignored if present).
+	// Online-compaction changes are hot-applied to a currently-attached client
+	// via UpdateVolumes Kafka push (see below); the kernel reads the new
+	// thresholds in nvmeibc_tpv_online_compaction_config.
+	const touchedOnline = updateObj.tpvConfig && (
+		'onlineCompactionEnabled' in updateObj.tpvConfig
+			|| 'onlineCompactionArmHighPct' in updateObj.tpvConfig
+			|| 'onlineCompactionArmLowPct' in updateObj.tpvConfig
+	);
 
-	$set.modifiedBy = user.email;
-	$set.dateModified = new Date();
+	const buildAndApplyUpdate = (currentDoc) => {
+		var $set = {};
 
-	volumeCollection.findOneAndUpdate(
+		if ('description' in updateObj)
+			$set.description = updateObj.description;
+
+		if (touchedOnline) {
+			// Partial updates: merge the incoming fields onto the
+			// currently-stored tpvConfig so the invariant check
+			// (armLow < armHigh) sees the post-update state, not just
+			// the sent fields blended with default fallbacks.  Without
+			// this, `tpv update --arm-high 20` on a TPV with stored
+			// armLow=25 would silently pass validation against the
+			// default armLow=15 and leave the DB invariant-broken.
+			const storedCfg = (currentDoc && currentDoc.tpvConfig) || {};
+			const merged = {
+				onlineCompactionEnabled: 'onlineCompactionEnabled' in updateObj.tpvConfig
+					? updateObj.tpvConfig.onlineCompactionEnabled
+					: storedCfg.onlineCompactionEnabled,
+				onlineCompactionArmHighPct: 'onlineCompactionArmHighPct' in updateObj.tpvConfig
+					? updateObj.tpvConfig.onlineCompactionArmHighPct
+					: storedCfg.onlineCompactionArmHighPct,
+				onlineCompactionArmLowPct: 'onlineCompactionArmLowPct' in updateObj.tpvConfig
+					? updateObj.tpvConfig.onlineCompactionArmLowPct
+					: storedCfg.onlineCompactionArmLowPct,
+			};
+			const resolved = scope.resolveOnlineCompactionConfig(merged);
+			if (resolved.error) {
+				return cb(new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+					.addInfo(Entities.Volume.ID, updateObj._id)
+					.addInfo(Entities.Error, resolved.error));
+			}
+			// $set only the fields the caller actually sent, to avoid
+			// rewriting stored-default values on every partial update.
+			if ('onlineCompactionEnabled' in updateObj.tpvConfig)
+				$set['tpvConfig.onlineCompactionEnabled'] = resolved.enabled;
+			if ('onlineCompactionArmHighPct' in updateObj.tpvConfig)
+				$set['tpvConfig.onlineCompactionArmHighPct'] = resolved.armHighPct;
+			if ('onlineCompactionArmLowPct' in updateObj.tpvConfig)
+				$set['tpvConfig.onlineCompactionArmLowPct'] = resolved.armLowPct;
+		}
+
+		$set.modifiedBy = user.email;
+		$set.dateModified = new Date();
+
+		volumeCollection.findOneAndUpdate(
+			{ _id: updateObj._id, volumeClass: consts.volumeClass.TPV },
+			{ $set },
+			{ returnDocument: consts.mongoReturnDocument.AFTER },
+			(err, result) => {
+				if (err || !result) {
+					const message = new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+						.addInfo(Entities.Volume.ID, updateObj._id);
+					if (err)
+						message.addInfo(Entities.Error, new MongoError(err).log());
+					return cb(message);
+				}
+				const respond = () => cb(new SystemAdminMessage(systemMessages.VOLUME_UPDATED)
+					.addInfo(Entities.Volume.ID, updateObj._id));
+
+				// Hot-apply online-compaction changes to a currently-attached
+				// client via the standard UpdateVolumes Kafka path. extendTPV
+				// uses the same mechanism (see modules/volume.js extendTPV).
+				if (touchedOnline && result.tpvConfig && result.tpvConfig.exclusiveClient) {
+					const clientModule = require('./client');
+					clientModule.sendUpdateVolumesToClient(result, respond);
+				} else {
+					respond();
+				}
+			}
+		);
+	};
+
+	// Skip the pre-fetch when no invariant-bearing fields are touched.
+	if (!touchedOnline)
+		return buildAndApplyUpdate(null);
+
+	volumeCollection.findOne(
 		{ _id: updateObj._id, volumeClass: consts.volumeClass.TPV },
-		{ $set },
-		{ returnDocument: consts.mongoReturnDocument.AFTER },
-		(err, result) => {
-			var message;
-			if (err || !result) {
-				message = new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
+		{ projection: { tpvConfig: 1 } },
+		(err, doc) => {
+			if (err || !doc) {
+				const msg = new SystemAdminMessage(systemMessages.VOLUME_FAILED_TO_UPDATE)
 					.addInfo(Entities.Volume.ID, updateObj._id);
 				if (err)
-					message.addInfo(Entities.Error, new MongoError(err).log());
-			} else {
-				message = new SystemAdminMessage(systemMessages.VOLUME_UPDATED)
-					.addInfo(Entities.Volume.ID, updateObj._id);
+					msg.addInfo(Entities.Error, new MongoError(err).log());
+				return cb(msg);
 			}
-			cb(message);
+			buildAndApplyUpdate(doc);
 		}
 	);
 };

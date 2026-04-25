@@ -998,15 +998,18 @@ router.post('/delete', isAdminRole, function(req, res) {
 * [{ "_id": "myTPV", "uuid": "...", "success": true, "error": null }]
 */
 router.post('/tpv/update', isAdminRole, function(req, res) {
-	let updateObj = req.body;
+	// Accept either a single update object or an array (CLI sends array,
+	// matching the convention of /volumes/update).
+	let updateObjs = Array.isArray(req.body) ? req.body : [req.body];
 	let user = req.user;
 
-	let incomingRequestSystemAdminMessages = [createAuditRequestLog(req, systemMessages.VOLUME_UPDATE_REQUEST)
-		.addInfo(Entities.Volume.ID, updateObj._id)];
+	let incomingRequestSystemAdminMessages = updateObjs.map(updateObj =>
+		createAuditRequestLog(req, systemMessages.VOLUME_UPDATE_REQUEST)
+			.addInfo(Entities.Volume.ID, updateObj._id));
 
 	utils.handleRESTAndLog(
 		incomingRequestSystemAdminMessages,
-		cb => volumeModule.updateTPV(updateObj, user, m => cb([m])),
+		cb => async.map(updateObjs, (updateObj, next) => volumeModule.updateTPV(updateObj, user, m => next(null, m)), (_err, msgs) => cb(msgs)),
 		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Volume.ID, Entities.Volume.UUID)))
 	);
 });

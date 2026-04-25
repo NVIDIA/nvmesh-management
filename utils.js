@@ -5787,7 +5787,14 @@ scope.volumeProjection = {
 	'chunks.pRaids.diskSegments.diskID': 1,
 	'chunks.pRaids.diskSegments.nodeUUID': 1,
 	'chunks.pRaids.diskSegments.node_id': 1,
-	'volumeClass': 1
+	'volumeClass': 1,
+	// tpvConfig carries per-TPV online-compaction knobs that
+	// VolumeMessage.preparePayload reads to populate the kernel attach
+	// payload (onlineCompactionEnabled / ArmHighPct / ArmLowPct). Without
+	// these projected fields the payload falls back to CM-codec defaults.
+	'tpvConfig.onlineCompactionEnabled': 1,
+	'tpvConfig.onlineCompactionArmHighPct': 1,
+	'tpvConfig.onlineCompactionArmLowPct': 1
 };
 
 function createErrorsForMissingVolumes(requestVolumes, volumes, snapshots, mdVolumes) {

@@ -75,6 +75,13 @@ const CreateTPVModal = ({
 			tpvConfig.metaTpvExtentSizeKB = Number(data.metaTpvExtentSizeKB);
 		}
 
+		// Online-compaction knobs (TPV_Trimming.md Step 5, Phase D).
+		// Editable on both create and update; management validates ranges
+		// and defaults when omitted.
+		tpvConfig.onlineCompactionEnabled = !!data.onlineCompactionEnabled;
+		tpvConfig.onlineCompactionArmHighPct = Number(data.onlineCompactionArmHighPct);
+		tpvConfig.onlineCompactionArmLowPct = Number(data.onlineCompactionArmLowPct);
+
 		const payload = {
 			name: data.name,
 			description: data.description || '',
@@ -328,6 +335,69 @@ const CreateTPVModal = ({
 								/>
 							</FormControl>
 						)}
+
+						<FormControl
+							name="onlineCompactionEnabled"
+							label="Online Compaction"
+							topHint={<i className="text-muted">
+								Runs while the TPV is attached; reclaims wasted CDV capacity as the
+								guest trims/discards. Disarms when wastage drops below the low
+								threshold. Changes take effect on next attach.
+							</i>}
+						>
+							<label className="checkbox-inline">
+								<input
+									type="checkbox"
+									defaultChecked={tpv.tpvConfig?.onlineCompactionEnabled !== false}
+									{...register('onlineCompactionEnabled')}
+								/>
+								{' '}Enable online compaction
+							</label>
+						</FormControl>
+
+						<FormControl
+							name="onlineCompactionArmHighPct"
+							label="Arm at wastage (%)"
+							errorMessage={formState.errors?.onlineCompactionArmHighPct?.message}
+						>
+							<Input
+								name="onlineCompactionArmHighPct"
+								type="number"
+								className="form-control"
+								placeholder="30"
+								{...register('onlineCompactionArmHighPct', {
+									value: tpv.tpvConfig?.onlineCompactionArmHighPct ?? 30,
+									min: { value: 1, message: 'Must be at least 1' },
+									max: { value: 100, message: 'Must be at most 100' },
+									valueAsNumber: true,
+								})}
+							/>
+						</FormControl>
+
+						<FormControl
+							name="onlineCompactionArmLowPct"
+							label="Disarm at wastage (%)"
+							errorMessage={formState.errors?.onlineCompactionArmLowPct?.message}
+						>
+							<Input
+								name="onlineCompactionArmLowPct"
+								type="number"
+								className="form-control"
+								placeholder="15"
+								{...register('onlineCompactionArmLowPct', {
+									value: tpv.tpvConfig?.onlineCompactionArmLowPct ?? 15,
+									min: { value: 0, message: 'Must be at least 0' },
+									max: { value: 99, message: 'Must be at most 99' },
+									valueAsNumber: true,
+									validate: v => {
+										const high = Number(watch('onlineCompactionArmHighPct'));
+										if (Number.isFinite(high) && v >= high)
+											return 'Disarm threshold must be strictly less than arm threshold';
+										return true;
+									},
+								})}
+							/>
+						</FormControl>
 
 						<FormControl name="isEncrypted" label="Encryption">
 							<label className="checkbox-inline">
