@@ -100,6 +100,13 @@ exports.generateTarget = function(nodeID, numOfDisks, numOfNics) {
 	return target;
 };
 
+exports.generateLeaderTarget = function(nodeID) {
+	let target = exports.generateTarget(nodeID);
+	target.leaderToken = 1;
+	target.raftTerm = 1;
+	return target;
+};
+
 
 exports.generateDisk = function(nodeID, nodeUUID, i) {
 	// Serial will be in the following format:

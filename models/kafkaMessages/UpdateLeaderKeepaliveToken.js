@@ -7,11 +7,12 @@ const { kafkaMessageTypes } = require('../../consts');
 var { KafkaMessage } = require('./KafkaMessage');
 
 exports.UpdateLeaderKeepaliveToken = class UpdateLeaderKeepaliveToken extends KafkaMessage {
-	constructor(token, keepaliveInterval, type = kafkaMessageTypes.ManagementToTOMA.updateLeaderKeepaliveToken, version = 1) {
+	constructor(token, keepaliveInterval, updatePRaidToken, type = kafkaMessageTypes.ManagementToTOMA.updateLeaderKeepaliveToken, version = 1) {
 		super(type, version);
 
 		this.token = token;
 		this.keepaliveInterval = keepaliveInterval;
+		this.updatePRaidToken = updatePRaidToken;
 	}
 
 	toJSON() {
@@ -19,7 +20,8 @@ exports.UpdateLeaderKeepaliveToken = class UpdateLeaderKeepaliveToken extends Ka
 
 		json['payload'] = {
 			token: this.token,
-			keepaliveInterval: this.keepaliveInterval
+			keepaliveInterval: this.keepaliveInterval,
+			updatePRaidToken: this.updatePRaidToken
 		};
 
 		return json;

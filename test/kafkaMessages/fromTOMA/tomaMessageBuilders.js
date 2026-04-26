@@ -7,6 +7,7 @@
 
 const { diskSegmentStatuses, segmentVitality } = require('../../../consts');
 const { KafkaMessageBuilder } = require('../kafkaMessageBuilder');
+const { LeaderKeepAlive } = require('./LeaderKeepAlive');
 const { ReportTarget } = require('./ReportTarget');
 const { TomaKeepAlive } = require('./TomaKeepAlive');
 const { updatePRaidReport: UpdatePRaidReport } = require('./updatePRaidReport');
@@ -27,7 +28,7 @@ exports.TomaMessageBuilder = class TomaMessageBuilder extends KafkaMessageBuilde
 	}
 
 	incMessageSequence() {
-		this.incMessageSequence += 1;
+		this.msg.messageSequence += 1;
 		return this;
 	}
 
@@ -68,6 +69,73 @@ exports.TomaKeepAliveBuilder = class TomaKeepAliveBuilder extends exports.TomaMe
 	static fromTarget(target) {
 		const builder = new TomaKeepAliveBuilder(target.node_id);
 		builder.updateDataFromTarget(target);
+		builder.setZone(target.zone);
+		return builder;
+	}
+};
+
+exports.LeaderKeepAliveBuilder = class LeaderKeepAliveBuilder extends exports.TomaMessageBuilder {
+	constructor(targetID) {
+		const rawMsg = {
+			hostname: targetID,
+			leaderToken: 1,
+			keepaliveInterval: app.get('globalSettings').keepaliveIntervals.TOMA_LEADER,
+			payload: {
+				zone: '-1',
+				raftTerm: 1,
+			}
+		};
+
+		super(new LeaderKeepAlive(rawMsg));
+	}
+
+	setLeaderToken(value) {
+		this.msg.leaderToken = value;
+		return this;
+	}
+
+	setKeepaliveInterval(value) {
+		this.msg.keepaliveInterval = value;
+		return this;
+	}
+
+	setZone(newZone) {
+		this.msg.payload.zone = newZone;
+	}
+
+	setRaftTerm(value) {
+		this.msg.payload.raftTerm = value;
+		return this;
+	}
+
+	setUpdatePRaidToken(value) {
+		this.msg.updatePRaidToken = value;
+		return this;
+	}
+
+	setRaftMembers(value) {
+		this.msg.payload.raftMembers = value;
+		return this;
+	}
+
+	setIsReconciled(value) {
+		this.msg.payload.isReconciled = value;
+		return this;
+	}
+
+	updateDataFromTarget(target) {
+		super.updateDataFromTarget(target);
+		if (target.raftTerm !== undefined)
+			this.msg.payload.raftTerm = target.raftTerm;
+		this.msg.updatePRaidToken = target.updatePRaidToken;
+		this.msg.payload.raftMembers = target.raftMembers;
+		this.msg.payload.isReconciled = target.isReconciled;
+	}
+
+	static fromTarget(target) {
+		const builder = new LeaderKeepAliveBuilder(target.node_id);
+		builder.updateDataFromTarget(target);
+		builder.setLeaderToken(target.leaderToken);
 		builder.setZone(target.zone);
 		return builder;
 	}

@@ -8,18 +8,19 @@
 const assert = require('assert');
 
 const dbManager = require('./testUtils/dbManager.js');
+const { setup, SetupOptions } = require('./testUtils/setup.js');
 const targetModule = require('../modules/target.js');
 const consts = require('../consts.js');
 const diskModule = require('../modules/disk.js');
 const lockUtils = require('./testUtils/lockUtils.js');
-const { setup, SetupOptions } = require('./testUtils/setup.js');
-const { generateTarget } = require('./testUtils/entityGenerators.js');
+const { setSettingsParam } = require('./testUtils/settingsUtils.js');
+const { generateTarget, generateLeaderTarget } = require('./testUtils/entityGenerators.js');
 const { reportAllSegmentsOnline } = require('./testUtils/volumeUtils.js');
 const { VolumeConcatenated, VolumeRAID1, VolumeEC, VolumeRAID1With2Mirrors, VolumeRAID1With2MirrorsMinimal } = require('./models/volume.js');
 const { TargetClass } = require('./models/targetClass.js');
 const systemMessages = require('../systemMessages.js');
 const { getOrCreateQueue } = require('./testUtils/mockKafkaModule.js');
-const { getIncrementalTargetUpdatesTopic } = require('../modules/kafka.js');
+const { getIncrementalTargetUpdatesTopic, getIncrementalUpdatesTopic } = require('../modules/kafka.js');
 
 const ZONE_1 = '1';
 
@@ -937,6 +938,224 @@ describe('Targets', function() {
 			it('should not alert when protectionLevel is Ignore', async function() {
 				await relocateAndExpectNoViolation(0, 1);
 			});
+		});
+	});
+
+
+	describe('#handleLeaderKeepAlive', () => {
+		const leaderNodeID = 'leader-1';
+		let leaderTarget = generateLeaderTarget(leaderNodeID);
+		let configurationVersionCollection;
+		let leaderIncrementalUpdatesTopic;
+
+		before(async() => {
+			await setupEnvironment();
+			leaderTarget = await leaderTarget.save().then(t => t.setZone(ZONE_1));
+
+			configurationVersionCollection = app.get('db').collection('configurationVersion');
+			leaderIncrementalUpdatesTopic = await new Promise(resolve => getIncrementalUpdatesTopic(ZONE_1, resolve));
+			// drain any messages produced during setup so the queue is clean for our assertions
+			getOrCreateQueue(leaderIncrementalUpdatesTopic).clear();
+		});
+
+		it('should save the first leader keepalive without sending UpdateLeaderKeepaliveToken', async() => {
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.leaderToken, leaderTarget.leaderToken);
+			assert.strictEqual(dbZone.kafkaMessageSequence, leaderTarget.messageSequence);
+			assert.strictEqual(dbZone.raftTerm, leaderTarget.raftTerm);
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			assert.strictEqual(queue.q.length, 0,
+				'expected no UpdateLeaderKeepaliveToken when keepaliveInterval matches configured value');
+		});
+
+		it('should send UpdateLeaderKeepaliveToken when keepaliveInterval differs from the configured value', async() => {
+			const oldInterval = app.get('globalSettings').keepaliveIntervals.TOMA_LEADER;
+			const newInterval = oldInterval + 5;
+
+			const updatedIntervals = Object.assign({}, app.get('globalSettings').keepaliveIntervals,
+				{ TOMA_LEADER: newInterval });
+			await setSettingsParam('keepaliveIntervals', updatedIntervals);
+
+			// TOMA still reports the previous interval value, so management should respond with an updated token
+			leaderTarget.messageSequence += 1;
+			await leaderTarget.sendLeaderKeepAlive(oldInterval);
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			const updateMsg = await queue.readMessageOrWait();
+			assert.strictEqual(updateMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateLeaderKeepaliveToken);
+			assert.strictEqual(updateMsg.token, leaderTarget.leaderToken);
+			assert.strictEqual(updateMsg.keepaliveInterval, newInterval);
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.kafkaMessageSequence, leaderTarget.messageSequence);
+			assert.strictEqual(dbZone.raftTerm, leaderTarget.raftTerm);
+			assert.strictEqual(dbZone.stopSendingKeepaliveToken, true);
+		});
+	});
+
+	describe('#handleLeaderKeepAlive #updatePRaidToken', () => {
+		const leaderNodeID = 'leader-praid-1';
+		let leaderTarget;
+		let configurationVersionCollection;
+		let leaderIncrementalUpdatesTopic;
+
+		const initialRaftMembers = [{ memberID: 'm1', version: '1.0.0' }];
+		const newerRaftMembers = [{ memberID: 'm1', version: '2.0.0' }];
+
+		before(async() => {
+			await setupEnvironment();
+			leaderTarget = await generateLeaderTarget(leaderNodeID).save().then(t => t.setZone(ZONE_1));
+
+			configurationVersionCollection = app.get('db').collection('configurationVersion');
+			leaderIncrementalUpdatesTopic = await new Promise(resolve => getIncrementalUpdatesTopic(ZONE_1, resolve));
+			getOrCreateQueue(leaderIncrementalUpdatesTopic).clear();
+		});
+
+		it('does not store PRaid fields and does not respond when message has no updatePRaidToken (backward compat)', async() => {
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			assert.strictEqual(queue.q.length, 0,
+				'expected no UpdateLeaderKeepaliveToken when keepalive carries no PRaid fields');
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.updatePRaidToken, undefined);
+			assert.strictEqual(dbZone.raftMembers, undefined);
+		});
+
+		it('initializes DB updatePRaidToken to 1 and persists raftMembers when message has updatePRaidToken but DB does not', async() => {
+			leaderTarget.messageSequence += 1;
+			leaderTarget.updatePRaidToken = 5;
+			leaderTarget.raftMembers = initialRaftMembers;
+			leaderTarget.isReconciled = true;
+
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			const updateMsg = await queue.readMessageOrWait();
+			assert.strictEqual(updateMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateLeaderKeepaliveToken);
+			assert.strictEqual(updateMsg.token, leaderTarget.leaderToken);
+			assert.strictEqual(updateMsg.updatePRaidToken, 1);
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.updatePRaidToken, 1);
+			assert.deepStrictEqual(dbZone.raftMembers, initialRaftMembers);
+			assert.strictEqual(dbZone.isReconciled, true);
+		});
+
+		it('does not send UpdateLeaderKeepaliveToken when updatePRaidToken matches DB and isReconciled=false', async() => {
+			leaderTarget.messageSequence += 1;
+			leaderTarget.updatePRaidToken = 1;
+			leaderTarget.isReconciled = false;
+			leaderTarget.raftMembers = initialRaftMembers;
+
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			assert.strictEqual(queue.q.length, 0,
+				'expected no UpdateLeaderKeepaliveToken when token matches and leader is not reconciled');
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.updatePRaidToken, 1);
+			assert.deepStrictEqual(dbZone.raftMembers, initialRaftMembers);
+		});
+
+		it('increments DB updatePRaidToken and persists newer raftMembers when raftMembers version is higher and isReconciled=true', async() => {
+			leaderTarget.messageSequence += 1;
+			leaderTarget.updatePRaidToken = 1;
+			leaderTarget.isReconciled = true;
+			leaderTarget.raftMembers = newerRaftMembers;
+
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			const updateMsg = await queue.readMessageOrWait();
+			assert.strictEqual(updateMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateLeaderKeepaliveToken);
+			assert.strictEqual(updateMsg.updatePRaidToken, 2);
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.updatePRaidToken, 2);
+			assert.deepStrictEqual(dbZone.raftMembers, newerRaftMembers);
+			assert.strictEqual(dbZone.isReconciled, true);
+		});
+
+		it('does not increment DB updatePRaidToken when raftMembers versions match and isReconciled=true', async() => {
+			leaderTarget.messageSequence += 1;
+			leaderTarget.updatePRaidToken = 2;
+			leaderTarget.isReconciled = true;
+			leaderTarget.raftMembers = newerRaftMembers;
+
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			assert.strictEqual(queue.q.length, 0,
+				'expected no UpdateLeaderKeepaliveToken when raftMembers versions match');
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.updatePRaidToken, 2);
+			assert.deepStrictEqual(dbZone.raftMembers, newerRaftMembers);
+		});
+
+		it('sends UpdateLeaderKeepaliveToken with the DB token (without incrementing) when message updatePRaidToken differs from DB', async() => {
+			leaderTarget.messageSequence += 1;
+			leaderTarget.updatePRaidToken = 99;
+			leaderTarget.isReconciled = true;
+			leaderTarget.raftMembers = newerRaftMembers;
+
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			const updateMsg = await queue.readMessageOrWait();
+			assert.strictEqual(updateMsg.updatePRaidToken, 2);
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.updatePRaidToken, 2);
+			assert.strictEqual(dbZone.isReconciled, true);
+		});
+
+		it('keeps DB PRaid state intact and does not respond when message has no updatePRaidToken after the leader previously sent one', async() => {
+			const dbBefore = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+
+			leaderTarget.messageSequence += 1;
+			leaderTarget.updatePRaidToken = undefined;
+
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			assert.strictEqual(queue.q.length, 0,
+				'expected no UpdateLeaderKeepaliveToken when keepalive omits updatePRaidToken');
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.updatePRaidToken, dbBefore.updatePRaidToken);
+			assert.deepStrictEqual(dbZone.raftMembers, dbBefore.raftMembers);
+		});
+
+		it('increments DB updatePRaidToken and persists raftMembers when a new raft member is introduced and isReconciled=true', async() => {
+			const raftMembersWithNewMember = [
+				{ memberID: 'm1', version: '2.0.0' },
+				{ memberID: 'm2', version: '1.0.0' }
+			];
+			const dbBefore = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+
+			leaderTarget.messageSequence += 1;
+			leaderTarget.updatePRaidToken = dbBefore.updatePRaidToken;
+			leaderTarget.isReconciled = true;
+			leaderTarget.raftMembers = raftMembersWithNewMember;
+
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			const updateMsg = await queue.readMessageOrWait();
+			assert.strictEqual(updateMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateLeaderKeepaliveToken);
+			assert.strictEqual(updateMsg.updatePRaidToken, dbBefore.updatePRaidToken + 1);
+
+			const dbZone = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(dbZone.updatePRaidToken, dbBefore.updatePRaidToken + 1);
+			assert.deepStrictEqual(dbZone.raftMembers, raftMembersWithNewMember);
+			assert.strictEqual(dbZone.isReconciled, true);
 		});
 	});
 });

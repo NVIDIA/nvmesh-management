@@ -17,6 +17,7 @@ exports.MessageFromTOMA = class MessageFromTOMA extends KafkaMessage {
 		this.leaderToken = rawMsg.leaderToken;
 		this.messageSequence = rawMsg.messageSequence;
 		this.keepaliveInterval = rawMsg.keepaliveInterval;
+		this.updatePRaidToken = rawMsg.updatePRaidToken;
 
 		return rawMsg.payload;
 	}
@@ -29,6 +30,7 @@ exports.MessageFromTOMA = class MessageFromTOMA extends KafkaMessage {
 		json['leaderToken'] = this.leaderToken;
 		json['messageSequence'] = this.messageSequence;
 		json['keepaliveInterval'] = this.keepaliveInterval;
+		json['updatePRaidToken'] = this.updatePRaidToken;
 		json['payload'] = this.payload;
 
 		return json;

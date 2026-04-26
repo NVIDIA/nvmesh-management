@@ -6771,4 +6771,19 @@ scope.getIPAddress = () => {
 	return '127.0.0.1';
 };
 
+scope.keyBy = (array, keyFn) => {
+	if (!Array.isArray(array)) {
+		throw new TypeError('Expected an array as the first argument');
+	}
+	if (typeof keyFn !== 'function') {
+		throw new TypeError('Expected a function as the second argument');
+	}
+
+	return array.reduce((acc, item) => {
+		const key = keyFn(item);
+		acc[key] = item;
+		return acc;
+	}, {});
+};
+
 module.exports = scope;

@@ -11,7 +11,7 @@ const targetModule = require('../../modules/target.js');
 
 const { Entity } = require('./entity.js');
 const { sendMessageToManagement } = require('../kafkaMessages/sendMessage.js');
-const { ReportTargetBuilder, TomaKeepAliveBuilder } = require('../kafkaMessages/fromTOMA/tomaMessageBuilders.js');
+const { ReportTargetBuilder, TomaKeepAliveBuilder, LeaderKeepAliveBuilder } = require('../kafkaMessages/fromTOMA/tomaMessageBuilders.js');
 const { getIncrementalTargetUpdatesTopic } = require('../../modules/kafka.js');
 const { getOrCreateQueue } = require('../testUtils/mockKafkaModule.js');
 const systemMessages = require('../../systemMessages.js');
@@ -162,6 +162,17 @@ exports.Target = class Target extends Entity {
 		const err = await sendMessageToManagement(msg);
 		if (err)
 			throw new Error(`Failed to send keepalive to management: ${err}`);
+	}
+
+	async sendLeaderKeepAlive(keepaliveInterval) {
+		log.debug(`TOMA sending leader keepalive node_id=${this.node_id} leaderToken=${this.leaderToken} seq=${this.messageSequence}`);
+		const builder = LeaderKeepAliveBuilder.fromTarget(this);
+		if (keepaliveInterval !== undefined)
+			builder.setKeepaliveInterval(keepaliveInterval);
+		const msg = builder.build();
+		const err = await sendMessageToManagement(msg);
+		if (err)
+			throw new Error(`Failed to send leader keepalive to management: ${err}`);
 	}
 
 	async setUUID() {

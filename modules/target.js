@@ -8,7 +8,7 @@
 var async = require('async');
 var uuid = require('uuid');
 var utils = require('../utils.js');
-const { compareVersionRelease } = require('./versionUtils.js');
+const { compareVersionRelease, compareVersions } = require('./versionUtils.js');
 var events = require('../events.js');
 var logger = require('../logger.js');
 var queue = require('../queue.js');
@@ -1071,14 +1071,15 @@ function handleLeaderFeatureCompatibilityVersionChanged(zoneID, versions, handle
 scope.handleLeaderKeepAlive = function(message, mainCallback) {
 	const db = app.get('db');
 	const versionCollection = db.collection('configurationVersion');
-	var GLOBAL_SETTINGS = app.get('globalSettings');
+	const GLOBAL_SETTINGS = app.get('globalSettings');
 	const keepaliveInterval = GLOBAL_SETTINGS.keepaliveIntervals.TOMA_LEADER;
 
 	const firstLeaderToken = 1;
 
 	let executionTimer = new ExecutionTimer('handleLeaderKeepalive');
 	let saveLeaderKeepaliveFailed, shouldSendUpdateKeepaliveToken, dbLeaderToken, dbMessageSequence, dbRaftTerm,
-		dbFeatureCompatibilityVersion, dbTopics, shouldUpdateKeepaliveInterval, shouldUpdateFeatureCompatibilityVersion;
+		dbFeatureCompatibilityVersion, dbTopics, shouldUpdateKeepaliveInterval, shouldUpdateFeatureCompatibilityVersion,
+		shouldSendUpdatePRaidToken, dbRaftMembers, dbUpdatePRaidToken;
 
 	if (keepaliveInterval !== message.keepaliveInterval) {
 		logger.sysDEBUG('Toma Leader keepalive interval differ from the configured interval, configured: '
@@ -1131,6 +1132,9 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 				else {
 					dbLeaderToken = result.leaderToken || message.leaderToken;
 					dbTopics = result.topics;
+					dbRaftMembers = result.raftMembers;
+					dbUpdatePRaidToken = result.updatePRaidToken;
+
 					if (result.isUnavailable)
 						events.emitEvent(null, objectNotifier.events.zoneAvailabilityChangeEvent);
 				}
@@ -1161,6 +1165,8 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 				dbRaftTerm = versionDocument.raftTerm;
 				dbFeatureCompatibilityVersion = versionDocument.featureCompatibilityVersion;
 				dbTopics = versionDocument.topics;
+				dbRaftMembers = versionDocument.raftMembers;
+				dbUpdatePRaidToken = versionDocument.updatePRaidToken;
 
 				const isNewFeatureCompatibilityVersion = dbFeatureCompatibilityVersion &&
 					compareVersionRelease(message.payload.featureCompatibilityVersion, dbFeatureCompatibilityVersion) > 0;
@@ -1220,11 +1226,65 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 				callback(err);
 			});
 		},
+		function checkIfUpdatePRaidTokenShouldBeSent(callback) {
+			if (!message.updatePRaidToken) {
+				return callback();
+			}
+			if (!dbUpdatePRaidToken) {
+				shouldSendUpdatePRaidToken = true;
+				dbUpdatePRaidToken = 1;
+
+				const $query = getHandleLeaderKeepaliveUpdateQuery(message.leaderToken, message.messageSequence, message.payload.raftTerm, true);
+				versionCollection.updateOne($query, { $set: { updatePRaidToken: 1 } }, err => {
+					if (err)
+						return callback(new MongoError(err).log());
+
+					callback();
+				});
+				return;
+			}
+
+			if (message.updatePRaidToken !== dbUpdatePRaidToken) {
+				shouldSendUpdatePRaidToken = true;
+				return callback();
+			}
+			if (!message.payload.isReconciled) {
+				return callback();
+			}
+			const dbRaftMembersById = utils.keyBy(dbRaftMembers || [], m => m.memberID);
+
+			const isRaftMembersMismatch = message.payload.raftMembers.some(msgMember => {
+				const dbMember = dbRaftMembersById[msgMember.memberID];
+				return compareVersions(msgMember.version || '', dbMember?.version || '') > 0;
+			});
+
+			if (isRaftMembersMismatch) {
+				shouldSendUpdatePRaidToken = true;
+
+				const $query = getHandleLeaderKeepaliveUpdateQuery(message.leaderToken, message.messageSequence, message.payload.raftTerm, true);
+				versionCollection.findOneAndUpdate(
+					$query,
+					{ $inc: { updatePRaidToken: 1 } },
+					{ returnDocument: consts.mongoReturnDocument.AFTER }, (err, result) => {
+						if (err)
+							return callback(new MongoError(err).log());
+
+						if (!result)
+							return callback(true);
+
+						dbUpdatePRaidToken = result.updatePRaidToken;
+						callback();
+					});
+				return;
+			}
+
+			callback();
+		},
 		function sendUpdateKeepaliveTokenIfNeeded(callback) {
-			if (!shouldSendUpdateKeepaliveToken && !shouldUpdateKeepaliveInterval)
+			if (!shouldSendUpdateKeepaliveToken && !shouldUpdateKeepaliveInterval && !shouldSendUpdatePRaidToken)
 				return callback();
 
-			const msg = new UpdateLeaderKeepaliveToken(dbLeaderToken, keepaliveInterval);
+			const msg = new UpdateLeaderKeepaliveToken(dbLeaderToken, keepaliveInterval, dbUpdatePRaidToken);
 
 			kafkaModule.sendMessages(dbTopics[consts.topicSuffix.LEADER_INCREMENTAL_UPDATES], [msg], err => {
 				if (err) {
@@ -1232,7 +1292,12 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 					return callback(err);
 				}
 
-				const $query = getHandleLeaderKeepaliveUpdateQuery(dbLeaderToken, dbMessageSequence, dbRaftTerm, true);
+				const $query = getHandleLeaderKeepaliveUpdateQuery(
+					dbLeaderToken,
+					dbMessageSequence || message.messageSequence,
+					dbRaftTerm || message.payload.raftTerm,
+					true
+				);
 				const $update = {
 					$set: {
 						kafkaMessageSequence: message.messageSequence,
@@ -1240,6 +1305,11 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 						stopSendingKeepaliveToken: true
 					}
 				};
+
+				if (message.payload.raftMembers) {
+					$update.$set.raftMembers = message.payload.raftMembers;
+					$update.$set.isReconciled = !!message.payload.isReconciled;
+				}
 
 				versionCollection.updateOne($query, $update, (error, result) => {
 					if (error)
