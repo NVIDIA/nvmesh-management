@@ -33,8 +33,6 @@ usage:
 
 	--infra-bin	    	path to infra-bin.tgz
 
--u	--utils       		Build utils RPM/DEB
-
 -m	--mgmt		  	Build management RPM/DEB
 
 -r	--build-rpm-opts 	Extra options to pass to buildrpm script
@@ -45,8 +43,6 @@ EOF
 RSYNC_OPTS="--delete --compress --cvs-exclude --exclude=.git --exclude=*.rpm --exclude=*.deb --ignore-errors -rlpgoDzv --checksum"
 
 LEAVE_RUNNING="false"
-
-BUILD_UTILS="false"
 
 BUILD_MANAGEMENT="true"
 
@@ -98,12 +94,7 @@ case $key in
     INFRA_BIN="$2"
     shift
     ;;
-    -u|--utils)
-    BUILD_UTILS="true"
-    BUILD_MANAGEMENT="false"
-    ;;
     -m|--mgmt)
-    BUILD_UTILS="false"
     BUILD_MANAGEMENT="true"
     ;;
     *)
@@ -169,9 +160,6 @@ if [ "$BUILD_MANAGEMENT" == "true" ]; then
 	# Run npm install
 	echo "Running npm install"
 	docker exec -t $CONT_UUID bash -c "cd $BUILD_DIR; npm install"
-fi
-if [ "$BUILD_UTILS" == "true" ]; then
-	BUILD_RPM_OPTS+=" --utils"
 fi
 BUILD_RPM_OPTS+=" $EXTRA_BUILD_RPM_OPTS"
 # Run buildrpm
