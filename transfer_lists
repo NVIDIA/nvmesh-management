@@ -36,9 +36,4 @@ management_transfer_list="scripts/add_cluster_identification.js \
 				dl \
 				interop-db"
 
-utils_transfer_list="scripts/nvmesh_diag \
-			scripts/nvmesh_logs_collector"
-
 nhc_transfer_list="nhc/nhc_files"
-
-utils_optional_transfer_list="infrastructure/dist"
