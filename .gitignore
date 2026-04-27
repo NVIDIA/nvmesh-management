@@ -19,6 +19,7 @@ NVMeshCLI/dist
 !.github
 !.gitignore
 !.eslin*
+!.cursor/
 test/test.log
 public/javascripts/components_js
 /package-lock.json
