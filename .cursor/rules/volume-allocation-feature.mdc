@@ -1,0 +1,292 @@
+---
+description: Volume allocation — creating volumes, placing pRaid disk segments, remapping/rebuilding segments
+globs: utils.js,modules/volume.js,modules/volumeProvisioningGroup.js,modules/zone.js,modules/lock.js,routes/volumes.js,validationSchemes/volumes/**/*,validationSchemes/definitions/volume.js,validationSchemes/definitions/volumesCreate.js,validationSchemes/common/pRaidOptions.js,public/javascripts/components/pages/volume/**/*,public/javascripts/components/pages/volumes/**/*,public/javascripts/components/pages/vpg/**/*
+alwaysApply: false
+---
+
+# Volume Allocation
+
+Covers volume creation, the disk-segment placement engine, and the remap/rebuild flow that re-places segments. Most of the work lives in `utils.js`, not `modules/volume.js` — the module is the lifecycle/state shell, the utils functions are the placement engine. Snapshots, encryption, attach/detach, and read-only volume metadata updates are out of scope for this rule.
+
+## Data model
+
+```
+volume
+└─ chunks[]                  # contiguous LBA windows of the volume; vlbs/vlbe = virtual block start/end
+   └─ pRaids[]               # one RAID group per chunk; replicates/erasures the chunk
+      └─ diskSegments[]      # the actual disk allocations (one per data/parity/mirror leg)
+         { _id, uuid, diskID, diskUUID, nodeUUID, node_id,
+           pRaidUUID, pRaidIndex, pRaidTypeIndex, allocationIndex,
+           lbs, lbe, type, status, zone,
+           fromReserved?, reservedUUID?, isReserved? }
+```
+
+Per-disk state lives on `server.disks[]` and tracks `availableBlocks`, `usableBlocks`, `largestSegmentAvailable`, `diskSegments[]`, and `GPT.maxNGptEntries` (hard cap on segments per drive — enforced via `cmpToMaxNGptEntries: -1` in every aggregation pipeline).
+
+## Scope of a volume: zones and chunks
+
+**Today (current code).** A volume is confined to a **single zone**. `allocateBlocks` resolves the zone lazily on the first chunk (`lockedZone = lockedZone || zone` after `acquireZoneLockForAllocation`) and reuses it for every subsequent chunk in the loop. If allocation in that zone exhausts capacity and `enableZones` is on, the *entire* volume is rolled back via `rollbackFailedVolumeAllocation` and retried in another zone (`zonesFailedAllocation` accumulates the misses) — never spread across zones. Remap inherits this rule: `subtituteDiskSegment` forces `nodeMatch.zone = diskSegment.zone`, so a segment can only be replaced within its original zone.
+
+**Future direction.** Volumes are slated to be confined to a **single chunk**. When that lands, the `whilst`-loop in `allocateBlocks` (and the multi-chunk shape of the data model on the read path) will need to assume one chunk per volume; today's multi-chunk plumbing is the thing to refactor away, not extend.
+
+## Key constants (`consts.js`)
+
+- `BLOCK_SIZE = 4096`, `BLOCK_SET_SIZE = 256` — allocations are always rounded down to a blockset multiple (`roundBlocksToNearestBlockSet`). For SEC the effective blockset is `BLOCK_SET_SIZE * dataBlocks` (`getVolumeBlockSetSize`).
+- `RAIDLevel`: `CONCATENATED`, `STRIPED_RAID_0`, `MIRRORED_RAID_1`, `STRIPED_AND_MIRRORED_RAID_10`, `ERASURE_CODING`, `STRIPED_ERASURE_CODING`. Sets: `mirroredRaidLevels`, `erasureCodedRaidLevels`.
+- `validNumberOfMirrors = [1, 2]`.
+- `separationTypes`: `FULL`, `MINIMAL`, `IGNORE` — controls how many segments of one pRaid may share a node / protection domain.
+- `volumeStatuses`: `PENDING` → `UNAVAILABLE` → `ONLINE`/`DEGRADED`/`OFFLINE`. Volume is inserted as `PENDING` and only flipped to `UNAVAILABLE` once allocation succeeds (`afterAllocationSucceeded`).
+- `volumeActions`: `INITIALIZING` (set after creation), `MARKED_FOR_REBUILD`, `REBUILDING`, etc.
+- `diskSegmentStatuses`: allocator stamps `INITIALIZING` (or `NORMAL` if VPG-reserved); remap flips to `REMAP` (set externally) → `MARKED_FOR_REBUILD` (new replacement) / `MARKED_FOR_REBUILD_OLD` (the segment being replaced).
+- `segmentTypes`: `DATA`, `EXCELERO_METADATA`.
+
+## Creation entry point
+
+`POST /volumes/save` (`routes/volumes.js`) → `volumeModule.saveVolumes` (`modules/volume.js:2953`) → splits into volumes / snapshots / MDVs → `utils.createVolumes` (`utils.js:5367`):
+
+```
+utils.createVolume                       (utils.js:5378)
+  └─ cloneVPGProperties                  copies RAIDLevel, stripe*, dataBlocks/parityBlocks, classes, encryption from VPG
+  └─ applyProtectionLevelDefaults        mirrored RAIDs default to FULL separation (or IGNORE if ignoreNodeSeparation)
+  └─ saveVolume                          (utils.js:2000)
+       ├─ insert volume {status: PENDING, uuid: v1, reservation: NONE}
+       ├─ validate: VPG/diskClasses/serverClasses/VSGs exist, numberOfMirrors valid, multi-mirror FCV
+       └─ createVolumeByRAIDLevel        (utils.js:2151)
+            ├─ STRIPED_ERASURE_CODING → align stripeSize up to dataBlocks*BLOCK_SET_SIZE
+            └─ dispatch to createRAID0 | createRAID1 | createJBOD → allocateBlocks
+```
+
+`createRAID0` (used for STRIPED_RAID_0, RAID-10, EC, SEC) computes block count from `capacity / (dataBlocks*stripeWidth)`, snapped to `stripeSize` strides. `createRAID1`/`createJBOD` skip stripe math.
+
+`capacity === 'MAX'` (`consts.volumeCapacity.MAX`) puts the allocator in max-allocation mode (`getIsMaxAllocation`): keep grabbing chunks until no chunk reaches `MIN_VOLUME_CAPACITY`.
+
+## Placement engine — `allocateBlocks` (`utils.js:2538`)
+
+Loops `async.whilst` over chunks until `blocksToAllocate` is satisfied (or max-mode runs out):
+
+1. **Find a chunk's worth of disks.** For a VPG-bound non-reserved volume, first try `getLargestReservedChunk` (only segments that are `isReserved && volumeName === VPG`); fall back to `getLargestChunk` (`utils.js:3365`).
+2. **Acquire zone lock** lazily — `lockModule.acquireZoneLockForAllocation(limitTargets, limitDisks, zonesToIgnore)` is called inside `getLargestChunk` if no `lockedZone` is already held; the locked zone propagates through callbacks. `enableZones` global setting + non-extension volume → on failure we rollback and retry the next zone (`shouldTryNextZone`, accumulating `zonesFailedAllocation`).
+3. **Compute chunk size.** A chunk's size is bound by the **smallest** `largestSegmentAvailable` across the drives picked for it — every segment in the chunk is then sized to exactly that. If that's enough for what's still requested, the loop terminates after one chunk; if not, the remaining `blocksToAllocate` carries to the next iteration and a fresh chunk is picked from the (now smaller) free space.
+   - `numberOfDisks = (dataBlocks+parityBlocks || numberOfMirrors+1 || 1) * (stripeWidth||1)` (`getNumberOfRequiredDisksByVolume`).
+   - `smallestSegment = min(largestSegmentAvailable.blocks across chunk's drives)`.
+   - `blocks = min(blocksToAllocate, smallestSegment)` floored to `blockSetSize`; for striped non-mirrored volumes additionally floored to `stripeSize`.
+   - `chunk.vlbe = vlbs + blocks*(dataBlocks*stripeWidth || stripeWidth || 1) - 1`.
+
+   This is also why a single volume today can span multiple chunks: when no single set of drives offers a contiguous segment large enough to cover the request, the volume is materialized as a sequence of chunks, each sized to its own bottleneck. (See "Scope of a volume" — the future direction is to forbid this and force one chunk per volume.)
+4. **Build the chunk.** Per drive in `results`, mint `diskSegment` with shared `pRaidUUID` for the same RAID group (regrouping every `dataBlocks+parityBlocks` for EC and every `1+numberOfMirrors` for mirrored). Status is `INITIALIZING` (or `NORMAL`+`isReserved` for VPG reservations).
+5. **Persist on disk doc.** `addAndSaveSegmentOnDisk` → `addSegmentToDisk` does the bookkeeping atomically:
+   - `isSegmentOverlaps` → on overlap, evict drive (`autoEvictReason: SEGMENTS_OVERLAPS`).
+   - `isSegmentOutOfBound` against `GPT.firstUsableLba`/`lastUsableLba` → evict on violation.
+   - `$push` segment, `$inc` `version` (skipped for metadata/reserved), `$set` recomputed `largestSegmentAvailable`, `$inc availableBlocks` and `usableBlocks` (metadata only). Reserved-derived segments skip `availableBlocks` decrement (already counted at reservation time).
+6. **Loop.** `vlbs = chunk.vlbe + 1`; `blocksToAllocate -= allocatedBlocks`. Three "tried" flags ratchet through fallbacks: not-from-reserved → from-reserved-but-fresh-disks → from-reserved-using-already-used → ordinary-using-already-used. Reusing already-used disks is allowed only after `triedToTakeChunkFromUsedResources`.
+7. **Finalize.** On success: `afterAllocationSucceeded` (`utils.js:2821`) sets `action=INITIALIZING`, status to `UNAVAILABLE` (unless this is a snapshot data/MDV or extension which stays `PENDING`), persists the full volume in one `updateOne`, emits `segmentsChangedOnDiskEvent` per drive, and calls `zoneModule.handleVolumeCreation`. On failure: `rollbackFailedVolumeAllocation` calls `forceDeleteVolume` to undo any disk-side writes before the retry.
+
+### How disks are picked per RAID
+
+`getLargestChunk` dispatches by RAIDLevel into:
+
+| RAID | Selector | Notes |
+|---|---|---|
+| `CONCATENATED` | `getDisksForRAID0(limit=1, biggestFirst)` | one drive at a time |
+| `STRIPED_RAID_0` | `getDisksForRAID0(limit=stripeWidth)` | top-N by `largestSegmentAvailable.blocks` |
+| `MIRRORED_RAID_1` | `getDisksForRAID1` → `chooseDrivesForAllocation` | one drive per node, separation-aware |
+| `STRIPED_AND_MIRRORED_RAID_10` | `getDisksForStripedVolume(getDisksForRAID1)` | per-stripe pass; `$nin` accumulates picked drives |
+| `ERASURE_CODING` | `getDisksForErasureCoding` → `chooseDrivesForAllocation` | requires `metadata_size != 0` |
+| `STRIPED_ERASURE_CODING` | `getDisksForStripedVolume(getDisksForErasureCoding)` | |
+
+Every pipeline filters by `getAllocatableNodesMatch` / `getAllocatableDrivesMatch` (online status, not excluded, MD-only when needed) plus `cmpToMaxNGptEntries == -1`. Class/domain limits funnel through `getDiskAndServerMatchByVolume` → `getDisksByClasses` → `$in` lists.
+
+`chooseDrivesForAllocation` (`utils.js:3526`) walks the cursor and:
+- skips a drive whose node is already used or whose protection domain is already used (`isDiskViolateProtectionDomain`) — they go into a `store` for fallback.
+- if we ran out and `protectionLevel != FULL`, drains `store` honoring `IGNORE` (anything) or `MINIMAL` (max `parityBlocks` per node).
+- returns `[]` when fewer than `drivesNeeded` disks were found.
+- finally `reShuffleDrives` interleaves picks per node so consecutive segments aren't on the same target.
+
+### Allocation is greedy and online — future allocations are not modelled
+
+The allocator is a **greedy, single-shot, online** algorithm. It has no view of pending or future allocations: each call commits to the locally-best placement for the current volume and never backtracks once a chunk is finalized. The only "look-back" is within a single allocation (the `triedToTakeChunkFromReserved` / `triedToTakeChunkFromUsedResources` ratchet, plus the `zonesFailedAllocation` retry across zones).
+
+The local-optimum heuristic is **biggest-largest-segment first** — every disk-selection pipeline orders candidate drives by `'disks.largestSegmentAvailable.blocks': -1`. Rationale: keep each volume on as few drives as possible, which lowers the volume's combined drive-failure exposure (an N-segment volume's MTBF is roughly the parallel composition of N drive MTBFs — fewer drives, longer effective MTBF) and reduces fragmentation. For non-redundant levels (`CONCATENATED`, `STRIPED_RAID_0`) the heuristic also drains a drive completely before touching the next one.
+
+The cost: a single-drive concentration that's optimal for the current volume can leave a topology that can't satisfy a *later* highly-available volume's separation rules, and the allocator cannot foresee this.
+
+The same greediness shows up at three nested layers, with no foresight at any of them:
+
+| Layer | Code | What it greedily commits to | What it doesn't see |
+|---|---|---|---|
+| **Across volumes** | `saveVolume` per request | Drive layout for *this* volume | All future volume requests |
+| **Across chunks of one volume** | `allocateBlocks` `async.whilst` | Drive set for *this* chunk | What the next chunk will demand |
+| **Across stripes of one chunk** | `getDisksForStripedVolume` `async.eachSeries` | Drives for *this* stripe | What remaining stripes will need |
+
+**Concrete example #1 — across volumes.** Cluster: 2 targets, each with one 100 GB drive.
+
+1. Customer creates a 100 GB Concatenated volume → `getDisksForRAID0(limit=1, biggestFirst=true)` picks the largest `largestSegmentAvailable`, say target T1's drive, and consumes all 100 GB on T1. T2 is untouched.
+2. Customer creates a 10 GB RAID-1 volume with default `protectionLevel = FULL` → needs two drives on two different targets. T1 has 0 GB free, T2 has 100 GB free. `chooseDrivesForAllocation` finds only one usable drive and returns `[]`. Allocation fails with `Failed to allocate`, and the volume is rolled back.
+
+**Concrete example #2 — across stripes of one volume.** Cluster: 3 targets, each with 2 drives. Customer creates a RAID-10 with `stripeWidth = 3`, `numberOfMirrors = 1`, `protectionLevel = FULL` (6 drives needed; 6 drives exist; on paper the layout fits).
+
+`getDisksForStripedVolume` runs three serial passes of `getDisksForRAID1` → `chooseDrivesForAllocation`. `nodesInUse` is fresh per pass; only the picked `diskID`s carry over via `$nin`:
+
+| Pass (pRaid) | `$nin diskID` going in | Cursor (sorted biggest-first) yields | Picks (one per node, FULL) |
+|---|---|---|---|
+| 1 | ∅ | T1.A, T2.A, T3.A, T1.B, T2.B, T3.B | T1.A, T2.A |
+| 2 | {T1.A, T2.A} | T3.A, T1.B, T2.B, T3.B | T3.A, T1.B |
+| 3 | {T1.A, T2.A, T3.A, T1.B} | T2.B, T3.B | T2.B → store T3.B (node T3 already in use this pass, but no more candidates) → returns `[]` |
+
+Pass 3 returns no drives, the chunk is abandoned, the entire volume is rolled back. The capacity and topology *do* admit a valid placement (e.g. `[T1.A T2.A] [T3.A T1.B] [T2.B T3.B]` — wait, that's pass 3 = T2.B+T3.B, which is actually fine; the failure mode is when an earlier pass's pick boxes pass 3 in. Concrete failing trace: pass 1 picks T1.A+T2.A, pass 2 picks T1.B+T2.B (both biggest-first available before T3 because of `_id` tie-break), pass 3 has only T3.A+T3.B left — same node, FULL separation, fails). A planner that allocated all three pRaids together could have spread the picks across all three targets in pass 2.
+
+The same pattern appears in `STRIPED_ERASURE_CODING` (also wrapped by `getDisksForStripedVolume`, with `getDisksForErasureCoding` per stripe).
+
+**This is not a bug.** It is the documented trade-off of the heuristic. Workarounds when investigating a "phantom" allocation failure:
+
+- Check `largestSegmentAvailable.blocks` per drive across the cluster, not just `availableBlocks` totals — a fragmented or one-sided topology can starve HA volumes long before raw capacity is exhausted.
+- For across-volume cases, the customer can spread first by creating the HA volume *before* the JBOD/RAID-0, or by using `volume.diskClasses` / `volume.serverClasses` / a protection domain to pin allocation.
+- For across-stripe cases inside one striped volume, lowering `protectionLevel` from `FULL` to `MINIMAL` lets `chooseDrivesForAllocation` drain its `store` and recover (at the cost of separation). Splitting into smaller `stripeWidth` and assembling capacity through more chunks also works *if* the customer can accept it.
+- Volume rebuild has the same blind spot at all three layers: `subtituteDiskSegment` is online too, with no reservation for future remaps.
+
+If you ever consider replacing the heuristic, note that the test corpus assumes biggest-first; switching to e.g. "most-balanced" would change `chunks[].pRaids[].diskSegments[].diskID` distribution and break tests that assert on the layout. The right fix is a multi-volume / multi-stripe planner, not a different greedy heuristic at any single layer.
+
+### Separation & protection domains
+
+These rules apply only to highly-available RAID levels (`MIRRORED_RAID_1`, `STRIPED_AND_MIRRORED_RAID_10`, `ERASURE_CODING`, `STRIPED_ERASURE_CODING`). Concatenated and pure RAID-0 ignore both.
+
+**Separation level (`volume.protectionLevel`)** controls how many segments of a single pRaid may live on the same target node:
+
+| `separationTypes` | Mirrored (R1, R10) | EC / SEC | Where it's enforced |
+|---|---|---|---|
+| `FULL` | 1 segment per node per pRaid | 1 segment per node per pRaid | `chooseDrivesForAllocation` skips reused nodes outright; remap `$nin`s every node already in the pRaid |
+| `MINIMAL` | up to `numberOfMirrors` per node | up to `parityBlocks` per node | `chooseDrivesForAllocation` drains `store` until the per-node cap; remap `$nin`s only nodes that already hit the cap (`getNodesThatWeShouldNotUseForReplacement`) |
+| `IGNORE` | no per-node constraint | no per-node constraint | mirrored only — set when `volume.ignoreNodeSeparation === true` (see `applyProtectionLevelDefaults`); EC/SEC reject `IGNORE` (`subtituteDiskSegment` only consults nodes for `FULL`/`MINIMAL`) |
+
+The MINIMAL caps (`numberOfMirrors`, `parityBlocks`) are the maximum number of failures a pRaid can tolerate, so the cap is "use no more than what we could afford to lose together".
+
+Defaults: AJV gives mirrored RAIDs no `protectionLevel` default — `applyProtectionLevelDefaults` (`utils.js:3219`) fills `IGNORE` when `ignoreNodeSeparation` is true, otherwise `FULL`. EC/SEC default to `FULL` via the AJV schema. Don't read `volume.protectionLevel` directly for non-mirrored, non-EC RAIDs — use `getEffectiveProtectionLevel`.
+
+**Protection domains (`volume.domain`)** are a customer-defined separation axis layered on top of (or instead of) "target". Operators tag a set of resources with a `(scope, identifier)` pair — e.g. `scope: "powerOutlet", identifier: "outlet-A"` — and a volume opts into the scope by setting `volume.domain = "powerOutlet"`. The allocator then refuses to place two segments of one pRaid on resources sharing the same `identifier` under that scope.
+
+Where the tags live:
+- **Server class** (`serverClass.domains[]`) — tags every target in `targetNodes`.
+- **Drive class** (`diskClass.domains[]`) — tags every drive in `disks.diskID`.
+- A drive's effective domain is the union of the matching disk-class entries and the matching server-class entries for its host (`getDiskProtectionIdentifierByDomain`, `utils.js:83`).
+
+How a domain is honored at allocation:
+- `getDiskAndServerMatchByVolume` → `getDisksByClasses` (`utils.js:1503`) — when the volume has no explicit class limits but does have a `domain`, it auto-resolves all disk/server classes whose `domains.scope === volume.domain` via `getClassesByDomain` (`utils.js:1470`) and uses them as the eligibility set. So setting `volume.domain` alone (no `diskClasses`/`serverClasses`) implicitly limits allocation to drives/targets that carry the scope.
+- `chooseDrivesForAllocation` consults `getDiskProtectionDomain(diskObj, disksWithDomains)` for each candidate and rejects any whose `identifier` is already used in this pRaid (`isDiskViolateProtectionDomain`).
+- On remap (`subtituteDiskSegment`), `getUsedDomainsBySegments` collects identifiers already in the pRaid and `getDiskAndServerMatchByVolume(volume, null, identifiersInUse)` excludes them.
+
+The domain rule is *additive* to the separation rule: protectionLevel decides how nodes interact, the domain decides how identifiers under the chosen scope interact. Both must be satisfied simultaneously.
+
+### VPG reserved chunks — `getLargestReservedChunk` (`utils.js:3038`)
+
+Finds disk segments where `isReserved && volumeName === VPG`, intersects with `getReservedSegments` (the unused parts of those reserved areas), groups by `pRaidUUID`, and only accepts pRaid groups that already have exactly `numberOfDisks/stripeWidth` disks — i.e. a pre-shaped chunk. Stamps `chunk.fromReserved=true`, segments inherit `reservedUUID = largestSegmentAvailable.uuid` so we can later re-locate the original reserved segment for substitution.
+
+### Locking
+
+`modules/lock.js`:
+- `acquireZoneLockForAllocation(limitTargets, limitDisks, zonesToIgnore)` — atomic per-zone allocation lock; on failure other zones are tried (`zonesFailedAllocation`).
+- `acquireLockByVolume(volume)` — used for extension and rebuild; locks **all** zones the volume already lives in.
+- `acquireLockByVPG(vpg)` — used by `getLargestReservedChunk`.
+- `releaseLockByZone` / `releaseLockByZones` — always called from the allocation/rebuild epilogue, including failure paths.
+
+Never run `addSegmentToDisk` without holding the relevant zone lock.
+
+## Remap & rebuild — `startSingleVolumeRebuild` (`utils.js:511`)
+
+A separate codepath that re-allocates segments already marked `REMAP` (set by TOMA when a drive fails or an admin-triggered drain). Note: this is the **only** allocation code that does not run inside `allocateBlocks`.
+
+```
+POST /volumes/rebuildVolumes
+  → volumeModule.rebuildVolumes
+  → utils.startVolumeRebuildByIdsAndUUIDs        find matching volumes + isReserved+REBUILD_REQUIRED
+  → startVolumesRebuild                          per-volume serialized
+  → startSingleVolumeRebuild
+       ├─ acquireLockByVolume                    if not already locked; enforce zone-set equality if it is
+       └─ for each chunk → for each pRaid → for each segment with status === REMAP:
+            ├─ subtituteDiskSegment              find a substitute disk respecting separation/domains
+            ├─ markForRebuild
+            │     reserved volumes: drop old segment + remove from disk doc
+            │     non-reserved:     status REMAP → MARKED_FOR_REBUILD_OLD (kept until TOMA acks)
+            │     new segment:      status MARKED_FOR_REBUILD
+            └─ findOneAndUpdate volume {action: MARKED_FOR_REBUILD, health: ALARM, version++,
+                                        lastVersionSentToTomaViaKafka: version}
+```
+
+`subtituteDiskSegment` (`utils.js:178`) is the placement-for-replacement function. Key points:
+- Replacement is restricted to the **same zone** as the failed segment (`nodeMatch.zone = diskSegment.zone`).
+- "Don't reuse" sets are RAID-aware:
+  - `MIRRORED_RAID_1`: `$nin` nodes already in this pRaid (`getNodesThatWeShouldNotUseForReplacement`, capped per-node by `numberOfMirrors` for `MINIMAL`, all of them for `FULL`).
+  - `STRIPED_AND_MIRRORED_RAID_10`: also `$nin` data-disks already in the chunk if the remap type is `DATA` (`getRemapSegmentType`).
+  - `ERASURE_CODING` / `STRIPED_ERASURE_CODING`: `$nin` data disks of the chunk; require `metadata_size != 0`; node `$nin` only when `protectionLevel` is `FULL` or `MINIMAL`.
+  - `STRIPED_RAID_0` / `CONCATENATED`: just `$nin` disks already in the chunk.
+- If the failed segment was `fromReserved && reservedUUID`, the substitute is preferentially fetched from the **same VPG-reserved area on a different drive** (`getDiskByReservedUUID`) before falling back to a fresh allocation.
+- Substitute segment is created with `status = MARKED_FOR_REBUILD` (or `NORMAL` for reserved), inherits `pRaidUUID`/`pRaidIndex`/`pRaidTypeIndex`/`allocationIndex` from the failed segment, and is persisted via `addAndSaveSegmentOnDisk` (same overlap/GPT checks as fresh allocation).
+- TOMA later sends "deprecation" messages → `deprecateSegments` (`modules/volume.js:1571`) cleans up `MARKED_FOR_REBUILD_OLD`. **Do not delete** `MARKED_FOR_REBUILD_OLD` segments synchronously for non-reserved volumes; they must survive until TOMA confirms.
+
+## Volume lifecycle around allocation
+
+```
+[insert PENDING, uuid v1] → [allocateBlocks]
+                                 │ success
+                                 ▼
+[updateOne {status: UNAVAILABLE, action: INITIALIZING}]
+                                 │
+                            TOMA brings it up
+                                 ▼
+                      [status: ONLINE, action: NONE]
+```
+
+`isReserved` (VPG reservation), `isExtension` (capacity extension), and snapshot data/metadata volumes stay `PENDING` past allocation — they are finalized by their owning flows. `sanityAndRecover` deletes `PENDING` volumes that are not paired with a live allocation, so **don't** leave a half-written volume in `PENDING` state if your code path errors out before `afterAllocationSucceeded` — call `forceDeleteVolume` (or rely on `rollbackFailedVolumeAllocation`).
+
+## Invariants & gotchas
+
+- **No drive reuse within a chunk for striped/EC volumes.** For `STRIPED_RAID_0`, `STRIPED_AND_MIRRORED_RAID_10`, `ERASURE_CODING`, and `STRIPED_ERASURE_CODING`, a `diskID` MUST NOT appear twice in the same `chunk`. Two segments of the same chunk on one drive would put two data shards (or a stripe and its mirror's data leg) behind a single point of failure. Enforced at:
+  - **Initial allocation** — `getDisksForStripedVolume` (`utils.js:3633`) accumulates `$nin disks.diskID` between stripes, and `chooseDrivesForAllocation` picks one drive per node per pass so no drive can repeat within a single pRaid.
+  - **Remap** — `subtituteDiskSegment`'s switch (`utils.js:301-347`) appends `$nin: getDisksAlreadyInUseByTheChunk(chunk, ..., 'diskID')`. RAID-10 and EC scope the `$nin` to `segmentTypes.DATA` (so a metadata segment can land on a drive that already hosts a data segment of the same chunk, but not the reverse).
+  - This rule does **not** apply to `MIRRORED_RAID_1` or `CONCATENATED` — they enforce only node-level separation, not disk-level. If you add a new RAID level or new placement codepath, decide explicitly which rule applies and replicate the `$nin` accordingly.
+- **Segments are non-overlapping, contiguous LBA ranges.** Each `diskSegment` occupies a single contiguous `[lbs, lbe]` block range, and no two segments on the same drive overlap. Enforced at write time by `isSegmentOverlaps` (`utils.js:2338`) which rejects an `addSegmentToDisk` and auto-evicts the drive (`autoEvictReason: SEGMENTS_OVERLAPS`) on violation. There is exactly **one** legitimate exception today:
+  - A segment with `fromReserved: true` is allowed to occupy the same LBA range as an existing segment with `isReserved: true` — the carved-out VPG reservation. This is wired in by the `!(diskSegment.fromReserved && seg.isReserved)` guard inside `isSegmentOverlaps`. The reserved segment is the "shadow" that the real volume's segment fills in; both rows live in `disks.diskSegments[]` simultaneously, distinguished by `isReserved` vs `fromReserved`.
+  - **Future — re-instate.** A planned feature that will introduce a second legitimate overlap pattern. **TODO: when re-instate lands, revisit this rule and document the new exception explicitly** (and update `isSegmentOverlaps` and any pipeline that currently keys off "no overlap" as a strict invariant).
+- **Segments must lie within the drive's usable range.** Every `diskSegment` must satisfy `lbs >= drive.GPT.firstUsableLba` and `lbe <= drive.GPT.lastUsableLba`. Enforced by `isSegmentOutOfBound` (`utils.js:2372`); violation in `addSegmentToDisk` rejects the write and auto-evicts the drive (`autoEvictReason: SEGMENT_OUT_OF_BOUND`). The `firstUsableLba`/`lastUsableLba` come from the on-disk GPT and account for `RESERVED_GPT_BLOCKS` (~1 MB blockset-aligned). When you compute new `lbs`/`lbe` (allocation, extension, remap), always derive them from `disk.largestSegmentAvailable` rather than raw `disk.blocks`, since `largestSegmentAvailable` is already clamped to the GPT-usable range.
+- **The allocator only places DATA segments.** Metadata segments (journal, serjio, metadata — the three mandatory partitions on every NVMesh drive) are **not** allocated here; they're created by the disk-format flow and reported back by TOMA, then ingested via `modules/disk.js` (which is the only caller that passes `isMetadataSegment = true` to `addSegmentToDisk`, line 515). `usableBlocks` already represents free blocks *after* alignment minus those three mandatory segments — the allocator must treat it as a read-only ceiling and never adjust it. Allocation/remap touches `availableBlocks` and `largestSegmentAvailable` only.
+- **Disk-side accounting on add/remove (allocator path)** — `addSegmentToDisk` / `removeSegmentsFromDisk` (`utils.js:2389-2493`). The allocation/remap path goes through `addAndSaveSegmentOnDisk`, which calls `addSegmentToDisk` with `isMetadataSegment = false` always. Keep these counters consistent with `disks.$.diskSegments`:
+  - **Add (default, segment is *not* `fromReserved`):** `$push` the segment into `disks.$.diskSegments`, recompute and `$set disks.$.largestSegmentAvailable`, and `$inc disks.$.availableBlocks` by `-(lbe - lbs + 1)`. The space is **taken from `availableBlocks`**. `usableBlocks` is *not* touched.
+  - **Add (reserved consumption, `diskSegment.fromReserved === true`):** the segment is still `$push`-ed onto the disk doc, but `largestSegmentAvailable` and `availableBlocks` are **not** changed. The reservation already debited `availableBlocks` when it was created (the original `isReserved` segment is what reserved the blocks); consuming the reservation must not double-count.
+  - **Remove** is the symmetric inverse — `removeSegmentsFromDisk` pulls the segments, recomputes `largestSegmentAvailable`, and adds the freed blocks back to `availableBlocks`. Don't `$pull` segments by hand — go through the helper so both counters stay coherent. `usableBlocks` is again not touched.
+  - Zero-block segments (`lbe - lbs === 0`, historical RAFT-only) skip the `$inc` entirely — guard with `if (delta)` like `addSegmentToDisk` does.
+  - Both the in-memory `disk` object (via `updateDisk` / `calcDelta`) **and** the Mongo `$push`/`$set`/`$inc` operator object are mutated together. They must stay in sync; readers downstream (e.g. `getLargestChunk` aggregations) trust whichever the next pipeline reads.
+- **Only healthy hardware is allocatable** (`getAllocatableDrivesMatch` / `getAllocatableNodesMatch`, `utils.js:3301-3331`). Every disk-selection pipeline must funnel through these helpers; never write `disks.status` / `node_status` filters by hand.
+  - **Default drive filter:** `status ∈ {OK, INITIALIZING}`, `isExcluded != true`, `isOutOfService != true`, `isPendingFormat != true`.
+  - **Default node filter:** `node_status === OK`, `isPending != true`.
+  - **`volume.allowAllocationOnOfflineDrives` opt-out.** When set, the drive filter additionally accepts `MISSING` and `INGESTING` statuses, and the node filter relaxes to `node_status != DELETING` (i.e. anything but DELETING is fine). The flag is per-volume and is honored by both initial allocation (via `getDiskAndServerMatchByVolume`) and remap (`subtituteDiskSegment` re-uses the same helper).
+  - `onlyDrivesWithMD = true` (passed by `shouldUseOnlyMetadataDrives` for EC/SEC/`enableCrcCheck`) further requires `metadata_size != 0` — see the EC/SEC invariant below.
+- **GPT segment cap.** Every aggregation that picks drives appends `cmpToMaxNGptEntries: -1`. If you write a new pipeline, include this match — without it allocation can pick a drive that subsequently fails the `addSegmentToDisk` overlap/GPT-bound check and gets auto-evicted.
+- **SEC stripe-size alignment.** For `STRIPED_ERASURE_CODING`, `createVolumeByRAIDLevel` (`utils.js:2157`) silently rounds `stripeSize` *up* to a multiple of `getVolumeBlockSetSize(volume)` = `BLOCK_SET_SIZE * dataBlocks`. The user-supplied `stripeSize` is therefore advisory, not authoritative — anything downstream that re-derives capacity must read it back from the volume, not from the request.
+- **Blockset alignment.** All allocations go through `roundBlocksToNearestBlockSet`. Striped non-mirrored volumes additionally floor to `stripeSize`. Don't bypass `getVolumeBlockSetSize` — for SEC it must be `BLOCK_SET_SIZE * dataBlocks`.
+- **`pRaidIndex` vs `pRaidTypeIndex` vs `allocationIndex`.** All three must stay consistent on remap (see `subtituteDiskSegment.createRAIDSegment`). `pRaidIndex` resets per pRaid; `pRaidTypeIndex` resets per pRaid; `allocationIndex` is global per chunk; the modulo against `(dataBlocks+parityBlocks)` or `(1+numberOfMirrors)` decides whether a new diskSegment joins the previous pRaid or starts a new one.
+- **Uniform segment size within a chunk.** Every `diskSegment` in a chunk has the same `lbe - lbs + 1` (the `blocks` variable in `allocateBlocks`), because the chunk size is bound to the *smallest* `largestSegmentAvailable` across the picked drives (line 2646). Consequently `chunk.vlbe - chunk.vlbs + 1 === blocks * (dataBlocks*stripeWidth || stripeWidth || 1)` always holds (line 2657). Remap preserves this — `subtituteDiskSegment` sizes the new segment to `(diskSegment.lbe - diskSegment.lbs)` exactly. Anything that re-derives a chunk's geometry should pick any one segment to read its block count, never sum across segments.
+- **EC/SEC need MD-capable drives.** `ERASURE_CODING` and `STRIPED_ERASURE_CODING` allocate only on drives with `disks.metadata_size != 0`. Initial allocation gets this through `shouldUseOnlyMetadataDrives(volume)` → `getAllocatableDrivesMatch(onlyDrivesWithMD=true)`. Remap re-asserts it explicitly (`subtituteDiskSegment` line 334). Any new EC/SEC pipeline must include the same filter, or the allocator will hand back drives the data plane can't use.
+- **One zone per volume.** See "Scope of a volume" — never write code that assumes chunks of the same volume can land in different zones. If you need to widen this, you're modifying core invariants and should coordinate the change with TOMA / clients.
+- **Reserved → real transition on remap.** When a remap moves a volume off a `fromReserved` segment (the substitute lands elsewhere), `updateDiskSegmentReservedState` flips the *old* segment's `fromReserved=false`/`wasFromReserved=true` so the VPG reservation accounting (already debited at reservation time) stays preserved. See the disk-side-accounting bullet above for the add-time rule that's symmetric to this.
+- **Zone lock on rebuild.** `startSingleVolumeRebuild` enforces `enforceLockedZoneSetEqualtyOrExit` if zones were already locked by the caller — a mismatch deliberately kills the process to avoid silently relocating a segment to the wrong zone.
+- **Status on substitute.** New replacement segments are `MARKED_FOR_REBUILD`, never `INITIALIZING`. The two are distinct triggers for TOMA.
+- **Mongo legacy driver.** All updates here use `mongodb-legacy` (`updateOne`, `findOneAndUpdate` with `returnDocument: AFTER`); see `AGENTS.md` for the wrapper rules.
+
+## Validation
+
+- `routes/volumes.js POST /save` → `validationSchemes/volumes/save.js` → `volumesCreate.js` → array of `volume.js` items.
+- `validationSchemes/common/pRaidOptions.js` — RAID-conditional schema. Sets defaults (`stripeSize=32`, `stripeWidth=2`, `dataBlocks=8`, `parityBlocks=2`, `numberOfMirrors=1`, mirrored `protectionLevel` has *no* default — applied in code).
+- Cross-field invariants (multi-mirror FCV, valid `numberOfMirrors`, classes/VSG/VPG existence, SEC stripe-size mod) are enforced inside `saveVolume` / `createVolumeByRAIDLevel`, not in AJV.
+
+## UI wiring
+
+- Create modal: `public/javascripts/components/pages/volumes/CreateVolumesModal.jsx` (and the VPG-clone path in `pages/vpg/`).
+- Allocation results / segment health: `pages/volume/Volume.jsx` shows `chunks → pRaids → diskSegments` exactly as stored; `Volumes.jsx` aggregates totals and dirty bits (`BLOCKSET_TO_BYTES = 32 * 4000`).
+- Live updates land via `objectNotifier` events `newVolumeEvent`, `volumeStatusChangeEvent`, `volumeActionChangeEvent`, `volumeRemapEvent`, `segmentsChangedOnDiskEvent`.
+
+## When changing this code
+
+1. Re-read `allocateBlocks` end-to-end — the three "tried" flags + `failed`/`shouldTryNextZone` matrix is easy to break.
+2. Touching disk-doc updates? Verify both the in-memory mutation (`updateDisk`) and the operator object (`$push`/`$inc`/`$set`) are consistent.
+3. Changing the RAID disk-selection pipeline? Keep the `cmpToMaxNGptEntries: -1` filter and the `enrichDrives` post-step (it re-fetches `diskSegments` for the chosen drives so substitute/overlap checks have the up-to-date list).
+4. Changing remap? Mirror the change in `subtituteDiskSegment` *and* `getNodesThatWeShouldNotUseForReplacement` — they must agree on what counts as "already used" per RAID level.
+5. Add a Mocha happy-path + a separation/exhaustion failure test under `test/testVolumes.js` (or a sibling). Tests are `asyncOnly`.

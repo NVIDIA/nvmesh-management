@@ -122,7 +122,7 @@ Frontend
 - **Mongo driver is `mongodb-legacy`.** Don't introduce calls that assume the modern driver's promise-only API without checking the wrapper in `modules/mongoDBWrapper.js` / `modules/mongoDB.js`.
 - **`consts.js` is huge and load-bearing** — many modules destructure from it. Add new constants here rather than re-declaring locally.
 - **Upgrade / NDU code is intricate.** See `.cursor/rules/ndu-feature.mdc` for the orchestration model (step ordering, locks, `verifyVolumesAvailability`) before changing anything in `modules/upgrade*.js` or `routes/upgrade*.js`.
-- **SEC volume validation:** `stripeSize % (LOCKSET_SLICES * dataBlocks) === 0` must hold for `stripeWidth > 1`. Validate in the volume module before persisting (see `NVMESH-8543`).
+- **SEC stripe-size rounding:** for `STRIPED_ERASURE_CODING`, `createVolumeByRAIDLevel` silently rounds `stripeSize` up to a multiple of `BLOCK_SET_SIZE * dataBlocks`. The user-supplied value is advisory; downstream code must read it back from the persisted volume. See `.cursor/rules/volume-allocation-feature.mdc`.
 - **Ops scripts** (`recoverdb.sh`, `restoreDB.sh`, `dbBackup.js`, `clearDB.js`, `dropDB.js`, scripts under `upgradeScripts/`) touch real DB state — never run them as a side effect of a code task.
 
 ## Definition of done

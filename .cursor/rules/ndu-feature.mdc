@@ -1,0 +1,73 @@
+---
+description: NDU (Non-Disruptive Upgrade) feature - orchestration, step planning, and scheduler
+globs: modules/upgrade.js,modules/upgradeAgent.js,modules/upgradeScenario.js,modules/upgradeStep*.js,public/javascripts/components/pages/upgrade/**/*,public/javascripts/components/pages/upgrades/**/*,public/javascripts/components/services/ndu.service.js,routes/upgrades.js,routes/upgradeSteps.js,validationSchemes/definitions/upgrade.js
+alwaysApply: false
+---
+
+# NDU (Non-Disruptive Upgrade)
+
+Upgrades NVMesh components across hosts while keeping I/O available. UI calls it "NDU" (see `GeneralSettings.jsx: NDU - Force Upgrade on Up To Date Components`, logs in `modules/upgrade.js:307`). NDU-facing components per `ndu.service.js` are `CLIENT` and `MANAGEMENT`, with `UPGRADE_AGENT` and `TARGET` upgraded alongside.
+
+## Key constants (`consts.js`)
+
+- `components`: `CLIENT`, `TARGET`, `MANAGEMENT`, `UPGRADE_AGENT`, `INTEROP_DB`, `UTILS`.
+- `upgradeTypes`: `MANAGEMENT`, `UPGRADE_AGENT`, `CLIENT_AND_TARGET`, `CLIENT_ONLY`.
+- `upgradeStepStartConditions`:
+  - `ALL_DONE` / `PREVIOUS_DONE` — strictly serialize (one in-flight step cluster-wide).
+  - `NONE` — parallel, capped by `upgrade.maxConcurrentClients`, one pending step per host.
+- `upgradeStatuses`: `PENDING_START`, `IN_PROGRESS`, `PAUSED`, `COMPLETED`, `FAILED`, `PRE_UPGRADE_CHECKS_FAILED`.
+- `upgradeStepStatuses`: `PENDING`, `PENDING_SEND`, `IN_PROGRESS`, `COMPLETED`, `FAILED`, `MANUALLY_COMPLETED`, `SKIPPED`.
+
+## Plan generation — `modules/upgrade.js` `getUpgradeSteps`
+
+Per machine (in the user's selection order), build three blocks (series): `MANAGEMENT`, `UPGRADE_AGENT`, then `CLIENT_AND_TARGET` or `CLIENT_ONLY` (decided by whether `nvmeshVersions[TARGET]` is set → `machine.isClientOnly`). Each scenario-step gets `startCondition = NONE` iff the machine is client-only, else `ALL_DONE`.
+
+Final order = `[...mgmtSteps, ...steps, ...clientOnlySteps]` where:
+- `mgmtSteps` — all `MANAGEMENT` blocks.
+- `steps` — every machine's `UPGRADE_AGENT` block + `CLIENT_AND_TARGET` block (client-only hosts' UA blocks are here too).
+- `clientOnlySteps` — only `CLIENT_ONLY` blocks.
+
+`shouldSkipComponent` skips components already at destination version unless `globalSettings.forceUpgradeUpToDateComponents`.
+
+## Scheduler — `handleNextUpgradeStep`
+
+Walks `upgradeStep` by `stepIndex`:
+- `FAILED` → stop (triggers `handleFailedUpgradeStep`: skip host if `skipMachinesOnFailure` + under `maxErrorsThreshold`, else `handleUpgradeCompletion` → `FAILED`).
+- `ALL_DONE` / `PREVIOUS_DONE` + `PENDING` → admit only if `stepsToExecute.length === 0`, then stop iterating.
+- `NONE` + `PENDING` → admit up to `maxConcurrentClients`, one per host.
+- `isBreakpointSet` → emits `UPGRADE_STEP_CANNOT_BE_EXECUTED_HIT_BREAKPOINT`, upgrade moves to `PAUSED` (resume via `resumeUpgrade` → `clearBreakpoint`).
+
+## Execution — `executeStep`
+
+1. Fetch UA doc; atomically flip step `PENDING → PENDING_SEND`.
+2. If `step.isVolumeAffected`, run `verifyVolumesAvailability` against `minRedundancyLevel` (RAID-1/10/EC math over `chunks.pRaids.diskSegments`). Violations become transient errors (`UPGRADE_STEP_CANNOT_BE_EXECUTED_UNHEALTHY_PRAID`, `...REDUNDANCY_WILL_BE_VIOLATED`); `checkUpgradeStatus` retries every `UPGRADE_STATUS_CHECK_INTERVAL`.
+3. Send `UpgradeAgentCommand` on the host's `UPGRADE_AGENT_COMMANDS` Kafka topic.
+4. Flip step to `IN_PROGRESS` and stamp `lastMessageSent` with `upgradeAgentToken` (used by `verifyLastMessageSent` to re-send after UA restart).
+
+Result path: UA publishes → `kafkaRouter.js:219` → `upgradeAgentModule.handleCommandResult` → `upgrade.updateStepResult` → step `COMPLETED`/`FAILED` → debounced `checkUpgradeStatus` → next step.
+
+## Lock & lifecycle
+
+- Cluster-wide lock: `configurationVersion.runningUpgrade` via `tryToTakeUpgradeLock` / `releaseUpgradeLockByID`; `verifyUpgradeLock` confirms ownership.
+- Entry: `tryToStartUpgrade` → `preUpgradeChecks` (destination valid for all hosts, component version consistency, InteropDB compat, 3rd-party libs like librdkafka, all volumes healthy) → take lock → `startUpgrade` (status `IN_PROGRESS`) → `handleNextUpgradeStep`.
+- Completion: `handleUpgradeCompletion` sets `COMPLETED` if no non-completed steps remain, else `FAILED`; always releases the lock.
+
+## Typical step order for 3 hosts (M1=mgmt+target, M2=target, M3=client-only), selected in order
+
+```
+0  M1  MANAGEMENT         ALL_DONE  isVolumeAffected=false
+1  M1  UPGRADE_AGENT      ALL_DONE  isVolumeAffected=false
+2  M1  CLIENT_AND_TARGET  ALL_DONE  isVolumeAffected=true
+3  M2  UPGRADE_AGENT      ALL_DONE  isVolumeAffected=false
+4  M2  CLIENT_AND_TARGET  ALL_DONE  isVolumeAffected=true
+5  M3  UPGRADE_AGENT      ALL_DONE  isVolumeAffected=false
+6  M3  CLIENT_ONLY        NONE      isVolumeAffected=false
+```
+
+Steps 0–5 run strictly one at a time. Step 6 runs in parallel with any other `CLIENT_ONLY` steps under `maxConcurrentClients`. Target steps are gated by `verifyVolumesAvailability` so redundancy is preserved.
+
+## UI wiring
+
+- Create: `public/javascripts/components/pages/upgrades/CreateUpgradeModal.jsx` collects `destinationVersion`, `minRedundancyLevel`, `executionMode` (`AUTOMATIC` / `MANUAL_START` / `MANUAL`), `skipMachinesOnFailure` + `maxErrorsThreshold`, `maxConcurrentClients`, selected UA hosts.
+- View/control: `public/javascripts/components/pages/upgrade/Upgrade.jsx` live-updates via `objectNotifier` events `upgradeStatusChangedEvent` / `upgradeStepStatusChangedEvent`; exposes Start / Resume / Skip Failed Machine and per-step breakpoints through `UpgradeStepModal.jsx`.
+- Source/target base versions derived with `NDUService.getUpgradeAgentsSourceVersions` + `extractSourceAndTargetBaseVersions`.
