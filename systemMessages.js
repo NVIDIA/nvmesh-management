@@ -2225,19 +2225,31 @@ var systemMessages = {
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	DRIVE_REINSTATE_RESUME_AFTER_FORMAT_FAILED: {
+		message: 'Failed to resume Drive reinstate after format',
+		id: 163321,
+		header: 'Drive Reinstate Resume Failed',
+		logLevel: consts.loggingLevel.ERROR,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	DRIVE_REINSTATE_IN_PROGRESS: {
 		message: 'Drive reinstate is in progress',
 		id: 16333,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DRIVE_REINSTATE_NOT_OUT_OF_SERVICE: {
-		message: 'Cannot reinstate drive: drive is not out of service',
+		message: 'Cannot reinstate drive: drive must be evicted before reinstate',
 		id: 163331,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DRIVE_REINSTATE_NON_PROTECTED_SEGMENTS: {
 		message: 'Cannot reinstate drive: drive has non-protected segments',
 		id: 163332,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	DRIVE_REINSTATE_NO_DATA_SEGMENTS: {
+		message: 'Cannot reinstate drive: drive has no data segments to reinstate',
+		id: 163333,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DRIVE_REINSTATE_SERVER_VERSION_CONFLICT: {

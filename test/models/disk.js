@@ -9,6 +9,10 @@ const uuid = require('uuid');
 const consts = require('../../consts');
 const { Entity } = require('./entity');
 
+const METADATA_PARTITION_LBA = { start: 512, end: 977151 };
+const JOURNAL_DATA_PARTITION_LBA = { start: 977152, end: 1501439 };
+const SERJIO_DB_PARTITION_LBA = { start: 1501440, end: 1509631 };
+
 exports.Disk = class Disk extends Entity {
 	constructor(serial, nodeID, nodeUUID) {
 		super();
@@ -70,6 +74,25 @@ exports.Disk = class Disk extends Entity {
 		this.isPendingFormat = false;
 		this.GPT = new exports.GPT(this.uuid);
 	}
+
+	populateMetadataPartitions() {
+		this.GPT.entries = this.GPT.mockEntries(this.uuid);
+		this.diskSegments = this.GPT.entries.map(entry => ({
+			_id: entry.partitionGuid,
+			uuid: entry.partitionGuid,
+			diskID: this.diskID,
+			diskUUID: this.uuid,
+			nodeUUID: this.nodeUUID,
+			node_id: this.nodeID,
+			partitionName: entry.partitionName,
+			type: entry.partitionType,
+			owner: entry.owner,
+			gptStart: entry.start,
+			gptEnd: entry.end,
+			lbs: entry.start,
+			lbe: entry.end
+		}));
+	}
 };
 
 
@@ -82,37 +105,36 @@ exports.GPT = class GPT {
 		this.firstUsableLba = 288;
 		this.mgmtDbUuid = app.get('dbUUID');
 		this.entries = [];
-		//this.entries = this.mockEntries();
 	}
 
-	mockEntries() {
+	mockEntries(diskUUID) {
 		return [
 			{
 				owner: 'nvmesh',
-				end: 974911,
+				start: METADATA_PARTITION_LBA.start,
+				end: METADATA_PARTITION_LBA.end,
 				mgmtDbUuid: '00000000-0000-0000-0000-000000000000',
-				start: 288,
-				partitionGuid: 'a32d7f50-879b-11ea-9555-2be36b7a62aa',
+				partitionGuid: diskUUID,
 				partitionName: 'excelero_metadata',
 				isZeroed: false,
 				partitionType: 'excelero_metadata'
 			},
 			{
 				owner: 'nvmesh',
-				end: 1499199,
+				start: JOURNAL_DATA_PARTITION_LBA.start,
+				end: JOURNAL_DATA_PARTITION_LBA.end,
 				mgmtDbUuid: '00000000-0000-0000-0000-000000000000',
-				start: 974912,
-				partitionGuid: '612825d2-d0d5-7e2e-fdd9-5c3fcc167239',
+				partitionGuid: uuid.v1(),
 				partitionName: 'excelero_journal_data',
 				isZeroed: false,
 				partitionType: 'excelero_metadata'
 			},
 			{
 				owner: 'nvmesh',
-				end: 1507391,
+				start: SERJIO_DB_PARTITION_LBA.start,
+				end: SERJIO_DB_PARTITION_LBA.end,
 				mgmtDbUuid: '00000000-0000-0000-0000-000000000000',
-				start: 1499200,
-				partitionGuid: '0b66397e-57b1-0186-f4ff-37223f669665',
+				partitionGuid: uuid.v1(),
 				partitionName: 'excelero_serjio_db',
 				isZeroed: false,
 				partitionType: 'excelero_metadata'

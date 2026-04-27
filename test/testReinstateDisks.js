@@ -17,7 +17,8 @@ const { clearAllQueues } = require('./testUtils/mockKafkaModule.js');
 const {
 	reportAllSegmentsOnline, getAllVolumeSegments, getSegmentsByStatus,
 	sendPRaidReportWithStatuses, sendDeprecationReport,
-	assertVolumeStatusAndAction, assertSegmentCount, assertHasSegments
+	assertVolumeStatusAndAction, assertSegmentCount, assertHasSegments,
+	assertFakeDriveSegmentsOnWire, assertUniqueSegmentUUIDsPerPRaid
 } = require('./testUtils/volumeUtils.js');
 const {
 	evictDisk, reinstateDisks, evictDiskAndSyncTarget, getDiskFromDB, syncTargetDiskFromDB, findTargetWithDisk
@@ -37,6 +38,7 @@ function runReinstateSanity() {
 async function setupOnlineVolumeWithTargets(volumeName, VolumeClass, targetCount = 3) {
 	await setup.newSetup();
 	const targets = generateTargets(targetCount, 1);
+	targets.forEach(t => t.populateMetadataPartitionsOnDisks());
 	await Promise.all(targets.map(t => t.save()));
 
 	const volume = new VolumeClass(volumeName);
@@ -61,8 +63,18 @@ async function setupReinstateEnvironment(volumeName, VolumeClass = VolumeRAID1, 
 
 
 describe('Reinstate Disks', () => {
-	before(() => dbManager.connect());
-	after(() => dbManager.closeConnection());
+	const originalAutoFormatDelay = consts.AUTO_FORMAT_DELAY;
+
+	before(() => {
+		// Zero the auto-format delay so mock Kafka reads don't time out waiting for the delayed command.
+		consts.AUTO_FORMAT_DELAY = 0;
+		return dbManager.connect();
+	});
+
+	after(() => {
+		consts.AUTO_FORMAT_DELAY = originalAutoFormatDelay;
+		return dbManager.closeConnection();
+	});
 
 	describe('#Happy Path - Full end-to-end reinstate flow on RAID1 volume', function() {
 		let targets;
@@ -98,6 +110,8 @@ describe('Reinstate Disks', () => {
 				const matchingOld = oldSegs.find(old => old.lbs === pending.lbs && old.lbe === pending.lbe);
 				assert(matchingOld, `Pending segment lbs=${pending.lbs} has no matching old segment`);
 				assert.strictEqual(pending.diskUUID, evictedDiskUUID, 'Pending segment should keep evicted diskUUID');
+				assert.notStrictEqual(pending._id, matchingOld._id, 'Reinstate twin must have a fresh _id distinct from its old partner');
+				assert.notStrictEqual(pending.uuid, matchingOld.uuid, 'Reinstate twin must have a fresh uuid distinct from its old partner');
 			});
 
 			const dbVolume = await Volume.getFromDB(volume.name);
@@ -115,15 +129,17 @@ describe('Reinstate Disks', () => {
 			assert.strictEqual(hwMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.hardwareConfiguration);
 		});
 
-		it('Should send UpdateVolume to TOMA with fake UUID for pending segments', async() => {
+		it('Should send UpdateVolume to TOMA with fake UUID and markedForRebuild status for pending segments', async() => {
 			const tomaMsg = await targets[0].readMessageFromIncrementalUpdatesTopic();
 			assert.strictEqual(tomaMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateVolume);
 
 			const tomaSegments = getAllVolumeSegments(tomaMsg.payload);
-			assertSegmentCount(tomaSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, expectedReinstateSegmentCount);
-			getSegmentsByStatus(tomaSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING).forEach(seg => {
-				assert.strictEqual(seg.diskUUID, consts.REINSTATE_FAKE_DRIVE_UUID, `TOMA should see fake UUID, got ${seg.diskUUID}`);
-			});
+			assertSegmentCount(tomaSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, 0);
+			assertFakeDriveSegmentsOnWire(tomaSegments, expectedReinstateSegmentCount);
+			assertUniqueSegmentUUIDsPerPRaid(tomaMsg.payload);
+
+			const dbVolume = await Volume.getFromDB(volume.name);
+			assertSegmentCount(getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, expectedReinstateSegmentCount);
 		});
 
 		it('Should remove old segments and keep pending after TOMA deprecation report', async() => {
@@ -143,10 +159,8 @@ describe('Reinstate Disks', () => {
 
 			const tomaSegments = getAllVolumeSegments(tomaMsg.payload);
 			assertSegmentCount(tomaSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD, 0);
-			assertSegmentCount(tomaSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, expectedReinstateSegmentCount);
-			getSegmentsByStatus(tomaSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING).forEach(seg => {
-				assert.strictEqual(seg.diskUUID, consts.REINSTATE_FAKE_DRIVE_UUID, 'Pending should still have fake UUID');
-			});
+			assertSegmentCount(tomaSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, 0);
+			assertFakeDriveSegmentsOnWire(tomaSegments, expectedReinstateSegmentCount);
 		});
 
 		it('Should auto-trigger formatDrive command to TOMA after all old segments deprecated', async() => {
@@ -190,6 +204,8 @@ describe('Reinstate Disks', () => {
 			const tomaMsg = await targets[0].readMessageFromIncrementalUpdatesTopic();
 			assert.strictEqual(tomaMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateVolume);
 			assertSegmentCount(getAllVolumeSegments(tomaMsg.payload), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, 0);
+
+			assertUniqueSegmentUUIDsPerPRaid(tomaMsg.payload, 'after second replacement: ');
 		});
 
 		it('Should transition to markedForRebuild after TOMA reports replacement and deprecation', async() => {
@@ -271,6 +287,25 @@ describe('Reinstate Disks', () => {
 
 			const logs = await reinstateDisks([{ diskID: seg.diskID, uuid: seg.diskUUID }]);
 			assertIsCausedBy(logs[0], systemMessages.DRIVE_REINSTATE_NON_PROTECTED_SEGMENTS);
+		});
+	});
+
+	describe('#No data segments validation', function() {
+		let emptyDisk;
+
+		before(async() => {
+			await setup.newSetup();
+			const [target] = generateTargets(1, 1);
+			target.populateMetadataPartitionsOnDisks();
+			await target.save();
+			emptyDisk = target.disks[0];
+		});
+
+		it('Should reject reinstate on a disk that was never part of a volume', async() => {
+			await evictDisk({ diskID: emptyDisk.diskID, uuid: emptyDisk.uuid });
+
+			const logs = await reinstateDisks([{ diskID: emptyDisk.diskID, uuid: emptyDisk.uuid }]);
+			assertIsCausedBy(logs[0], systemMessages.DRIVE_REINSTATE_NO_DATA_SEGMENTS);
 		});
 	});
 
@@ -357,6 +392,84 @@ describe('Reinstate Disks', () => {
 
 			const formatMsg = await evictTarget.readMessageFromCommandsTopic();
 			assert.strictEqual(formatMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.formatDrive, 'Sanity should auto-trigger format');
+		});
+
+		it('Should defer when format is already in flight on the disk', async() => {
+			const { targets, volume, firstSegment } = await setupReinstateEnvironment('rstSanFmtInFlight');
+
+			const logs = await reinstateDisks([{ diskID: firstSegment.diskID, uuid: firstSegment.diskUUID }]);
+			assert.strictEqual(logs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id);
+
+			const evictTarget = findTargetWithDisk(targets, firstSegment.diskID);
+			await evictTarget.clearQueues();
+
+			let dbVolume = await Volume.getFromDB(volume.name);
+			const oldSegments = getAllVolumeSegments(dbVolume).filter(s => s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+			await sendDeprecationReport(dbVolume, oldSegments, evictTarget);
+
+			const formatMsg = await evictTarget.readMessageFromCommandsTopic();
+			assert.strictEqual(formatMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.formatDrive);
+
+			const diskBeforeSanity = await getDiskFromDB(firstSegment.diskID);
+			assert(diskBeforeSanity.formatInProgress);
+			assert(diskBeforeSanity.isPendingFormat);
+
+			const segmentsBeforeSanity = JSON.stringify(diskBeforeSanity.diskSegments);
+
+			await runReinstateSanity();
+
+			const noNewMsg = await evictTarget.readMessageFromCommandsTopic().catch(() => null);
+			assert.strictEqual(noNewMsg, null, 'Sanity must not enqueue another format command while format is in flight');
+
+			const diskAfterSanity = await getDiskFromDB(firstSegment.diskID);
+			assert.strictEqual(JSON.stringify(diskAfterSanity.diskSegments), segmentsBeforeSanity);
+		});
+
+		it('Should handle incomplete replacement when post-format server update landed but volumes did not', async function() {
+			this.timeout(15000);
+
+			const { targets, volume, firstSegment } = await setupReinstateEnvironment('rstSan2ndRep');
+			const evictTarget = findTargetWithDisk(targets, firstSegment.diskID);
+
+			const logs = await reinstateDisks([{ diskID: firstSegment.diskID, uuid: firstSegment.diskUUID }]);
+			assert.strictEqual(logs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id);
+
+			await evictTarget.clearQueues();
+
+			let dbVolume = await Volume.getFromDB(volume.name);
+			const oldSegments = getAllVolumeSegments(dbVolume).filter(s => s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+			await sendDeprecationReport(dbVolume, oldSegments, evictTarget);
+
+			const formatMsg = await evictTarget.readMessageFromCommandsTopic();
+			assert.strictEqual(formatMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.formatDrive);
+
+			const updateVolumesStub = stubMethod('../../modules/disk.js', 'updateVolumesAfterReinstate',
+				(pairs, cb) => cb(new Error('simulated post-format volume crash')));
+
+			await syncTargetDiskFromDB(evictTarget, firstSegment.diskID, true);
+			evictTarget.messageSequence += 1;
+			await evictTarget.sendReport();
+
+			await pollUntil(async() => {
+				const d = await getDiskFromDB(firstSegment.diskID);
+				return d && !d.isOutOfService
+					&& getSegmentsByStatus(d.diskSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD).length > 0
+					&& getSegmentsByStatus(d.diskSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD).length > 0;
+			});
+
+			updateVolumesStub();
+
+			const disk = await getDiskFromDB(firstSegment.diskID);
+			assertHasSegments(disk.diskSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD);
+			assertHasSegments(disk.diskSegments, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+
+			dbVolume = await Volume.getFromDB(volume.name);
+			assertSegmentCount(getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD, 0);
+
+			await runReinstateSanity();
+
+			dbVolume = await Volume.getFromDB(volume.name);
+			assertHasSegments(getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD);
 		});
 
 		it('Should resume reinstate when formatted disk still has pending segments', async function() {

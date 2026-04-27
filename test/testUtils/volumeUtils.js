@@ -105,7 +105,7 @@ exports.sendDeprecationReport = function(dbVolume, segmentsToDeprecate, target) 
 			pRaid.diskSegments.forEach(seg => {
 				const segReport = new SegmentReport(seg.uuid);
 
-				if (deprecateIds.has(seg._id) && seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD)
+				if (deprecateIds.has(seg._id))
 					segReport.setStatus(consts.diskSegmentStatuses.DEPRECATED);
 				// TOMA reports conf_corrupted for segments on a non-existent drive UUID (e.g. reinstate fake UUID)
 				else if (seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
@@ -135,6 +135,24 @@ exports.assertSegmentCount = function(segments, status, expectedCount) {
 
 exports.assertHasSegments = function(segments, status) {
 	assert(exports.getSegmentsByStatus(segments, status).length, `Expected at least one segment with status ${status}`);
+};
+
+exports.assertFakeDriveSegmentsOnWire = function(tomaSegments, expectedCount) {
+	const fakeDriveSegments = tomaSegments.filter(seg => seg.diskUUID === consts.REINSTATE_FAKE_DRIVE_UUID);
+	assert.strictEqual(fakeDriveSegments.length, expectedCount,
+		`Expected ${expectedCount} segments on fake drive UUID, got ${fakeDriveSegments.length}`);
+	fakeDriveSegments.forEach(seg =>
+		assert.strictEqual(seg.status, consts.diskSegmentStatuses.MARKED_FOR_REBUILD,
+			`Fake-drive segment should be MARKED_FOR_REBUILD on the wire, got ${seg.status}`));
+};
+
+
+exports.assertUniqueSegmentUUIDsPerPRaid = function(payload, context = '') {
+	payload.chunks.forEach(chunk => chunk.pRaids.forEach(pRaid => {
+		const ids = pRaid.diskSegments.map(s => s.uuid);
+		assert.strictEqual(new Set(ids).size, ids.length,
+			`${context}TOMA must receive unique segmentIDs per pRaid; got duplicates: ${ids.join(', ')}`);
+	}));
 };
 
 exports.sendPRaidUpdate = function(pRaidReports, leader) {

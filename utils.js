@@ -2341,12 +2341,11 @@ const isReinstateReplacementStatus = (status) =>
 	status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING ||
 	status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD;
 
-// Two segments form a reinstate twin pair when they share the same _id and one is the
-// deprecated original (MARKED_FOR_REBUILD_OLD) while the other is its in-place replacement:
-//   1st replacement: MARKED_FOR_REBUILD_PENDING paired with MARKED_FOR_REBUILD_OLD.
-//   2nd replacement: MARKED_FOR_REBUILD         paired with MARKED_FOR_REBUILD_OLD.
 scope.areReinstateTwinSegments = (segmentA, segmentB) => {
-	if (segmentA._id !== segmentB._id)
+	if (segmentA.diskID !== segmentB.diskID)
+		return false;
+
+	if (segmentA.lbs !== segmentB.lbs || segmentA.lbe !== segmentB.lbe)
 		return false;
 
 	return (segmentA.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD && isReinstateReplacementStatus(segmentB.status)) ||
@@ -2381,7 +2380,7 @@ function isSegmentOverlaps(disk, diskSegment) {
 
 		if (overlapSegment.type == diskSegment.type
 			&& overlapSegment.partitionName == diskSegment.partitionName
-			&& overlapSegment.uuid != overlapSegment.uuid)
+			&& overlapSegment.uuid != diskSegment.uuid)
 			innerMessage = new SystemMessage(systemMessages.UTILS_SEGMENTS_OVERLAP_METADATA_SEGMENT_UUID_CHANGED);
 
 		return new SystemMessage(systemMessages.UTILS_ADD_SEGMENT_TO_DISK_OVERLAP).addInfo(Entities.Error, innerMessage)

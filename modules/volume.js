@@ -1017,14 +1017,18 @@ function checkAndAutoFormatAfterReinstate(disk) {
 	if (!disk?.diskSegments?.length)
 		return;
 
-	const hasPendingSegments = disk.diskSegments.some(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
-	const hasNonPendingDataSegments = disk.diskSegments.some(seg =>
-		seg.type === consts.segmentTypes.DATA &&
-		seg.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
+	const dataSegments = disk.diskSegments.filter(seg => seg.type === consts.segmentTypes.DATA);
+	const canStartAutoFormat = disk.isOutOfService &&
+		dataSegments.length > 0 &&
+		dataSegments.every(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
 
-	if (hasPendingSegments && !hasNonPendingDataSegments) {
-		logger.sysDEBUG(`All markedForRebuild_old segments deprecated on drive ${disk.diskID}, auto-triggering format`);
-		diskModule.formatDiskByIDsAndUUIDs([{ _id: disk.diskID, uuid: disk.uuid }], null, true, () => {});
+	if (canStartAutoFormat) {
+		// delay to let TOMA apply the deprecation before formatDrive.
+		// fallbacks: TOMA retries via reportTarget, and checkAndResumeStuckReinstate re-issues on the next sanityAndRecover.
+		setTimeout(() => {
+			logger.sysDEBUG(`All markedForRebuild_old segments deprecated on drive ${disk.diskID}, auto-triggering format`);
+			diskModule.formatDiskByIDsAndUUIDs([{ _id: disk.diskID, uuid: disk.uuid }], null, true, () => {});
+		}, consts.AUTO_FORMAT_DELAY);
 	}
 }
 
@@ -1040,6 +1044,7 @@ function fetchDriveBySegmentID(segment, callback) {
 			'node_id': 1,
 			'zone': 1,
 			'disks.uuid': 1,
+			'disks.isOutOfService': 1,
 			'disks.usableBlocks': 1,
 			'disks.block_size': 1,
 			'disks.diskID': 1,
@@ -1085,8 +1090,8 @@ function updatePRaidSegmentsInDrives(segments, callback) {
 
 				var serverDisk = serverDisks[0];
 				var disk = serverDisk.disks;
-				var segmentsWithoutDeprecations = disk.diskSegments.filter(e => !isSegmentEligibleForRemoval(e, segment.segmentID, disk.diskSegments));
-				var deprecatedSegment = disk.diskSegments.find(e => isSegmentEligibleForRemoval(e, segment.segmentID, disk.diskSegments));
+				var segmentsWithoutDeprecations = disk.diskSegments.filter(function(e) { return e._id !== segment.segmentID; });
+				var deprecatedSegment = disk.diskSegments.filter(function(e) { return e._id === segment.segmentID; })[0];
 
 				deprecatedSegment.status = consts.diskSegmentStatuses.DEPRECATED;
 				deprecatedSegment.isDead = false;
@@ -1094,7 +1099,12 @@ function updatePRaidSegmentsInDrives(segments, callback) {
 				var updateObj = { $set: { 'disks.$.diskSegments': segmentsWithoutDeprecations } };
 				var delta = deprecatedSegment.lbe - deprecatedSegment.lbs;
 
-				if (delta && !deprecatedSegment.fromReserved && !deprecatedSegment.wasFromReserved)
+				const hasSurvivingTwin = segmentsWithoutDeprecations.some(seg =>
+					seg.type === consts.segmentTypes.DATA &&
+					seg.lbs === deprecatedSegment.lbs &&
+					seg.lbe === deprecatedSegment.lbe);
+
+				if (delta && !deprecatedSegment.fromReserved && !deprecatedSegment.wasFromReserved && !hasSurvivingTwin)
 					utils.appendPropertyOrObject(updateObj, '$inc', 'disks.$.availableBlocks', delta + 1);
 
 				utils.appendPropertyOrObject(updateObj, '$inc', 'disks.$.version', 1);
@@ -1971,7 +1981,7 @@ scope.updatePRaidDiskSegments = function(volume, pRaidToUpdate, user, lockedZone
 		}
 
 		if (reportSegment.status === consts.diskSegmentStatuses.DEPRECATED) {
-			dbPRaid.diskSegments = dbPRaid.diskSegments.filter(seg => !isSegmentEligibleForRemoval(seg, reportSegment.segmentID, dbPRaid.diskSegments));
+			dbPRaid.diskSegments = dbPRaid.diskSegments.filter((segment) => { return segment._id !== reportSegment.segmentID; });
 			shouldIncVolumeVersion = true;
 		} else if (reportSegment.status != consts.diskSegmentStatuses.DEAD) {
 			const isTransitionFromMarkedForRebuildToUnderRecovery = (status, pendingStatus) =>
@@ -2240,11 +2250,9 @@ scope.updateVolumeDiskSegmentsAfterEvict = function(diskSegments, user, lockedZo
 								}
 							}
 						});
-					} else {
+					} else
 						//Take all the segments but the deprecated one.
-						const segs = matchedSegmentPRaid.diskSegments;
-						matchedSegmentPRaid.diskSegments = segs.filter(s => !isSegmentEligibleForRemoval(s, segment._id, segs));
-					}
+						matchedSegmentPRaid.diskSegments = matchedSegmentPRaid.diskSegments.filter(function(s) { return s._id !== segment._id; });
 
 					var calcResult = scope.calculateVolumeStatus(volume);
 
@@ -3044,12 +3052,5 @@ scope.isEffectiveSegmentInPRaidStatus = (status) => {
 
 	return !ineffectiveSegmentStatuses.includes(status);
 };
-
-function isSegmentEligibleForRemoval(segment, segmentIdToRemove, allSegments) {
-	if (segment._id !== segmentIdToRemove)
-		return false;
-
-	return !utils.isReinstateReplacementSegment(segment, allSegments);
-}
 
 module.exports = scope;

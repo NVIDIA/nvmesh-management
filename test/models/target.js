@@ -36,7 +36,7 @@ exports.Target = class Target extends Entity {
 		this.cpu_load = 0.0;
 		this.cpu_temp = '30.0';
 		this.version = '3.1.0-1269';
-		this.featureCompatibilityVersion = '1';
+		this.featureCompatibilityVersion = '3';
 		this.tomaSoftwareVersion = '784';
 		this.branch = 'master';
 		this.commit = '0f0f0f0';
@@ -83,6 +83,12 @@ exports.Target = class Target extends Entity {
 		this.reportID++;
 		await this.sendReport();
 		return disk;
+	}
+
+	// Populate NVMesh metadata partitions on every disk of this target. Call this before
+	// `save()` in tests that need a realistic post-format disk layout (e.g. the reinstate suite).
+	populateMetadataPartitionsOnDisks() {
+		this.disks.forEach(disk => disk.populateMetadataPartitions());
 	}
 
 	addNIC(nic) {

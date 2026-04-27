@@ -57,6 +57,7 @@ exports.syncTargetDiskFromDB = async function(target, diskID, syncFormatDetails)
 		targetDisk.GPT.diskGuid = dbDisk.uuid;
 		targetDisk.GPT.mgmtDbUuid = app.get('dbUUID');
 		targetDisk.status = consts.diskStatus.OK;
+		targetDisk.populateMetadataPartitions();
 	}
 
 	return dbDisk;

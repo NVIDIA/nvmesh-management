@@ -3,14 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-var { KafkaMessage } = require('./KafkaMessage');
-var { webSocketMessages, updateTypes } = require('../../consts');
 const consts = require('../../consts');
+const { ClientConfigurationMessage } = require('./ClientConfigurationMessage.js');
 
-exports.UpdateVolumes = class UpdateVolumes extends KafkaMessage {
+exports.UpdateVolumes = class UpdateVolumes extends ClientConfigurationMessage {
 	constructor(confObj, originID, type = consts.kafkaMessageTypes.ManagementToClient.updateVolumes, version = 1) {
-		super(type, version, null, null, originID, webSocketMessages.UPDATE_VOLUMES);
-		confObj.updateType = updateTypes.FULL;
-		this.payload = confObj;
+		super(type, version, null, null, originID, consts.webSocketMessages.UPDATE_VOLUMES);
+		this.payload = this.preparePayload({ ...confObj, updateType: consts.updateTypes.FULL });
 	}
 };

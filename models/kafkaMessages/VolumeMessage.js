@@ -5,6 +5,56 @@
 
 const { KafkaMessage } = require('./KafkaMessage');
 const consts = require('../../consts');
+
+function toExternalSegmentStatus(status) {
+	if (status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
+		return consts.diskSegmentStatuses.MARKED_FOR_REBUILD;
+
+	return status;
+}
+
+exports.toExternalSegmentStatus = toExternalSegmentStatus;
+
+function toExternalTomaSegment(segment) {
+	const isReinstatePending = segment.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING;
+
+	return {
+		status: isReinstatePending ? consts.diskSegmentStatuses.MARKED_FOR_REBUILD : segment.status,
+		diskUUID: isReinstatePending ? consts.REINSTATE_FAKE_DRIVE_UUID : segment.diskUUID
+	};
+}
+
+function prepareTomaDiskSegment(segment) {
+	return {
+		uuid: segment.uuid,
+		lbs: segment.lbs,
+		lbe: segment.lbe,
+		type: segment.type,
+		pRaidIndex: segment.pRaidIndex,
+		pRaidTypeIndex: segment.pRaidTypeIndex,
+		...toExternalTomaSegment(segment)
+	};
+}
+
+function prepareTomaPRaid(pRaid) {
+	return {
+		uuid: pRaid.uuid,
+		activated: pRaid.activated,
+		stripeIndex: pRaid.stripeIndex,
+		zone: pRaid.zone,
+		diskSegments: pRaid.diskSegments.map(prepareTomaDiskSegment)
+	};
+}
+
+function prepareTomaChunk(chunk) {
+	return {
+		uuid: chunk.uuid,
+		vlbs: chunk.vlbs,
+		vlbe: chunk.vlbe,
+		pRaids: chunk.pRaids.map(prepareTomaPRaid)
+	};
+}
+
 exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 	constructor(type, version, confObj) {
 		super(type, version, confObj);
@@ -15,57 +65,28 @@ exports.VolumeMessage = class VolumeMessage extends KafkaMessage {
 	}
 
 	preparePayload(payload) {
-		const preparedPayload = {};
-
-		preparedPayload['_id'] = payload._id;
-		preparedPayload['uuid'] = payload.uuid;
-		preparedPayload['version'] = payload.version;
-		preparedPayload['name'] = payload.name;
-		preparedPayload['type'] = payload.type;
-		preparedPayload['blockSize'] = payload.blockSize;
-		preparedPayload['lockServer'] = payload.lockServer;
-		preparedPayload['blocks'] = payload.blocks;
-		preparedPayload['RAIDLevel'] = payload.RAIDLevel;
-		preparedPayload['numberOfMirrors'] = payload.numberOfMirrors;
-		preparedPayload['stripeSize'] = payload.stripeSize;
-		preparedPayload['stripeWidth'] = payload.stripeWidth;
-		preparedPayload['dataBlocks'] = payload.dataBlocks;
-		preparedPayload['parityBlocks'] = payload.parityBlocks;
-		preparedPayload['status'] = payload.status;
-		preparedPayload['action'] = payload.action;
-		preparedPayload['relativeRebuildPriority'] = payload.relativeRebuildPriority;
-		preparedPayload['reservation'] = payload.reservation;
-		preparedPayload['enableCrcCheck'] = payload.enableCrcCheck;
-		preparedPayload['use_debug_di'] = payload.use_debug_di;
-
-		preparedPayload['chunks'] = payload.chunks.map(c => ({
-			uuid: c.uuid,
-			vlbs: c.vlbs,
-			vlbe: c.vlbe,
-			pRaids: c.pRaids.map(p => ({
-				uuid: p.uuid,
-				activated: p.activated,
-				stripeIndex: p.stripeIndex,
-				zone: p.zone,
-				diskSegments: p.diskSegments.map(d => ({
-					uuid: d.uuid,
-					lbs: d.lbs,
-					lbe: d.lbe,
-					type: d.type,
-					pRaidIndex: d.pRaidIndex,
-					pRaidTypeIndex: d.pRaidTypeIndex,
-					status: d.status,
-					diskUUID: d.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING ? consts.REINSTATE_FAKE_DRIVE_UUID : d.diskUUID
-				}))
-			}))
-		}));
-
-		return preparedPayload;
-	}
-
-	toJSON() {
-		const json = super.toJSON();
-
-		return json;
+		return {
+			_id: payload._id,
+			uuid: payload.uuid,
+			version: payload.version,
+			name: payload.name,
+			type: payload.type,
+			blockSize: payload.blockSize,
+			lockServer: payload.lockServer,
+			blocks: payload.blocks,
+			RAIDLevel: payload.RAIDLevel,
+			numberOfMirrors: payload.numberOfMirrors,
+			stripeSize: payload.stripeSize,
+			stripeWidth: payload.stripeWidth,
+			dataBlocks: payload.dataBlocks,
+			parityBlocks: payload.parityBlocks,
+			status: payload.status,
+			action: payload.action,
+			relativeRebuildPriority: payload.relativeRebuildPriority,
+			reservation: payload.reservation,
+			enableCrcCheck: payload.enableCrcCheck,
+			use_debug_di: payload.use_debug_di,
+			chunks: payload.chunks.map(prepareTomaChunk)
+		};
 	}
 };
