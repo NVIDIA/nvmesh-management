@@ -11,7 +11,6 @@ var utils = require('../utils.js');
 const { compareVersionRelease, compareVersions } = require('./versionUtils.js');
 var events = require('../events.js');
 var logger = require('../logger.js');
-var queue = require('../queue.js');
 var objectNotifier = require('../objectNotifier.js');
 var consts = require('../consts.js');
 var volumeModule = require('./volume.js');
@@ -48,49 +47,19 @@ scope.afterModuleLoaded = function() {
 	({ Entities, SystemMessage, MongoError, SystemAdminMessage, Differentiators, getNICID, getDriveID } = require('./error.js'));
 };
 
-var reportsQueue = {};
-
-function enqueueReport(nodeID, cb) {
-	while (reportsQueue[nodeID].size()) {
-		reportsQueue[nodeID].dequeue().value(true);
-	}
-
-	reportsQueue[nodeID].enqueue(cb);
-}
-
-function dequeueReport(nodeID) {
-	if (!Object.prototype.hasOwnProperty.call(reportsQueue, nodeID))
-		return;
-
-	var reportsInQueue = reportsQueue[nodeID].size();
-
-	if (!reportsInQueue)
-		return delete reportsQueue[nodeID];
-
-	(reportsQueue[nodeID].dequeue().value)();
-
-	if (reportsInQueue === 1)
-		delete reportsQueue.nodeID;
-}
-
-function fetchOneAndHandleReport(message, cb) {
+function validateAndHandleTargetReport(message, cb) {
 	let db = app.get('db');
 	let server = db.collection('server');
 
 	let nodeID = message.hostname;
 
-	const done = err => {
-		dequeueReport(nodeID);
-		cb(err);
-	};
-
 	server.findOne({ _id: nodeID }, function(err, lastServer) {
 		if (err)
-			return done(new MongoError(err).log());
+			return cb(new MongoError(err).log());
 
 		if (!lastServer) {
 			logger.sysDEBUG(`Received a report for a target with nodeID ${nodeID}, the target could not be found in the DB. Dropping the report.`);
-			return done();
+			return cb();
 		}
 
 		const lastMessageSequence = lastServer.kafkaMessageSequence?.[message.type];
@@ -102,7 +71,7 @@ function fetchOneAndHandleReport(message, cb) {
 				reportedServer: { kafkaMessageSequence: message.messageSequence, tomaToken: message.tomaToken }
 			});
 
-			return done();
+			return cb();
 		}
 
 		const executionTimer = new ExecutionTimer('handleServerReport');
@@ -111,14 +80,12 @@ function fetchOneAndHandleReport(message, cb) {
 				new SystemMessage(systemMessages.SERVER_REPORT_FINISHED_WITH_ERROR).addInfo(Entities.Error, err);
 
 			executionTimer.stop();
-			return done(err);
+			return cb(err);
 		});
 	});
 }
 
 scope.report = function(message, callback) {
-	var nodeID = message.hostname;
-
 	if (!message.payload.node.disks)
 		message.payload.node.disks = [];
 
@@ -127,17 +94,7 @@ scope.report = function(message, callback) {
 
 	handleDuplicates(message.payload.node);
 
-	if (nodeID && Object.prototype.hasOwnProperty.call(reportsQueue, nodeID))
-		return enqueueReport(nodeID, function(skipExecute) {
-			if (skipExecute) {
-				return callback();
-			}
-			fetchOneAndHandleReport(message, callback);
-		});
-
-	reportsQueue[nodeID] = new queue.Queue();
-
-	fetchOneAndHandleReport(message, callback);
+	validateAndHandleTargetReport(message, callback);
 };
 
 function deleteTarget(serverID, serverUUID, logs, affectedZones, callback) {
