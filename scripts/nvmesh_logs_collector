@@ -27,7 +27,7 @@ NVMESH_VAR_OPT_DIR = "/var/opt/nvmesh"
 TOMA_CORE_DUMP_DIR = "/var/opt/nvmesh"
 NVMESHUM_SRCS = "/tmp/infraClient/nvmeshum"
 NVMESHUM_LOG_COLLECTOR_PATH = "/opt/nvmesh/nvmeshum/bin/logs_collector.sh"
-NVMESHUM_CORE_DUMPS_DIR = "/var/lib/apport/coredump"
+NVMESH_APPORT_CORE_DUMPS_DIR = "/var/lib/apport/coredump"
 SYSTEMD_CORE_DUMPS_DIR = "/var/lib/systemd/coredump"
 ETHTOOL_LOG_FILE = "ethtool_interfaces.log"
 CLNT_ANALYZER_PATH = "/usr/bin/nvmesh_clnt_analyzer"
@@ -951,6 +951,17 @@ def collect_kafka_topic_messages():
     except Exception as error:
         print_to_stdout("Error: could not collect kafka log files, err: {0}".format(error))
 
+def collect_nvmesh_apport_core_dumps():
+    if not os.path.exists(NVMESH_APPORT_CORE_DUMPS_DIR):
+        return
+
+    print_to_stdout("Collecting NVMesh apport core dumps...")
+
+    cmd = "cp -rp --parents {0}/core*nvmesh* .".format(NVMESH_APPORT_CORE_DUMPS_DIR)
+    res = runTimedCommand(cmd, 30)
+
+    if int(res[2]) == True:
+        print_to_stdout("Error: could not collect NVMesh apport core dumps - " + res[1])
 
 def collect_host_logs():
     global TOMA_PID
@@ -994,6 +1005,8 @@ def collect_host_logs():
 
     print_to_stdout("Collecting NVMeshUM logs...")
     collect_nvmeshum_logs()
+
+    collect_nvmesh_apport_core_dumps()
 
     if args.COLLECT_KAFKA_LOGS:
         print_to_stdout("Trying to collect Kafka logs...")
