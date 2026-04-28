@@ -88,8 +88,8 @@ git add -A
 git commit -m "$(cat <<'EOF'
 [NVMESH-1234] feat(BL): add stripe alignment for striped EC
 
-Round stripeSize up to the nearest block set for STRIPED_ERASURE_CODING
-so per-chunk allocations are aligned to whole stripes.
+* Round stripeSize up to the nearest block set for STRIPED_ERASURE_CODING
+  so per-chunk allocations are aligned to whole stripes.
 EOF
 )"
 ```

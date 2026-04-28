@@ -19,13 +19,14 @@ All commits in this repo follow this strict format:
 - **type** — one of: `feat`, `fix`, `chore`, `style`, `docs`, `refactor`, `perf`, `test`, `back/port`.
 - **scope** — `(component)` for normal commits (e.g. `(BL)`, `(GUI)`, `(vpg)`, `(sanity)`, `(META)`), or `[ORIG-JIRA]` for `back/port` commits (the original ticket being ported).
 - **title** — one-line summary, imperative mood, ≤ 72 chars. Required for every non-ported commit. Concretely names the behavior changed; avoid generic wording like "fix bug" or "address JIRA".
-- **body** — extended description on a separate paragraph. **Mandatory for every commit.** Bullet the observable effects of the diff (conditions it applies to, what it preserves, what it intentionally skips). A single line is acceptable for a truly trivial commit (typo, rename), but never commit title-only.
+- **body** — extended description on a separate paragraph. **Mandatory for every commit.** Bullet the observable effects of the diff (conditions it applies to, what it preserves, what it intentionally skips). **Every paragraph in the body must start with `* `** (asterisk + space); paragraphs are separated by a blank line. A single paragraph is acceptable for a truly trivial commit (typo, rename), but never commit title-only.
 
 ## Grammar rules
 
 - **No space** between `<type>` and the scope: `fix(BL)`, not `fix (BL)`; `back/port[NVMESH-4000]`, not `back/port [NVMESH-4000]`.
 - The colon between scope and title is always present when a title is included.
 - Body is separated from the title by exactly **one blank line**.
+- Every paragraph in the body starts with `* ` (asterisk + space). Wrapped continuation lines of the same paragraph are not re-prefixed; the `*` marks the start of a paragraph, not each line.
 
 ## Type inference from JIRA
 
@@ -58,8 +59,8 @@ If the issue type is unknown or ambiguous, ask the user to choose. For multi-tic
 ```
 [NVMESH-1234] feat(BL): add stripe alignment for striped EC
 
-Round stripeSize up to the nearest block set so per-chunk allocations
-land on whole stripe boundaries.
+* Round stripeSize up to the nearest block set so per-chunk allocations
+  land on whole stripe boundaries.
 ```
 
 **Bug fix, GUI:**
@@ -67,8 +68,10 @@ land on whole stripe boundaries.
 ```
 [NVMESH-9999] fix(GUI): disable submit button while form is validating
 
-Prevents duplicate submits when the user double-clicks during async
-validation. Re-enables on validation completion or error.
+* Prevent duplicate submits when the user double-clicks during async
+  validation.
+
+* Re-enable the button on validation completion or error.
 ```
 
 **Multiple JIRAs:**
@@ -76,8 +79,8 @@ validation. Re-enables on validation completion or error.
 ```
 [NVMESH-1][NVMESH-2] fix(GUI): align modal close button with form layout
 
-Wraps the close button in the form footer so it stays aligned when the
-modal grows.
+* Wrap the close button in the form footer so it stays aligned when the
+  modal grows.
 ```
 
 **No JIRA reference:**
@@ -85,7 +88,7 @@ modal grows.
 ```
 [NO-REF] chore(BL): bump eslint to 8.57
 
-Picks up new default rules; no code changes required after the bump.
+* Pick up new default rules; no code changes required after the bump.
 ```
 
 **Back-port (original JIRA replaces the component):**
@@ -93,6 +96,6 @@ Picks up new default rules; no code changes required after the bump.
 ```
 [NVMESH-4250] back/port[NVMESH-4000]: restore compatibility for pre-2.1 clients
 
-Cherry-pick of NVMESH-4000 onto release/3.4. No behavioral changes beyond
-the original fix.
+* Cherry-pick of NVMESH-4000 onto release/3.4. No behavioral changes beyond
+  the original fix.
 ```
