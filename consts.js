@@ -1220,6 +1220,10 @@ consts.upgradeStepCommands = {
 	INSTALL: '<install>'
 };
 
+consts.upgradeStepNames = {
+	START_TARGET: 'startTarget'
+};
+
 consts.upgradeTypes = {
 	CLIENT_ONLY: 'clientOnly',
 	CLIENT_AND_TARGET: 'clientTarget',
@@ -1249,6 +1253,9 @@ consts.upgradeStepStartConditions = {
 	NONE: 'none' //will start immediately as long the last step for this machine is done.
 };
 
+// min time in ms for NDU volume state freshness checks
+consts.MIN_FRESHNESS_WAIT_MS = 30 * 1000;
+
 consts.FEATURE_COMPATIBILITY_TYPES = {
 	CLIENT: 'clientFeatureCompatibility',
 	TARGET: 'targetFeatureCompatibility',
@@ -1272,7 +1279,15 @@ consts.FEATURE_REQUIREMENTS = {
 		[consts.FEATURE_COMPATIBILITY_TYPES.TARGET]: '1',
 		[consts.FEATURE_COMPATIBILITY_TYPES.CLIENT]: '2',
 	},
+
+	VOLUME_STATE_FRESHNESS: {
+		displayName: 'volume state freshness',
+		[consts.FEATURE_COMPATIBILITY_TYPES.MANAGEMENT]: '2',
+		[consts.FEATURE_COMPATIBILITY_TYPES.LEADER]: '3',
+		[consts.FEATURE_COMPATIBILITY_TYPES.TARGET]: '3',
+	},
 };
+
 
 const fcvField = 'featureCompatibilityVersion';
 consts.FCV_COLLECTION_MAP = {

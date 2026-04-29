@@ -1227,6 +1227,7 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 			});
 		},
 		function checkIfUpdatePRaidTokenShouldBeSent(callback) {
+			// TODO: drop this check on 3.5.0.
 			if (!message.updatePRaidToken) {
 				return callback();
 			}
@@ -1235,13 +1236,12 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 				dbUpdatePRaidToken = 1;
 
 				const $query = getHandleLeaderKeepaliveUpdateQuery(message.leaderToken, message.messageSequence, message.payload.raftTerm, true);
-				versionCollection.updateOne($query, { $set: { updatePRaidToken: 1 } }, err => {
+				return versionCollection.updateOne($query, { $set: { updatePRaidToken: 1 } }, err => {
 					if (err)
 						return callback(new MongoError(err).log());
 
 					callback();
 				});
-				return;
 			}
 
 			if (message.updatePRaidToken !== dbUpdatePRaidToken) {
@@ -1262,7 +1262,7 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 				shouldSendUpdatePRaidToken = true;
 
 				const $query = getHandleLeaderKeepaliveUpdateQuery(message.leaderToken, message.messageSequence, message.payload.raftTerm, true);
-				versionCollection.findOneAndUpdate(
+				return versionCollection.findOneAndUpdate(
 					$query,
 					{ $inc: { updatePRaidToken: 1 } },
 					{ returnDocument: consts.mongoReturnDocument.AFTER }, (err, result) => {
@@ -1275,7 +1275,6 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 						dbUpdatePRaidToken = result.updatePRaidToken;
 						callback();
 					});
-				return;
 			}
 
 			callback();
@@ -1306,6 +1305,7 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 					}
 				};
 
+				// TODO: drop this check on 3.5.0. just add to $set.
 				if (message.payload.raftMembers) {
 					$update.$set.raftMembers = message.payload.raftMembers;
 					$update.$set.isReconciled = !!message.payload.isReconciled;

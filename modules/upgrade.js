@@ -231,6 +231,8 @@ function handleSteps(machine, destinationVersion, steps, cb) {
 				return cb(err);
 
 			results.push({
+				stepTypeID: step.ID,
+				name: step.name,
 				command: command,
 				isVolumeAffected: !!step.isVolumeAffected
 			});
@@ -1128,6 +1130,220 @@ scope.verifyVolumesAvailability = (upgrade, step, cb) => {
 	});
 };
 
+// Extract the highest target component version from the upgrade's destination version
+scope.getDestinationTargetVersion = (destinationVersion, cb) => {
+	getReleaseByVersion(destinationVersion, (err, release) => {
+		if (err) return cb(err);
+
+		const targetVersions = (release.artifacts || [])
+			.map(artifact => parseVersionString(artifact.name))
+			.filter(parsed => parsed.packageName === consts.components.TARGET && parsed.baseVersion)
+			.map(parsed => `${parsed.baseVersion}-${parsed.releaseNumber}`);
+
+		if (!targetVersions.length)
+			return cb(new SystemMessage(systemMessages.RELEASE_ARTIFACTS_NOT_FOUND)
+				.addInfo(Entities.Component.name, consts.components.TARGET)
+				.addInfo(Entities.Release.version, destinationVersion));
+
+		const maxVersion = targetVersions.reduce((acc, v) => compareVersionRelease(v, acc) > 0 ? v : acc);
+		cb(null, maxVersion);
+	});
+};
+
+// Returns { [zoneID]: { [hostname]: expectedVersion } } for every non-DELETING target in the given zones.
+scope.loadExpectedTargetVersionsByZone = (upgrade, zoneIDs, cb) => {
+	if (!zoneIDs.length)
+		return cb(null, {});
+
+	const db = app.get('db');
+	const serverCollection = db.collection('server');
+	const upgradeStepCollection = db.collection('upgradeStep');
+
+	async.parallel({
+		targets: (callback) => serverCollection.find(
+			{ zone: { $in: zoneIDs }, node_status: { $ne: consts.nodeStatus.DELETING } },
+			{ projection: { node_id: 1, version: 1, zone: 1 } }
+		).toArray(callback),
+		completedStartTargets: (callback) => upgradeStepCollection.find({
+			upgradeID: upgrade._id,
+			name: consts.upgradeStepNames.START_TARGET,
+			status: consts.upgradeStepStatuses.COMPLETED
+		}, { projection: { hostname: 1 } }).toArray(callback)
+	}, (err, results) => {
+		if (err)
+			return cb(new MongoError(err).log());
+
+		const targetVersionsByZone = {};
+		zoneIDs.forEach(id => targetVersionsByZone[id] = {});
+
+		const hostnameToZone = {};
+		results.targets.forEach(s => {
+			targetVersionsByZone[s.zone][s.node_id] = s.version;
+			hostnameToZone[s.node_id] = s.zone;
+		});
+
+		if (!results.completedStartTargets.length)
+			return cb(null, targetVersionsByZone);
+
+		scope.getDestinationTargetVersion(upgrade.destinationVersion, (err, destinationTargetVersion) => {
+			if (err) return cb(err);
+
+			results.completedStartTargets.forEach(s => {
+				const zoneID = hostnameToZone[s.hostname];
+				if (zoneID) targetVersionsByZone[zoneID][s.hostname] = destinationTargetVersion;
+			});
+			cb(null, targetVersionsByZone);
+		});
+	});
+};
+
+// Returns true if every expected target has an exact-version match in raftMembers.
+scope.areExpectedTargetsObservedByLeader = (expectedVersions, raftMembers) => {
+	const actualByID = utils.keyBy(raftMembers || [], m => m.memberID);
+
+	return Object.keys(expectedVersions).every(memberID => actualByID[memberID]?.version === expectedVersions[memberID]);
+};
+
+// TODO: legacy path for pre-VOLUME_STATE_FRESHNESS clusters; remove on 3.5.0
+function verifyVolumeStateIsFreshByElapsedTime(upgrade, step, cb) {
+	const db = app.get('db');
+	const upgradeStepCollection = db.collection('upgradeStep');
+
+	upgradeStepCollection.findOne({
+		upgradeID: upgrade._id,
+		stepIndex: { $lt: step.stepIndex },
+		name: consts.upgradeStepNames.START_TARGET,
+		status: consts.upgradeStepStatuses.COMPLETED
+	}, {
+		sort: { stepIndex: -1 },
+		projection: { finishedAt: 1 }
+	}, (err, prev) => {
+		if (err)
+			return cb(new MongoError(err).log());
+
+		if (!prev || !prev.finishedAt)
+			return cb();
+
+		const elapsed = Date.now() - new Date(prev.finishedAt).getTime();
+		if (elapsed >= consts.MIN_FRESHNESS_WAIT_MS) {
+			logger.sysDEBUG(`Upgrade ${upgrade._id}: Executing step '${step.name}' (ID: ${step._id}). ` +
+				`Enough time has passed, elapsed: ${elapsed}ms.`);
+			return cb();
+		}
+
+		logger.sysDEBUG(`Upgrade ${upgrade._id}: Not executing step '${step.name}' (ID: ${step._id}). ` +
+			`Need to wait for at least ${consts.MIN_FRESHNESS_WAIT_MS}ms, elapsed: ${elapsed}ms.`);
+
+		cb(new SystemMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_VOLUME_STATE)
+			.addInfo(Entities.Upgrade.UUID, upgrade._id)
+			.addInfo(Entities.UpgradeStep.ID, step._id));
+	});
+}
+
+scope.verifyVolumeStateIsFresh = (upgrade, step, cb) => {
+	utils.validateFeatureCompatibility(consts.FEATURE_REQUIREMENTS.VOLUME_STATE_FRESHNESS, (err) => {
+		if (err) {
+			// TODO: legacy fallback; remove on 3.5.0
+			if (err.additionalInfo?.id === systemMessages.FEATURE_COMPATIBILITY_VERSION_NOT_MET.id)
+				return verifyVolumeStateIsFreshByElapsedTime(upgrade, step, cb);
+
+			return cb(err);
+		}
+
+		verifyVolumeStateIsFreshByLeader(upgrade, step, cb);
+	});
+};
+
+function verifyVolumeStateIsFreshByLeader(upgrade, step, cb) {
+	const db = app.get('db');
+	const versionCollection = db.collection('configurationVersion');
+	const volumeCollection = db.collection('volume');
+
+	let zones;
+
+	async.series([
+		function loadLeaders(callback) {
+			versionCollection.find(
+				{ _id: { $ne: consts.CONFIG_VER_CLUSTER_ID } },
+				{ projection: { updatePRaidToken: 1, raftMembers: 1, isReconciled: 1 } }
+			).toArray((err, docs) => {
+				if (err)
+					return callback(new MongoError(err).log());
+
+				zones = docs;
+
+				// TODO: drop the `!l.updatePRaidToken` arm on 3.5.0
+				const unreconciled = zones.find(l => !l.updatePRaidToken || !l.isReconciled);
+				if (unreconciled) {
+					logger.sysDEBUG(`Upgrade ${upgrade._id}: Leader for zone ${unreconciled._id} not reconciled, ` +
+						`blocking step '${step.name}' (ID: ${step._id}).`);
+
+					return callback(new SystemMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_LEADER_NOT_RECONCILED)
+						.addInfo(Entities.Upgrade.UUID, upgrade._id)
+						.addInfo(Entities.UpgradeStep.ID, step._id));
+				}
+
+				callback();
+			});
+		},
+		// For each zone leader, ensure its raftMembers reflect the expected target versions for that zone.
+		function verifyExpectedTargetVersions(callback) {
+			scope.loadExpectedTargetVersionsByZone(upgrade, zones.map(z => z._id), (err, expectedByZone) => {
+				if (err)
+					return callback(err);
+
+				const offendingZone = zones.find(zone =>
+					!scope.areExpectedTargetsObservedByLeader(expectedByZone[zone._id] || {}, zone.raftMembers));
+
+				if (offendingZone) {
+					logger.sysDEBUG(`Upgrade ${upgrade._id}: Leader for zone ${offendingZone._id} has not observed ` +
+						`expected target versions, blocking step '${step.name}' (ID: ${step._id}).`);
+
+					return callback(new SystemMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_LEADER_HAS_NOT_OBSERVED_PREV_TARGET)
+						.addInfo(Entities.Upgrade.UUID, upgrade._id)
+						.addInfo(Entities.UpgradeStep.ID, step._id));
+				}
+
+				callback();
+			});
+		},
+		// For each zone leader, ensure every pRaid in that zone has updatePRaidToken >= leader.updatePRaidToken.
+		function verifyAllPRaidsAreFresh(callback) {
+			const stalenessClauses = zones
+				// TODO: drop this filter on 3.5.0.
+				.filter(zone => zone.updatePRaidToken)
+				.flatMap(zone => [
+					{ zone: zone._id, updatePRaidToken: { $exists: false } },
+					{ zone: zone._id, updatePRaidToken: { $lt: zone.updatePRaidToken } }
+				]);
+
+			if (!stalenessClauses.length)
+				return callback();
+
+			volumeCollection.findOne({
+				'chunks.pRaids': {
+					$elemMatch: { $or: stalenessClauses }
+				}
+			}, { projection: { _id: 1 } }, (err, stalePRaid) => {
+				if (err)
+					return callback(new MongoError(err).log());
+
+				if (stalePRaid) {
+					logger.sysDEBUG(`Upgrade ${upgrade._id}: Stale pRaid found on volume ${stalePRaid._id}, ` +
+						`blocking step '${step.name}' (ID: ${step._id}).`);
+
+					return callback(new SystemMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_VOLUME_STATE)
+						.addInfo(Entities.Volume.ID, stalePRaid._id)
+						.addInfo(Entities.Upgrade.UUID, upgrade._id)
+						.addInfo(Entities.UpgradeStep.ID, step._id));
+				}
+
+				callback();
+			});
+		}
+	], err => cb(err));
+}
+
 scope.handleStepCannotBeExecuted = (step, err, cb) => {
 	const db = app.get('db');
 	const upgradeStepCollection = db.collection('upgradeStep');
@@ -1164,7 +1380,10 @@ scope.verifyLastMessageSent = (step, cb) => {
 
 scope.transientUpgradeErrors = [
 	systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_UNHEALTHY_PRAID.id,
-	systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_REDUNDANCY_WILL_BE_VIOLATED.id
+	systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_REDUNDANCY_WILL_BE_VIOLATED.id,
+	systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_VOLUME_STATE.id,
+	systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_LEADER_NOT_RECONCILED.id,
+	systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_LEADER_HAS_NOT_OBSERVED_PREV_TARGET.id
 ];
 
 scope.executeSteps = (upgrade, steps, cb) => {
@@ -1174,16 +1393,18 @@ scope.executeSteps = (upgrade, steps, cb) => {
 
 		async.series([
 			(cb) => {
-				//Verify that we can execute the step.
-				if (step.isVolumeAffected)
-					return scope.verifyVolumesAvailability(upgrade, step, (err) => {
-						if (err && scope.transientUpgradeErrors.includes(err.additionalInfo.id))
-							return scope.handleStepCannotBeExecuted(step, err, () => cb(err));
+				if (!step.isVolumeAffected)
+					return cb();
 
-						return cb(err);
-					});
+				async.series([
+					(cb) => scope.verifyVolumeStateIsFresh(upgrade, step, cb),
+					(cb) => scope.verifyVolumesAvailability(upgrade, step, cb)
+				], (err) => {
+					if (err && scope.transientUpgradeErrors.includes(err.additionalInfo.id))
+						return scope.handleStepCannotBeExecuted(step, err, () => cb(err));
 
-				cb();
+					return cb(err);
+				});
 			},
 			(cb) => {
 				scope.executeStep(step, (err) => {

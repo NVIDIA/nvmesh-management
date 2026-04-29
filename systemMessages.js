@@ -4625,6 +4625,26 @@ var systemMessages = {
 		id: 17001,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	UPGRADE_STEP_CANNOT_BE_EXECUTED_VOLUME_STATE: {
+		message: 'Cannot execute step: volume state is not yet up to date with the leader',
+		id: 17005,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	UPGRADE_STEP_CANNOT_BE_EXECUTED_LEADER_NOT_RECONCILED: {
+		message: 'Cannot execute step: leader has not yet reconciled',
+		id: 17006,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	UPGRADE_STEP_CANNOT_BE_EXECUTED_LEADER_HAS_NOT_OBSERVED_PREV_TARGET: {
+		message: 'Cannot execute step: leader has not yet observed the previous target restart',
+		id: 17007,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	RELEASE_ARTIFACTS_NOT_FOUND: {
+		message: 'Release artifacts not found',
+		id: 17008,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
 	UPGRADE_STEP_CANNOT_FIND_ARTIFACTS: {
 		message: 'InteropDB missing artifacts for install',
 		id: 17002,

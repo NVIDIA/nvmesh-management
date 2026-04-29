@@ -184,3 +184,49 @@ exports.generateAndSaveVolumes = function(jbod, r0, r1, r10, ec) {
 
 	return Promise.all(volumes.map(v => v.save()));
 };
+
+exports.generatePRaid = function({ zone, host, updatePRaidToken } = {}) {
+	const pRaid = {};
+	if (zone !== undefined) pRaid.zone = zone;
+	if (host !== undefined) pRaid.diskSegments = [{ node_id: host }];
+	if (updatePRaidToken !== undefined) pRaid.updatePRaidToken = updatePRaidToken;
+	return pRaid;
+};
+
+exports.generateUpgrade = function({
+	id = 'test-upgrade-id',
+	destinationVersion,
+	hostname,
+	machinesToUpgrade
+} = {}) {
+	return {
+		_id: id,
+		destinationVersion,
+		machinesToUpgrade: machinesToUpgrade || (hostname ? [{ hostname }] : [])
+	};
+};
+
+exports.generateUpgradeStep = function({
+	id,
+	upgradeID,
+	hostname,
+	stepIndex,
+	name,
+	status,
+	isVolumeAffected = 1,
+	stepRetryCounter = 0,
+	finishedAt
+} = {}) {
+	const doc = {
+		_id: id,
+		upgradeID,
+		hostname,
+		stepIndex,
+		isVolumeAffected,
+		status,
+		stepRetryCounter
+	};
+	if (name !== undefined) doc.name = name;
+	if (finishedAt !== undefined) doc.finishedAt = finishedAt;
+	return doc;
+};
