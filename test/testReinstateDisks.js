@@ -116,7 +116,7 @@ describe('Reinstate Disks', () => {
 
 			const dbVolume = await Volume.getFromDB(volume.name);
 			assert.strictEqual(dbVolume.version, originalVersionBeforeReinstate + 1, 'Volume version should be bumped by 1');
-			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.ONLINE, consts.volumeActions.REBUILD_REQUIRED);
+			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.REBUILD_REQUIRED);
 
 			const allVolSegs = getAllVolumeSegments(dbVolume);
 			assertSegmentCount(allVolSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, pendingSegs.length);
@@ -152,7 +152,7 @@ describe('Reinstate Disks', () => {
 			const segsAfterDeprecation = getAllVolumeSegments(dbVolume);
 			assertSegmentCount(segsAfterDeprecation, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD, 0);
 			assertSegmentCount(segsAfterDeprecation, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, expectedReinstateSegmentCount);
-			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.ONLINE, consts.volumeActions.REBUILD_REQUIRED);
+			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.REBUILD_REQUIRED);
 
 			const tomaMsg = await targets[0].readMessageFromIncrementalUpdatesTopic();
 			assert.strictEqual(tomaMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateVolume);
@@ -577,7 +577,7 @@ describe('Reinstate Disks', () => {
 			assert.strictEqual(allPending.length, disk1PendingCount + disk2PendingCount,
 				'Volume should accumulate pending segments from both disks');
 
-			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.ONLINE, consts.volumeActions.REBUILD_REQUIRED);
+			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.REBUILD_REQUIRED);
 		});
 	});
 });

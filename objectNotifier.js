@@ -143,7 +143,6 @@ scope.events = {
 			autoEvictReason: 'autoEvictReason'
 		}
 	},
-	diskReinstateEvent: { name: 'diskReinstateEvent' },
 
 	newNicEvent: { name: 'newNicEvent', opcode: consts.webSocketMessages.NEW_NIC },
 	nicRemovedEvent: { name: 'nicRemovedEvent', opcode: consts.webSocketMessages.DELETE_NIC, projection: { _id: '_id', uuid: 'uuid', nicID: 'nicID' } },

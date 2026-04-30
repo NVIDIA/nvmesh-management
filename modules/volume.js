@@ -1738,7 +1738,7 @@ scope.getPRaidStatusAndAction = function(volume, pRaid) {
 	}
 
 	const effectiveSegments = pRaid.diskSegments
-		.filter(segment => scope.isEffectiveSegmentInPRaidStatus(segment.status))
+		.filter(segment => segment.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD)
 		.map(s => {
 			// save original pending status and status since we are manipulating the volume object
 			s.original = {
@@ -1763,6 +1763,7 @@ scope.getPRaidStatusAndAction = function(volume, pRaid) {
 			consts.diskSegmentStatuses.BOOTING,
 			consts.diskSegmentStatuses.DEAD,
 			consts.diskSegmentStatuses.MARKED_FOR_REBUILD,
+			consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING,
 			consts.diskSegmentStatuses.REPLACEMENT
 		];
 		return seg.isDead || nonFunctionalStatuses.indexOf(seg.status) !== -1;

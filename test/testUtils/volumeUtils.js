@@ -109,7 +109,7 @@ exports.sendDeprecationReport = function(dbVolume, segmentsToDeprecate, target) 
 					segReport.setStatus(consts.diskSegmentStatuses.DEPRECATED);
 				// TOMA reports conf_corrupted for segments on a non-existent drive UUID (e.g. reinstate fake UUID)
 				else if (seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
-					segReport.setStatus('conf_corrupted');
+					segReport.setStatus('conf_corrupted').setVitality(consts.segmentVitality.DOWN);
 				else
 					segReport.setStatus(seg.status).setVitality(seg.vitality);
 

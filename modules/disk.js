@@ -1594,12 +1594,20 @@ function applyReinstateSegmentPairsToVolume(segmentsPairs, volume){
 				if (pRaid.uuid !== newSegment.pRaidUUID)
 					return;
 
-				pRaid.diskSegments.forEach(segment => {
-					if (segment._id === oldSegment._id)
-						segment.status = consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD;
+				const volumeOldSegment = pRaid.diskSegments.find(seg => seg._id === oldSegment._id);
+				if (!volumeOldSegment)
+					return;
+
+				volumeOldSegment.status = consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD;
+
+				const volumeNewSegment = utils.extend(true, {}, volumeOldSegment, {
+					_id: newSegment._id,
+					uuid: newSegment.uuid,
+					status: newSegment.status,
+					diskUUID: newSegment.diskUUID
 				});
 
-				pRaid.diskSegments.push(newSegment);
+				pRaid.diskSegments.push(volumeNewSegment);
 			});
 		});
 	});
@@ -1619,8 +1627,10 @@ scope.updateVolumesAfterReinstate = (segmentPairsByVolume, callback) => {
 					if (err)
 						return cb(new MongoError(err));
 
-					if (!volume)
+					if (!volume) {
+						hadFailure = true;
 						logger.sysDEBUG(`Volume ${volumeName} not found during reinstate`);
+					}
 
 					cb(null, volume);
 				});
@@ -1653,6 +1663,7 @@ scope.updateVolumesAfterReinstate = (segmentPairsByVolume, callback) => {
 						return cb(new MongoError(err));
 
 					if (!result) {
+						hadFailure = true;
 						logger.sysDEBUG(`Volume ${volumeName} version conflict during reinstate, sanity will recover`);
 						return cb();
 					}
@@ -1721,6 +1732,7 @@ function executeInPlaceSegmentReplacement(serverQuery, newDiskSegmentStatus, cal
 				{ $match: serverQuery },
 				{ $unwind: '$disks' },
 				{ $match: serverQuery },
+				{ $project: { zone: 1, 'disks.uuid': 1, 'disks.version': 1, 'disks.diskSegments': 1, 'disks.isOutOfService': 1 } },
 			];
 
 			serverCollection.aggregate(pipeline).toArray((err, result) => {
@@ -1761,12 +1773,6 @@ function executeInPlaceSegmentReplacement(serverQuery, newDiskSegmentStatus, cal
 
 				if (result.modifiedCount === 0)
 					return cb(new SystemMessage(systemMessages.DRIVE_REINSTATE_SERVER_VERSION_CONFLICT));
-
-				events.emitEvent(
-					[events.getDiskID(server.disks.diskID), events.getTargetID(server.node_id)],
-					objectNotifier.events.diskReinstateEvent,
-					server.disks
-				);
 
 				utils.incZonesConfigurationVersion([server.zone], () =>
 					zoneModule.dispatchZonesHardwareConfigurationByZones([server.zone], () =>
