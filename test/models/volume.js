@@ -105,7 +105,7 @@ class VolumeRAID1 extends Volume {
 class VolumeRAID0 extends Volume {
 	constructor(name) {
 		super(name, consts.RAIDLevel.STRIPED_RAID_0);
-		this.stripeSize = 32;
+		this.stripeSize = consts.DEFAULT_STRIPE_SIZE_BLOCKS;
 		this.stripeWidth = 2;
 	}
 }

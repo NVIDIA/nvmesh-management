@@ -254,7 +254,7 @@ class TestableRAID0VPG extends TestableVPG {
 	generateVPGName() { return `r0${this.capacity ? '_reserved' : ''}`; }
 
 	addAttributesToVPGPayload(volume) {
-		volume.stripeSize = 32;
+		volume.stripeSize = consts.DEFAULT_STRIPE_SIZE_BLOCKS;
 		volume.stripeWidth = 2;
 	}
 }
@@ -279,7 +279,7 @@ class TestableRAID10VPG extends TestableVPG {
 	generateVPGName() { return `r10${this.capacity ? '_reserved' : ''}`; }
 
 	addAttributesToVPGPayload(VPG) {
-		VPG.stripeSize = 32;
+		VPG.stripeSize = consts.DEFAULT_STRIPE_SIZE_BLOCKS;
 		VPG.stripeWidth = 2;
 		VPG.numberOfMirrors = 1;
 	}
@@ -314,7 +314,7 @@ class TestableECVPG extends TestableVPG {
 		VPG.dataBlocks = 8;
 		VPG.parityBlocks = 2;
 		VPG.stripeWidth = 1;
-		VPG.stripeSize = 32;
+		VPG.stripeSize = consts.DEFAULT_STRIPE_SIZE_BLOCKS;
 		VPG.enableCrcCheck = true;
 		VPG.protectionLevel = consts.separationTypes.FULL;
 	}

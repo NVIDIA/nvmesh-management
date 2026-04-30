@@ -8,7 +8,7 @@ const consts = require('../../consts.js');
 const protectionLevelEnum = { enum: Object.values(consts.separationTypes) };
 
 const pRaidOptionsProperties = {
-	stripeSize: { type: 'integer', minimum: 32, default: 32 },
+	stripeSize: { type: 'integer', minimum: consts.DEFAULT_STRIPE_SIZE_BLOCKS, default: consts.DEFAULT_STRIPE_SIZE_BLOCKS },
 	stripeWidth: { type: 'integer', minimum: 2, default: 2 },
 	dataBlocks: { type: 'integer', minimum: 1, maximum: 10, default: 8 },
 	parityBlocks: { type: 'integer', minimum: 1, maximum: 2, default: 2 },

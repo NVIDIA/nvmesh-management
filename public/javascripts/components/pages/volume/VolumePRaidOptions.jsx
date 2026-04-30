@@ -59,7 +59,7 @@ const VolumePRaidOptions = ({
 		const data = { ...formData };
 
 		if (isStriped || isEC) {
-			data.stripeSize = 32;
+			data.stripeSize = consts.DEFAULT_STRIPE_SIZE_BLOCKS;
 		}
 
 		// trigger the validation. for some reason, the formState.isValid is not updated otherwise

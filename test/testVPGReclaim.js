@@ -685,7 +685,7 @@ describe('VPG Reclaim', () => {
 		const VPG_CAPACITY = 50;
 		const RAID_ATTRS = {
 			numberOfMirrors: 1,
-			stripeSize: 32,
+			stripeSize: consts.DEFAULT_STRIPE_SIZE_BLOCKS,
 			stripeWidth: 2
 		};
 		let vpgUuid;
@@ -727,7 +727,7 @@ describe('VPG Reclaim', () => {
 		const VPG_NAME = 'recl_ec';
 		const VPG_CAPACITY = 50;
 		const EC_ATTRS = {
-			stripeSize: 32,
+			stripeSize: consts.DEFAULT_STRIPE_SIZE_BLOCKS,
 			stripeWidth: 1,
 			dataBlocks: 4,
 			parityBlocks: 1,

@@ -306,6 +306,7 @@ consts.DBUUID_FILE_PATH = '/opt/nvmesh/dbUUID';
 consts.RESERVED_GPT_BLOCKS = 256; //Roughly 1MB (aligned to blockset)
 consts.BLOCK_SIZE = 4096;
 consts.BLOCK_SET_SIZE = 256;
+consts.DEFAULT_STRIPE_SIZE_BLOCKS = 32;
 consts.DUMMY_DRIVE_MODEL = 'Dummy';
 consts.VOLUME_DELETION_ZERO_PROGRESS_INTERVAL = 10000; // 10 seconds
 consts.VOLUME_REBUILDING_PROGRESS_INTERVAL = 1000; // 1 second

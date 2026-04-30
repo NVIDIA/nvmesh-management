@@ -2157,9 +2157,9 @@ function createVolumeByRAIDLevel(lockedZone, volume, zonesToIgnore, allocationCa
 	var allocateBlocksTimer;
 
 	if (volume.RAIDLevel === consts.RAIDLevel.STRIPED_ERASURE_CODING && volume.stripeSize) {
-		const stripedECBlockSetSize = scope.getVolumeBlockSetSize(volume);
+		const stripeSizeAlignment = consts.DEFAULT_STRIPE_SIZE_BLOCKS * (volume.dataBlocks || 1);
 
-		volume.stripeSize = Math.ceil(volume.stripeSize / stripedECBlockSetSize) * stripedECBlockSetSize;
+		volume.stripeSize = Math.ceil(volume.stripeSize / stripeSizeAlignment) * stripeSizeAlignment;
 	}
 
 	function unknownRaidLevelError(volume) {
