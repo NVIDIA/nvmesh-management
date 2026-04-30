@@ -43,7 +43,7 @@ When the user omits the title or body and asks for a proposal:
 - [ ] 2. Look up JIRA issue type (skip for [NO-REF] or explicit override)
 - [ ] 3. Map issue type → commit type per the commit-message-format rule
 - [ ] 4. Assemble the commit message per the commit-message-format rule
-- [ ] 5. Review git status; warn on secret-looking files before staging
+- [ ] 5. Review git status; warn on secret-looking files before staging; if there are untracked files, ask whether to include them
 - [ ] 6. Stage changes and commit
 - [ ] 7. Strip Made-with trailer; verify with git status and git log -1
 - [ ] 8. Ask whether to open merge request(s); if yes, push and offer to move the JIRA ticket(s) to "In Review"
@@ -77,9 +77,16 @@ Body is mandatory and separated by exactly one blank line.
 
 Run `git status` and inspect the change set. Warn the user and require confirmation before staging files that look like secrets or build artifacts (e.g. `*.key`, `*.crt`, `*.pem`, `.env`, `build/`, `node_modules/`, `public/javascripts/components_js/`).
 
+If `git status` lists **untracked files**, do not silently include them. List the untracked paths to the user and ask explicitly whether to stage them as well, e.g. *"There are N untracked files (`a.js`, `b/`, ...). Include them in this commit?"* (Yes / No / pick a subset). Default to **excluding** them if the user does not confirm. This decision drives Step 6's staging command.
+
 ### Step 6 — Stage and commit
 
-Prefer `git add -A` for all current changes, unless the user has already staged a specific subset or asked to commit only staged changes.
+Choose the staging command based on Step 5:
+
+- User has already staged a specific subset, or asked to commit only staged changes → don't run `git add`; commit the index as-is.
+- Tracked changes only (untracked excluded or none) → `git add -u`.
+- Tracked changes plus all untracked → `git add -A`.
+- Tracked changes plus a specific untracked subset → `git add -u && git add -- <paths>`.
 
 Always pass the commit message via a HEREDOC so newlines in the body are preserved:
 
@@ -173,6 +180,7 @@ After a successful commit, always ask the user whether to open a merge request. 
 - **User provides an explicit type** — honor it and skip the Jira lookup.
 - **Empty working tree** — do not commit; tell the user there is nothing to commit.
 - **Mixed staged / unstaged state** — ask whether to commit only the staged subset or all current changes before running `git add`.
+- **Untracked files present** — never auto-include via `git add -A` without asking. Show the list of untracked paths and ask whether to stage them; default to excluding them if the user does not explicitly opt in.
 - **Push rejected (non-fast-forward)** — stop. Don't force-push without explicit consent.
 - **No `private`/`upstream` remotes** — list `git remote -v`, ask the user to pick which remote is the personal fork and which is the team/target project.
 - **Back/port to multiple releases** — create one MR URL per target branch from the same pushed source branch, not separate source branches, unless the user asks otherwise.
