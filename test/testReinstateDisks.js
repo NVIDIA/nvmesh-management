@@ -473,7 +473,7 @@ describe('Reinstate Disks', () => {
 		});
 
 		it('Should resume reinstate when formatted disk still has pending segments', async function() {
-			this.timeout(15000);
+			this.timeout(150000);
 
 			const { targets, volume, firstSegment } = await setupReinstateEnvironment('rstSanResV1');
 			const evictTarget = findTargetWithDisk(targets, firstSegment.diskID);

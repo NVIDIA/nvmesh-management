@@ -348,7 +348,7 @@ function hasValidPartitionsAfterFormat(drive) {
 }
 
 // delete old disk segments on drive when format is done but evict the drive if it has old volume segments
-scope.handleFormatDone = function(disk, newDisk, calcDelta) {
+scope.handleFormatDone = function(disk, newDisk, calcDelta, disksToResumeReinstate = []) {
 	// recalculating the new drive GPT properties after format
 	if (newDisk) {
 		this.updateDisk(disk, disk.uuid, 'GPT', newDisk.GPT);
@@ -365,8 +365,6 @@ scope.handleFormatDone = function(disk, newDisk, calcDelta) {
 
 	const hasPendingReinstateSegments = disk.diskSegments.some(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
 
-	scope.setDiskInfo.bind(calcDelta)(disk, hasPendingReinstateSegments);
-
 	if (disk.diskSegments && disk.diskSegments.length && !hasPendingReinstateSegments) {
 		var volumeSegments = disk.diskSegments.filter(function(seg) {
 			return !seg.owner || (seg.owner === consts.segmentOwners.NVMESH && seg.type !== consts.segmentTypes.EXCELERO_METADATA);
@@ -381,7 +379,10 @@ scope.handleFormatDone = function(disk, newDisk, calcDelta) {
 		}
 	}
 
-	this.updateDisk(disk, disk.uuid, 'diskSegments', disk.diskSegments || []);
+	const newDiskSegments = disk.diskSegments.filter(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING) || [];
+	this.updateDisk(disk, disk.uuid, 'diskSegments', newDiskSegments);
+
+	scope.setDiskInfo.bind(calcDelta)(disk, hasPendingReinstateSegments);
 
 	if (!hasValidPartitionsAfterFormat.bind(calcDelta)(disk)) {
 		this.updateDisk(disk, disk.uuid, 'isOutOfService', true);
@@ -389,7 +390,7 @@ scope.handleFormatDone = function(disk, newDisk, calcDelta) {
 	}
 
 	if (hasPendingReinstateSegments)
-		scope.resumeReinstateAfterFormat(disk);
+		disksToResumeReinstate.push(disk);
 
 	return true;
 };
@@ -809,8 +810,7 @@ scope.formatDiskByIDsAndUUIDs = function(disks, requestedFormatType, isAutoForma
 				'disks.$.formatInProgress': true,
 				'disks.$.isOutOfService': false,
 				'disks.$.automaticallyEvicted': false,
-				'disks.$.autoEvictReason': '',
-				'disks.$.diskSegments': (serverDisk.diskSegments || []).filter(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
+				'disks.$.autoEvictReason': ''
 			};
 
 			update.$inc = { 'disks.$.formatRequestCounter': 1 };
@@ -1571,6 +1571,84 @@ scope.startMissingDriveCheckupInterval = function(callback) {
 	setTimeout(intervalFunc, consts.missingDriveCheckupInterval);
 };
 
+function validatePRaidSegmentCountOnDisk(drive, callback) {
+	const db = app.get('db');
+	const volumeCollection = db.collection('volume');
+
+	const volumeNames = drive.diskSegments
+		.filter(seg => seg.type === consts.segmentTypes.DATA)
+		.map(seg => seg.volumeName);
+
+	const pipeline = [
+		{
+			$match: {
+				_id: { $in: [...new Set(volumeNames)] },
+				RAIDLevel: { $in: [...consts.mirroredRaidLevels, ...consts.erasureCodedRaidLevels] },
+			}
+		},
+		{
+			$project: {
+				RAIDLevel: 1,
+				numberOfMirrors: 1,
+				parityBlocks: 1,
+				chunks: {
+					pRaids: {
+						diskSegments: {
+							diskID: 1,
+							type: 1
+						}
+					}
+				}
+			}
+		},
+		{ $unwind: '$chunks' },
+		{ $unwind: '$chunks.pRaids' },
+		{ $match: { 'chunks.pRaids.diskSegments': { $elemMatch: { diskID: drive.diskID, type: consts.segmentTypes.DATA } } } },
+		{
+			$addFields: {
+				segmentsOnDisk: {
+					$size: {
+						$filter: {
+							input: '$chunks.pRaids.diskSegments',
+							as: 'seg',
+							cond: { $and: [{ $eq: ['$$seg.diskID', drive.diskID] }, { $eq: ['$$seg.type', consts.segmentTypes.DATA] }] }
+						}
+					}
+				},
+				maxAllowed: {
+					$switch: {
+						branches: [
+							{
+								case: { $in: ['$RAIDLevel', consts.mirroredRaidLevels] },
+								then: '$numberOfMirrors'
+							},
+							{
+								case: { $in: ['$RAIDLevel', consts.erasureCodedRaidLevels] },
+								then: '$parityBlocks'
+							}
+						],
+						default: 0
+					}
+				}
+			}
+		},
+		{ $match: { $expr: { $gt: ['$segmentsOnDisk', '$maxAllowed'] } } },
+		{ $project: { _id: 1 } },
+		{ $limit: 1 }
+	];
+
+	volumeCollection.aggregate(pipeline).toArray((err, results) => {
+		if (err)
+			return callback(new MongoError(err));
+
+		if (results.length)
+			return callback(new SystemMessage(systemMessages.DRIVE_REINSTATE_NO_SURVIVING_COPY_ON_OTHER_DISK)
+				.addInfo(Entities.Volume.ID, results[0]._id));
+
+		callback();
+	});
+}
+
 function validateDriveToReinstate(drive, callback) {
 	if (!drive)
 		return callback(new SystemMessage(systemMessages.DRIVE_NOT_FOUND));
@@ -1584,7 +1662,12 @@ function validateDriveToReinstate(drive, callback) {
 	if (drive.diskSegments.some(seg => seg.type === consts.segmentTypes.DATA && !utils.hasRedundancy(seg)))
 		return callback(new SystemMessage(systemMessages.DRIVE_REINSTATE_NON_PROTECTED_SEGMENTS));
 
-	utils.validateFeatureCompatibility(consts.FEATURE_REQUIREMENTS.REINSTATE, callback);
+	validatePRaidSegmentCountOnDisk(drive, (err) => {
+		if (err)
+			return callback(err);
+
+		utils.validateFeatureCompatibility(consts.FEATURE_REQUIREMENTS.REINSTATE, callback);
+	});
 }
 
 function applyReinstateSegmentPairsToVolume(segmentsPairs, volume){
@@ -1700,6 +1783,11 @@ function buildSegmentReplacementPairsByVolume(server, newDiskSegmentStatus) {
 		if (oldSegment.type !== consts.segmentTypes.DATA)
 			continue;
 
+		// there may be other volumes on this disk that were not reinstated
+		if (newDiskSegmentStatus === consts.diskSegmentStatuses.MARKED_FOR_REBUILD &&
+			oldSegment.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
+			continue;
+
 		if (!segmentPairsByVolume[oldSegment.volumeName])
 			segmentPairsByVolume[oldSegment.volumeName] = [];
 
@@ -1796,7 +1884,8 @@ function enrichServerQuery(serverQuery, callback) {
 		'disks.uuid': 1,
 		'disks.isOutOfService': 1,
 		'disks.diskSegments.type': 1,
-		'disks.diskSegments.redundancyRatio': 1
+		'disks.diskSegments.redundancyRatio': 1,
+		'disks.diskSegments.volumeName': 1
 	};
 
 	serverCollection.findOne(serverQuery, { projection }, (err, server) => {

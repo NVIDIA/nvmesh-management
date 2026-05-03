@@ -541,16 +541,23 @@ scope.checkForZeroedLargestSegmentAvailable = function(cb) {
 			$or: [
 				{ 'diskSegments.type': consts.segmentTypes.DATA },
 				{ 'diskSegments.type': { $exists: false } }
-			],
-			// skip the PENDING partner of a reinstate pair; it shares the LBA range with its MARKED_FOR_REBUILD_OLD twin
-			'diskSegments.status': { $ne: consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING }
+			]
+		} },
+		// Deduplicate by LBA range: reinstate twin pairs (Phase 1: PENDING+OLD, Phase 2: MFR+OLD)
+		// share the same LBA range — collapsing them here ensures each range is counted only once.
+		{ $group: {
+			_id: { diskID: '$diskID', lbs: '$diskSegments.lbs', lbe: '$diskSegments.lbe' },
+			diskID: { $first: '$diskID' },
+			node_id: { $first: '$node_id' },
+			usableBlocks: { $first: '$usableBlocks' },
+			lbs: { $first: '$diskSegments.lbs' },
+			lbe: { $first: '$diskSegments.lbe' }
 		} },
 		{ $project: {
-			diskID: '$diskID',
-			node_id: '$node_id',
-			usableBlocks: '$usableBlocks',
-			segmentUUID: '$diskSegments.uuid',
-			segBlocks: { $add: [1, { $subtract: ['$diskSegments.lbe', '$diskSegments.lbs'] }] }
+			diskID: 1,
+			node_id: 1,
+			usableBlocks: 1,
+			segBlocks: { $add: [1, { $subtract: ['$lbe', '$lbs'] }] }
 		} },
 		{ $group: {
 			_id: '$diskID',
@@ -1880,13 +1887,12 @@ function calculateDiskUsableBlocks(disk) {
 	function filterDataOnly(segment) {
 		return (!segment.owner || segment.owner === consts.segmentOwners.NVMESH) && segment.type === consts.segmentTypes.DATA && !segment.fromReserved;
 	}
-	// filter out MARKED_FOR_REBUILD_PENDING segments that reuses the same LBA range as its MARKED_FOR_REBUILD_OLD partner on the same disk
-	function filterOutReinstatePending(segment) {
-		return segment.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING;
-	}
 
-	var nvmeshDataSegments = (disk.diskSegments || []).filter(filterDataOnly).filter(filterOutReinstatePending);
-	var totalSegmentsBlocks = nvmeshDataSegments.map(mapSegmentBlockSize).reduce(sum, 0);
+	const allDiskSegments = disk.diskSegments || [];
+	const nvmeshDataSegments = allDiskSegments
+		.filter(filterDataOnly)
+		.filter(seg => !utils.isReinstateReplacementSegment(seg, allDiskSegments));
+	const totalSegmentsBlocks = nvmeshDataSegments.map(mapSegmentBlockSize).reduce(sum, 0);
 	return disk.usableBlocks - totalSegmentsBlocks;
 }
 

@@ -1687,6 +1687,7 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 	var logsToEmitOnInsert = [];
 	var disksToAutoEvict = [];
 	var diskIDsAndUUIDsToAutoFormat = [];
+	const disksToResumeReinstate = [];
 	var resendReportNewDrives = [];
 	var resendReportExistingDrives = [];
 	var resendReportReappearingDrives = [];
@@ -1794,7 +1795,8 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 							node.bootTime,
 							calcDelta,
 							function(formatDone, driveEvictionNeeded) {
-								if (driveEvictionNeeded || (formatDone && !diskModule.handleFormatDone.bind(calcDelta)(newDisk, null, calcDelta))
+								if (driveEvictionNeeded || (formatDone && !diskModule.handleFormatDone.bind(calcDelta)(newDisk, null, calcDelta,
+									disksToResumeReinstate))
 									|| shouldAutoEvict)
 									disksToAutoEvict.push(newDisk);
 								else if (formatDone && GLOBAL_SETTINGS_HIDDEN.autoFormatDrive)
@@ -1942,7 +1944,7 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 								if (GLOBAL_SETTINGS_HIDDEN.autoFormatDrive)
 									shouldStartVolumeRebuild = true;
 
-								if (!diskModule.handleFormatDone.bind(calcDelta)(oldDisk, existingReportDisk, calcDelta))
+								if (!diskModule.handleFormatDone.bind(calcDelta)(oldDisk, existingReportDisk, calcDelta, disksToResumeReinstate))
 									disksToAutoEvict.push(oldDisk);
 							} else if (!updateGPTProperties.bind(calcDelta)(oldDisk, existingReportDisk, calcDelta) || driveEvictionNeeded)
 								disksToAutoEvict.push(oldDisk);
@@ -2294,6 +2296,14 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 							utils.startVolumeRebuildForAllRelevantVolumes(consts.SYSTEM_USER);
 						}
 
+						callback();
+					},
+					function(callback) {
+						if (!savedToDB || !disksToResumeReinstate.length)
+							return callback();
+
+						// resume reinstate for drives that finished format with pending reinstate segments
+						disksToResumeReinstate.forEach(disk => diskModule.resumeReinstateAfterFormat(disk, () => {}));
 						callback();
 					}
 				], function() {

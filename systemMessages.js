@@ -2252,6 +2252,11 @@ var systemMessages = {
 		id: 163333,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	DRIVE_REINSTATE_NO_SURVIVING_COPY_ON_OTHER_DISK: {
+		message: 'Cannot reinstate drive: drive contains more segments of a pRaid than its redundancy allows — no surviving copy would remain on another disk',
+		id: 163334,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	DRIVE_REINSTATE_SERVER_VERSION_CONFLICT: {
 		message: 'Drive changed during reinstate, retrying',
 		id: 16337,
