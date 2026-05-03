@@ -1,7 +1,7 @@
 suite: "gitlab-ci-ec"
 build-with:
-  nvmesh: "3.4.0-OSS"
-  interop-db: "master"
+  nvmesh: "3.4.0"
+  interop-db: "3.4.0"
   upgrader: "3.4.0"
 phases: ["MGMT", "NEWSCALE", "UM_MINI"]
 py: 3.6

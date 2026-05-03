@@ -10,7 +10,6 @@ const { getAllArchTypes, createPlatforms, getAllPlatforms } = require('./platfor
 const { getAllReleases, updateReleases, createReleases } = require('./release.js');
 const { getAllArtifacts, createArtifacts } = require('./artifacts.js');
 const { createComponents, getAllComponentTypes, getAllComponents, getAllComponentVersions, updateComponents } = require('./component.js');
-const { compareVersionRelease } = require('../utils.js');
 const { getAllUpgrades, createUpgrades, updateUpgrades } = require('./upgradeScenario.js');
 const systemMessages = require('../systemMessages.js');
 
@@ -668,12 +667,12 @@ const prepareNComponentVersions = (componentVersionsToUpdate, versions, mappedEn
 		}, {});
 
 		for (const [componentName, nMinus1Compatibilities] of Object.entries(nMinus1compatibilitiesByComponentName)) {
-			// sort the nvmesh package compatibilities by version - will allow us to add the latest compatibility first
-			const nMinus1sortedCompatibilities = [...nMinus1Compatibilities].sort((a, b) => compareVersionRelease(a.version, b.version));
 			const newCompatibilities = [];
 
-			// add the n-1 nvmesh package compatibility (latest version)
-			newCompatibilities.push(nMinus1sortedCompatibilities.pop());
+			const nMinus1Compatibility = nMinus1Compatibilities.find(c => c.version === nMinus1ComponentVersion.version);
+			if (nMinus1Compatibility)
+				newCompatibilities.push(nMinus1Compatibility);
+
 
 			// get the version for the component in release n - i.e. '3.3.2'
 			const version = versions.n[componentName]?.version;
@@ -843,60 +842,75 @@ const inheritComponents = (releaseN, releaseNMinus1, callback) => {
 };
 
 // prepare upgrade scenarios for the release n based on the release n-1
-// we will copy all upgrade scenarios with n-1 -> n-1 to n-1 -> n
-// if not hotfix, we will also create upgrade scenarios with n -> n
+// we will copy all upgrade scenarios with * -> n-1 (except n-1 -> n-1) to
+// - n-1 -> n
+// - if hotfix: n-2 -> n, otherwise: n -> n
 const prepareUpgradeScenarios = (releaseN, releaseNMinus1, versions, releaseIDbyName, callback) => {
 	logger.sysDEBUG(`Preparing upgrade scenarios for release ${releaseN}`);
-
 	const preparedUpgradeScenarios = [];
-	const sourceComponentVersions = versions[releaseNMinus1];
 
-	async.eachSeries(Object.keys(sourceComponentVersions), (componentName, next) => {
-		const sourceComponentVersion = sourceComponentVersions[componentName];
-		const queryObj = {
-			filter: {
-				destinationReleaseID: releaseIDbyName[releaseNMinus1],
-				sourceVersionID: sourceComponentVersion.ID
-			}
-		};
-
-		logger.sysDEBUG(`Getting upgrade scenarios to copy for component ${componentName} from ` +
-			`release ${releaseNMinus1} to release ${releaseN}:`, queryObj);
-		getAllUpgrades(queryObj, (error, upgradeScenariosFound) => {
-			if (error)
-				return next(error);
-
-			if (!upgradeScenariosFound.length)
-				return next();
-
-			const destinationComponentVersion = versions[releaseN][componentName];
-			if (!destinationComponentVersion) {
-				logger.sysDEBUG(`Can't find corresponding component version in release ${releaseN} for component ${componentName}, skipping`);
-				return next();
-			}
-
-			const isSameVersion = sourceComponentVersion.ID === destinationComponentVersion.ID;
-			for (const upgradeScenarioFound of upgradeScenariosFound) {
-				const newScenario = {
-					sourceVersionID: upgradeScenarioFound.sourceVersionID,
-					destinationReleaseID: releaseIDbyName[releaseN],
-					upgradeTypeID: upgradeScenarioFound.upgradeTypeID,
-					steps: upgradeScenarioFound.steps
-				};
-				preparedUpgradeScenarios.push(newScenario);
-
-				if (!isSameVersion)
-					preparedUpgradeScenarios.push({ ...newScenario, sourceVersionID: destinationComponentVersion.ID });
-			}
-
-			next();
-		});
-	}, (error) => {
+	const queryObj = { filter: { destinationReleaseID: releaseIDbyName[releaseNMinus1] } };
+	getAllUpgrades(queryObj, (error, upgradeScenariosFound) => {
 		if (error)
 			return callback(error);
 
-		logger.sysDEBUG(`Prepared upgrade scenarios for release ${releaseN}:`, preparedUpgradeScenarios);
-		callback(null, preparedUpgradeScenarios);
+		const nMinus1ComponentVersionIDs = Object.values(versions[releaseNMinus1]).map(componentVersion => componentVersion.ID);
+		const upgradeScenariosToCopy = upgradeScenariosFound.filter(upgradeScenario => !nMinus1ComponentVersionIDs.includes(upgradeScenario.sourceVersionID));
+
+		const componentIDsFromUpgradeScenariosToCopy = upgradeScenariosToCopy.map(upgradeScenarioToCopy => upgradeScenarioToCopy.sourceVersionID);
+		const queryObj = { filter: { ID: { $in: componentIDsFromUpgradeScenariosToCopy } } };
+
+		getAllComponentVersions(queryObj, (error, componentsFromUpgradeScenariosToCopy) => {
+			if (error)
+				return callback(error);
+
+			const componentsNameByID = componentsFromUpgradeScenariosToCopy.reduce((acc, componentFromUpgradeScenariosToCopy) => {
+				acc[componentFromUpgradeScenariosToCopy.ID] = componentFromUpgradeScenariosToCopy.component.name;
+				return acc;
+			}, {});
+
+			for (const upgradeScenarioToCopy of upgradeScenariosToCopy) {
+				const componentName = componentsNameByID[upgradeScenarioToCopy.sourceVersionID];
+				if (!componentName)
+					return callback(new SystemMessage(systemMessages.FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_COMPONENT_NAME)
+						.addInfo(Entities.UpgradeScenario.ID, upgradeScenarioToCopy.ID)
+						.addInfo(Entities.Component.ID, upgradeScenarioToCopy.sourceVersionID));
+
+				const nMinus1ComponentVersion = versions[releaseNMinus1][componentName];
+				if (!nMinus1ComponentVersion)
+					return callback(new SystemMessage(systemMessages.FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_N_MINUS_1_COMPONENT_VERSION)
+						.addInfo(Entities.UpgradeScenario.ID, upgradeScenarioToCopy.ID)
+						.addInfo(Entities.Component.ID, upgradeScenarioToCopy.sourceVersionID)
+						.addInfo(Entities.Component.name, componentName));
+
+				const nComponentVersion = versions[releaseN][componentName];
+				if (!nComponentVersion)
+					return callback(new SystemMessage(systemMessages.FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_N_COMPONENT_VERSION)
+						.addInfo(Entities.UpgradeScenario.ID, upgradeScenarioToCopy.ID)
+						.addInfo(Entities.Component.ID, upgradeScenarioToCopy.sourceVersionID)
+						.addInfo(Entities.Component.name, componentName));
+
+				// n-1 -> n
+				const scenario = {
+					sourceVersionID: nMinus1ComponentVersion.ID,
+					destinationReleaseID: releaseIDbyName[releaseN],
+					upgradeTypeID: upgradeScenarioToCopy.upgradeTypeID,
+					steps: upgradeScenarioToCopy.steps
+				};
+				preparedUpgradeScenarios.push(scenario);
+
+				const isSameVersion = nMinus1ComponentVersion.ID === nComponentVersion.ID;
+				// n-2 -> n
+				if (isSameVersion)
+					preparedUpgradeScenarios.push({ ...scenario, sourceVersionID: upgradeScenarioToCopy.sourceVersionID });
+				// n -> n
+				else
+					preparedUpgradeScenarios.push({ ...scenario, sourceVersionID: nComponentVersion.ID });
+			}
+
+			logger.sysDEBUG(`Prepared upgrade scenarios for release ${releaseN}:`, preparedUpgradeScenarios);
+			callback(null, preparedUpgradeScenarios);
+		});
 	});
 };
 
@@ -1010,14 +1024,29 @@ const saveRelease = (payload, callback) => {
 
 			createOrUpdateRelease(releaseName, artifacts, cb);
 		},
-		// inherit components
+		cb => {
+			if (!payload.inheritRelationsFrom)
+				return cb();
+
+			const { platforms } = payload;
+			const artifacts = getUniqueStrings(platforms.flatMap(platform => platform.artifacts), 'artifacts');
+			const requiredComponents = Object.values(consts.components).filter(c => c !== consts.components.MONITOR);
+			const missingComponents = requiredComponents.filter(c => !artifacts.some(artifact => artifact.startsWith(c)));
+
+			if (missingComponents.length)
+				return cb(missingComponents.reduce(
+					(acc, name) => acc.addInfo(Entities.Component.name, name),
+					new SystemMessage(systemMessages.INCOMPLETE_ARTIFACTS_FOR_INHERITANCE)));
+
+			cb();
+		},
+
 		cb => {
 			if (!payload.inheritRelationsFrom)
 				return cb();
 
 			inheritComponents(payload.releaseName, payload.inheritRelationsFrom, cb);
 		},
-		// inherit upgrade scenarios
 		cb => {
 			if (!payload.inheritRelationsFrom)
 				return cb();

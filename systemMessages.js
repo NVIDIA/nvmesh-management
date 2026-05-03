@@ -505,6 +505,26 @@ var systemMessages = {
 		id: 10792,
 		sysLogLevel: consts.loggingLevel.ERROR,
 	},
+	INCOMPLETE_ARTIFACTS_FOR_INHERITANCE: {
+		message: 'Incomplete artifacts for inheritance. All NVMesh package components must have artifacts when inheriting from a release.',
+		id: 10793,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_COMPONENT_NAME: {
+		message: 'Failed to lookup for upgrade scenario component name',
+		id: 10794,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_N_MINUS_1_COMPONENT_VERSION: {
+		message: 'Failed to lookup for upgrade scenario n-1 component version',
+		id: 10795,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
+	FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_N_COMPONENT_VERSION: {
+		message: 'Failed to lookup for upgrade scenario n component version',
+		id: 10796,
+		sysLogLevel: consts.loggingLevel.ERROR,
+	},
 	OBJ_NOTIFIER_FAILED_TO_READ_BACKUPS_DIR: {
 		message: 'Failed to read backups from directory.',
 		id: 1081,
