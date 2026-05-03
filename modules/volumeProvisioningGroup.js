@@ -382,8 +382,10 @@ scope.reclaimVPGs = (vpgs, user, mainCallback) => {
 							return reclaimDone(result);
 
 						const allocatedCapacity = (result && result.allocatedCapacity) || 0;
+						const allocatedBlocks = (result && result.allocatedBlocks) || 0;
+						const reservedBlocks = (result && result.reservedBlocks) || 0;
 
-						if (allocatedCapacity >= vpgFromDB.capacity) {
+						if (allocatedBlocks >= reservedBlocks) {
 							messages.push(createSysMessage(systemMessages.VPG_RECLAIM_NOTHING_TO_RECLAIM));
 							lockModule.releaseLockByZone(zone, () => { cb(true); });
 							return;
@@ -515,6 +517,22 @@ function getVolumesUsageCapacity(vpgID, cb) {
 		},
 		{
 			$addFields: {
+				reservedBlocks: {
+					$let: {
+						vars: {
+							reservedVol: {
+								$first: {
+									$filter: {
+										input: '$volumes',
+										as: 'vol',
+										cond: { $eq: ['$$vol._id', '$_id'] }
+									}
+								}
+							}
+						},
+						in: { $ifNull: ['$$reservedVol.blocks', 0] }
+					}
+				},
 				volumes: {
 					$filter: {
 						input: '$volumes',
@@ -526,7 +544,36 @@ function getVolumesUsageCapacity(vpgID, cb) {
 		},
 		{
 			$addFields: {
-				allocatedBlocks: { $sum: '$volumes.blocks' },
+				allocatedBlocks: {
+					$sum: {
+						$map: {
+							input: '$volumes',
+							as: 'vol',
+							in: {
+								$sum: {
+									$map: {
+										input: '$$vol.chunks',
+										as: 'chunk',
+										in: {
+											$let: {
+												vars: {
+													firstSeg: { $first: { $first: '$$chunk.pRaids.diskSegments' } }
+												},
+												in: {
+													$cond: [
+														{ $eq: ['$$firstSeg.fromReserved', true] },
+														{ $add: [{ $subtract: ['$$chunk.vlbe', '$$chunk.vlbs'] }, 1] },
+														0
+													]
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				},
 				volumesInUse: {
 					$map: {
 						input: '$volumes',
@@ -564,6 +611,8 @@ function getVolumesUsageCapacity(vpgID, cb) {
 				allowOverflow: 1,
 				totalCapacity: '$capacity',
 				allocatedCapacity: 1,
+				allocatedBlocks: 1,
+				reservedBlocks: 1,
 				freeCapacity: 1,
 				volumesInUse: 1
 			}

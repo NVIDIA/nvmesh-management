@@ -4783,13 +4783,16 @@ scope.shrinkReservedSpaceVolume = function(vpgId, targetCapacityGB, cb) {
 				callback();
 			});
 		},
+		function abortIfNothingReclaimable(callback) {
+			if (!segmentsToRemove.length && !segmentReplacements.length)
+				return callback(new SystemMessage(systemMessages.VPG_RECLAIM_NOTHING_TO_RECLAIM));
+
+			callback();
+		},
 		// PENDING PHASE: mark segments with pendingReclaim flags without modifying disk layout.
 		// No segments are removed/added, no availableBlocks changes. If management crashes here,
 		// sanity rolls back by simply unsetting the flags.
 		function markPendingOnDisks(callback) {
-			if (!segmentsToRemove.length && !segmentReplacements.length)
-				return callback();
-
 			function setPendingReclaimOnSegment(diskID, segmentId, pendingReclaim, cb) {
 				serverCollection.updateOne(
 					{ 'disks.diskID': diskID, 'disks.diskSegments._id': segmentId },

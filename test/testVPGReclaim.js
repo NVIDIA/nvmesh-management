@@ -510,6 +510,68 @@ describe('VPG Reclaim', () => {
 		});
 	});
 
+	describe('VPG fully allocated (reservation matches derived volume exactly)', () => {
+		const VPG_NAME = 'recl_fully_alloc';
+		const VPG_CAPACITY = 10;
+		let vpgUuid;
+
+		before(() => setup.newSetup()
+			.then(() => generateAndSaveTargets(3, 4))
+			.then(() => saveVPG(VPG_NAME, VPG_CAPACITY, consts.RAIDLevel.MIRRORED_RAID_1, { numberOfMirrors: 1 }))
+			.then(res => { vpgUuid = res.uuid; })
+			.then(() => createVolume(`${VPG_NAME}_v1`, VPG_CAPACITY, consts.RAIDLevel.MIRRORED_RAID_1, VPG_NAME, { numberOfMirrors: 1 }))
+		);
+
+		it('should expose allocatedBlocks == reservedBlocks in capacity usage', () => {
+			return new Promise((resolve, reject) => {
+				VPGModule.getVolumesCapacityUsageByID(VPG_NAME, (usage) => {
+					try {
+						assert.ok(usage, 'usage should be returned');
+						assert.strictEqual(typeof usage.allocatedBlocks, 'number', 'allocatedBlocks should be exposed');
+						assert.strictEqual(typeof usage.reservedBlocks, 'number', 'reservedBlocks should be exposed');
+						assert.ok(usage.reservedBlocks > 0, 'reservedBlocks should be > 0');
+						assert.strictEqual(usage.allocatedBlocks, usage.reservedBlocks,
+							`allocatedBlocks (${usage.allocatedBlocks}) should equal reservedBlocks ` +
+							`(${usage.reservedBlocks}) when derived consumes the full reservation`);
+						// Sanity-check that the old capacity-GB comparison would have been fooled.
+						assert.ok(usage.allocatedCapacity < VPG_CAPACITY,
+							`allocatedCapacity (${usage.allocatedCapacity}) should be < vpg.capacity ` +
+							`(${VPG_CAPACITY}) due to blockset rounding — this is why GB-compare was wrong`);
+						resolve();
+					} catch (err) {
+						reject(err);
+					}
+				});
+			});
+		});
+
+		it('should return nothing-to-reclaim and not change VPG state', () => {
+			return vpgCollection.findOne({ _id: VPG_NAME })
+				.then(vpgBefore => {
+					const capacityBefore = vpgBefore.capacity;
+					return reclaimVPGRaw(VPG_NAME, vpgUuid)
+						.then(res => {
+							assert.ok(res.error, 'Should return error when VPG is fully allocated');
+						})
+						.then(() => vpgCollection.findOne({ _id: VPG_NAME }))
+						.then(vpgAfter => {
+							assert.strictEqual(vpgAfter.capacity, capacityBefore,
+								'VPG capacity should be unchanged after failed reclaim');
+						})
+						.then(() => getReservedVolume(VPG_NAME))
+						.then(vol => {
+							assert.ok(vol, 'Reserved volume should still exist');
+							assert.strictEqual(vol.reclaimAction, undefined,
+								'reclaimAction flag should be cleared (not stuck IN_PROGRESS)');
+						})
+						.then(() => getPendingSegments(VPG_NAME))
+						.then(segs => {
+							assert.strictEqual(segs.length, 0, 'No pending segments should remain');
+						});
+				});
+		});
+	});
+
 	describe('Default VPG rejection', () => {
 		it('should reject reclaim on default VPG', () => {
 			return setup.newSetup()

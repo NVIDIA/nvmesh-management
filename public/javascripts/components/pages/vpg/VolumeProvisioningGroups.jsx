@@ -54,7 +54,7 @@ const VolumeProvisioningGroups = () => {
 
 	const hasReclaimableSpace = (vpg) => {
 		const usage = capacityUsageMap[vpg._id];
-		return usage && usage.allocatedCapacity < vpg.capacity;
+		return usage && usage.allocatedBlocks < usage.reservedBlocks;
 	};
 
 	const columns = [

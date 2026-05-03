@@ -64,6 +64,8 @@ router.get('/', function(req, res) {
 *  "allowOverflow": false, // indicates if the VPG is allowing allocation outside reserved space
 *  "totalCapacity": 11, // total VPG reserved space in GB
 *  "allocatedCapacity": 5, // used VPG reserved space across volumes in GB
+*  "allocatedBlocks": 1220608, // reservation-backed blocks consumed by derived volumes
+*  "reservedBlocks": 2441216, // reservation size in blocks as laid down on disk
 *  "freeCapacity": 6, // free VPG reserved space in GB
 *  "volumesInUse": [
 *    {
