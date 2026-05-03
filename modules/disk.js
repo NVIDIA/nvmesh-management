@@ -363,7 +363,7 @@ scope.handleFormatDone = function(disk, newDisk, calcDelta, disksToResumeReinsta
 	if (disk.autoEvictReason)
 		calcDelta.updateDisk(disk, disk.uuid, 'autoEvictReason', null);
 
-	const hasPendingReinstateSegments = disk.diskSegments.some(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
+	const hasPendingReinstateSegments = disk?.diskSegments?.some(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
 
 	if (disk.diskSegments && disk.diskSegments.length && !hasPendingReinstateSegments) {
 		var volumeSegments = disk.diskSegments.filter(function(seg) {
@@ -379,7 +379,7 @@ scope.handleFormatDone = function(disk, newDisk, calcDelta, disksToResumeReinsta
 		}
 	}
 
-	const newDiskSegments = disk.diskSegments.filter(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING) || [];
+	const newDiskSegments = (disk.diskSegments || []).filter(seg => seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
 	this.updateDisk(disk, disk.uuid, 'diskSegments', newDiskSegments);
 
 	scope.setDiskInfo.bind(calcDelta)(disk, hasPendingReinstateSegments);
