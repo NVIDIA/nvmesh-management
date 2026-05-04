@@ -110,13 +110,17 @@ function calculateDirtyBitsPercentage(volume, totalDirtyBits) {
 	const dirtyBytes = totalDirtyBits * (BLOCKSET_TO_BYTES / consts.GB);
 	const dataCapacity = getDataCapacity(volume);
 
-	return 100 - Math.floor((dirtyBytes / dataCapacity) * 100);
+	const dirtyFraction = dirtyBytes / dataCapacity;
+	return 100 - Math.floor(dirtyFraction * 100);
 }
 
 function getDataCapacity(volume) {
 	let dataCapacity = volume.capacity;
-	if (volume.RAIDLevel === consts.RAIDLevel.ERASURE_CODING || volume.RAIDLevel === consts.RAIDLevel.STRIPED_ERASURE_CODING) {
+	if (AllocationService.isEC(volume.RAIDLevel)) {
 		dataCapacity *= (volume.dataBlocks + volume.parityBlocks - 1) / volume.dataBlocks;
+	} else if (AllocationService.isMirrored(volume.RAIDLevel)) {
+		const totalCopies = 1 + volume.numberOfMirrors;
+		dataCapacity *= totalCopies;
 	}
 	return dataCapacity;
 }
