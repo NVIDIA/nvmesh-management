@@ -315,7 +315,7 @@ scope.reclaimVPGs = (vpgs, user, mainCallback) => {
 		let vpgFromDB;
 
 		const createSysMessage = systemErrorMessage => (systemErrorMessage ?
-			new SystemAdminMessage(systemMessages.VPG_RECLAIM_FAILED).addInfo(Entities.Error, systemErrorMessage).log() :
+			new SystemAdminMessage(systemMessages.VPG_RECLAIM_FAILED).addInfo(Entities.Error, systemErrorMessage) :
 			new SystemAdminMessage(systemMessages.VPG_RECLAIMED)).addInfo(Entities.VPG.ID, vpg._id).addInfo(Entities.VPG.UUID, vpg.uuid);
 
 		async.series([
