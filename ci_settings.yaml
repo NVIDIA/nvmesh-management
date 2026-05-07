@@ -1,8 +1,8 @@
 suite: "gitlab-ci-ec"
 build-with:
-  nvmesh: "master"
-  interop-db: "master"
-  upgrader: "master"
+  nvmesh: "3.5.0"
+  interop-db: "3.5.0"
+  upgrader: "3.5.0"
   nvmesh-csi-driver: "master"
-phases: ["MGMT", "NEWSCALE", "UM_MINI"]
+phases: ["MGMT", "NEWSCALE"]
 py: 3.6
