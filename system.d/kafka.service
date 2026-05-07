@@ -2,11 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [Unit]
-Description=Apache Kafka server (broker)
+Description=Apache Kafka server (KRaft broker + controller)
 Documentation=http://kafka.apache.org/documentation.html
 Requires=network.target remote-fs.target
-After=network.target remote-fs.target kafka-zookeeper.service
-Wants=kafka-zookeeper.service
+After=network.target remote-fs.target
 
 [Service]
 Type=simple
