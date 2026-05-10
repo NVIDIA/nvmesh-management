@@ -1536,6 +1536,13 @@ function doOnConsumerCrash(event, consumerId) {
 		.addInfo(Entities.KafkaConsumer.ID, consumerId)
 		.log();
 
+	if (event?.payload?.restart) {
+		// kafkajs handles retriable crashes internally;
+		// recycling concurrently races with kafkajs restarting the consumer and leads to a zombie consumer.
+		logger.sysDEBUG(`doOnConsumerCrash: consumer ID ${consumerId} crash with restart=true, letting kafkajs handle recovery`);
+		return;
+	}
+
 	logger.sysWARNING(`doOnConsumerCrash: consumer ID ${consumerId} requesting recycle`);
 	scope.requestConsumerRecycle(consumerId);
 }
