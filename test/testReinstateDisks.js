@@ -28,6 +28,7 @@ const consts = require('../consts.js');
 const systemMessages = require('../systemMessages.js');
 const diskModule = require('../modules/disk.js');
 const { checkAndResumeStuckReinstate } = require('../modules/sanityAndRecover.js');
+const { startVolumesRebuild } = require('../utils.js');
 
 const EXPECTED_RAID1_SEGMENT_COUNT = 2;
 
@@ -287,6 +288,64 @@ describe('Reinstate Disks', () => {
 
 			const logs = await reinstateDisks([{ diskID: seg.diskID, uuid: seg.diskUUID }]);
 			assertIsCausedBy(logs[0], systemMessages.DRIVE_REINSTATE_NON_PROTECTED_SEGMENTS);
+		});
+	});
+
+	describe('#Rebuild in progress', function() {
+		let rebuildTargets;
+		let evictedDiskID;
+		let evictedDiskUUID;
+
+		before(async() => {
+			await setup.newSetup();
+			rebuildTargets = generateTargets(3, 1);
+			rebuildTargets.forEach(t => t.populateMetadataPartitionsOnDisks());
+			await Promise.all(rebuildTargets.map(t => t.save()));
+
+			const volumeWithRebuild = new VolumeRAID1('rstMfroVol1');
+			await volumeWithRebuild.createOrReject();
+
+			const volumeWithoutRebuild = new VolumeRAID1('rstMfroVol2');
+			await volumeWithoutRebuild.createOrReject();
+
+			let dbVolumeWithRebuild = await Volume.getFromDB(volumeWithRebuild.name);
+			const dbVolumeWithoutRebuild = await Volume.getFromDB(volumeWithoutRebuild.name);
+
+			await reportAllSegmentsOnline(dbVolumeWithRebuild, rebuildTargets[0]);
+			await reportAllSegmentsOnline(dbVolumeWithoutRebuild, rebuildTargets[0]);
+
+			const firstSegment = dbVolumeWithRebuild.chunks[0].pRaids[0].diskSegments[0];
+			evictedDiskID = firstSegment.diskID;
+			evictedDiskUUID = firstSegment.diskUUID;
+
+			await evictDiskAndSyncTarget({ diskID: evictedDiskID, uuid: evictedDiskUUID }, rebuildTargets);
+
+			// Trigger rebuild to simulate VPG/diskClass autorebuild — this places markedForRebuild_old on the evicted disk
+			dbVolumeWithRebuild = await Volume.getFromDB(volumeWithRebuild.name);
+			await new Promise(resolve => startVolumesRebuild([dbVolumeWithRebuild], consts.ADMIN_USER, null, resolve));
+		});
+
+		it('Should have markedForRebuild_old segment in volume collection after rebuild', async() => {
+			const dbVolume = await Volume.getFromDB('rstMfroVol1');
+			const allSegs = getAllVolumeSegments(dbVolume);
+			assertHasSegments(allSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+			const markedForRebuildOldSeg = getSegmentsByStatus(allSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD)[0];
+			assert.strictEqual(markedForRebuildOldSeg.diskID, evictedDiskID, 'markedForRebuild_old segment should be on the evicted disk');
+		});
+
+		it('Should reject reinstate while a markedForRebuild_old segment exists on the disk in any volume', async() => {
+			const logs = await reinstateDisks([{ diskID: evictedDiskID, uuid: evictedDiskUUID }]);
+			assertIsCausedBy(logs[0], systemMessages.DRIVE_REINSTATE_REBUILD_IN_PROGRESS);
+		});
+
+		it('Should allow reinstate after the markedForRebuild_old segment is deprecated', async() => {
+			let dbVolume = await Volume.getFromDB('rstMfroVol1');
+			const markedForRebuildOldSegments = getSegmentsByStatus(getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+			await sendDeprecationReport(dbVolume, markedForRebuildOldSegments, rebuildTargets[0]);
+
+			const logs = await reinstateDisks([{ diskID: evictedDiskID, uuid: evictedDiskUUID }]);
+			assert.strictEqual(logs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id,
+				'Expected DRIVE_REINSTATED after markedForRebuild_old is cleared');
 		});
 	});
 
@@ -580,4 +639,5 @@ describe('Reinstate Disks', () => {
 			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.REBUILD_REQUIRED);
 		});
 	});
+
 });

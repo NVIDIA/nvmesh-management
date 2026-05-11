@@ -2257,6 +2257,11 @@ var systemMessages = {
 		id: 163334,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	DRIVE_REINSTATE_REBUILD_IN_PROGRESS: {
+		message: 'Cannot reinstate drive: a rebuild is already in progress for a segment on this drive — wait for the rebuild to complete before reinstating',
+		id: 163335,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	DRIVE_REINSTATE_SERVER_VERSION_CONFLICT: {
 		message: 'Drive changed during reinstate, retrying',
 		id: 16337,

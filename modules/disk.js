@@ -1571,19 +1571,22 @@ scope.startMissingDriveCheckupInterval = function(callback) {
 	setTimeout(intervalFunc, consts.missingDriveCheckupInterval);
 };
 
-function validatePRaidSegmentCountOnDisk(drive, callback) {
+function validateVolumeSegmentsBeforeReinstate(drive, callback) {
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
 
-	const volumeNames = drive.diskSegments
-		.filter(seg => seg.type === consts.segmentTypes.DATA)
-		.map(seg => seg.volumeName);
+	const diskID = drive.diskID;
+	const volumeNames = [...new Set(
+		drive.diskSegments
+			.filter(seg => seg.type === consts.segmentTypes.DATA)
+			.map(seg => seg.volumeName)
+	)];
 
 	const pipeline = [
 		{
 			$match: {
-				_id: { $in: [...new Set(volumeNames)] },
-				RAIDLevel: { $in: [...consts.mirroredRaidLevels, ...consts.erasureCodedRaidLevels] },
+				_id: { $in: volumeNames },
+				RAIDLevel: { $in: [...consts.mirroredRaidLevels, ...consts.erasureCodedRaidLevels] }
 			}
 		},
 		{
@@ -1595,7 +1598,8 @@ function validatePRaidSegmentCountOnDisk(drive, callback) {
 					pRaids: {
 						diskSegments: {
 							diskID: 1,
-							type: 1
+							type: 1,
+							status: 1
 						}
 					}
 				}
@@ -1603,7 +1607,7 @@ function validatePRaidSegmentCountOnDisk(drive, callback) {
 		},
 		{ $unwind: '$chunks' },
 		{ $unwind: '$chunks.pRaids' },
-		{ $match: { 'chunks.pRaids.diskSegments': { $elemMatch: { diskID: drive.diskID, type: consts.segmentTypes.DATA } } } },
+		{ $match: { 'chunks.pRaids.diskSegments': { $elemMatch: { diskID, type: consts.segmentTypes.DATA } } } },
 		{
 			$addFields: {
 				segmentsOnDisk: {
@@ -1611,7 +1615,7 @@ function validatePRaidSegmentCountOnDisk(drive, callback) {
 						$filter: {
 							input: '$chunks.pRaids.diskSegments',
 							as: 'seg',
-							cond: { $and: [{ $eq: ['$$seg.diskID', drive.diskID] }, { $eq: ['$$seg.type', consts.segmentTypes.DATA] }] }
+							cond: { $and: [{ $eq: ['$$seg.diskID', diskID] }, { $eq: ['$$seg.type', consts.segmentTypes.DATA] }] }
 						}
 					}
 				},
@@ -1632,16 +1636,48 @@ function validatePRaidSegmentCountOnDisk(drive, callback) {
 				}
 			}
 		},
-		{ $match: { $expr: { $gt: ['$segmentsOnDisk', '$maxAllowed'] } } },
-		{ $project: { _id: 1 } },
-		{ $limit: 1 }
+		{
+			$addFields: {
+				rebuildInProgress: {
+					$gt: [
+						{
+							$size: {
+								$filter: {
+									input: '$chunks.pRaids.diskSegments',
+									as: 'seg',
+									cond: {
+										$and: [
+											{ $eq: ['$$seg.diskID', diskID] },
+											{ $eq: ['$$seg.type', consts.segmentTypes.DATA] },
+											{ $eq: ['$$seg.status', consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD] }
+										]
+									}
+								}
+							}
+						},
+						0
+					]
+				},
+				noSurvivingCopy: { $gt: ['$segmentsOnDisk', '$maxAllowed'] }
+			}
+		},
+		{ $match: { $or: [{ rebuildInProgress: true }, { noSurvivingCopy: true }] } },
+		{ $limit: 1 },
+		{ $project: { _id: 1, rebuildInProgress: 1, noSurvivingCopy: 1 } }
 	];
 
 	volumeCollection.aggregate(pipeline).toArray((err, results) => {
 		if (err)
 			return callback(new MongoError(err));
 
-		if (results.length)
+		if (!results.length)
+			return callback();
+
+		if (results[0].rebuildInProgress)
+			return callback(new SystemMessage(systemMessages.DRIVE_REINSTATE_REBUILD_IN_PROGRESS)
+				.addInfo(Entities.Volume.ID, results[0]._id));
+
+		if (results[0].noSurvivingCopy)
 			return callback(new SystemMessage(systemMessages.DRIVE_REINSTATE_NO_SURVIVING_COPY_ON_OTHER_DISK)
 				.addInfo(Entities.Volume.ID, results[0]._id));
 
@@ -1662,7 +1698,7 @@ function validateDriveToReinstate(drive, callback) {
 	if (drive.diskSegments.some(seg => seg.type === consts.segmentTypes.DATA && !utils.hasRedundancy(seg)))
 		return callback(new SystemMessage(systemMessages.DRIVE_REINSTATE_NON_PROTECTED_SEGMENTS));
 
-	validatePRaidSegmentCountOnDisk(drive, (err) => {
+	validateVolumeSegmentsBeforeReinstate(drive, (err) => {
 		if (err)
 			return callback(err);
 
