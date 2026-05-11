@@ -5,7 +5,9 @@
 CSI Driver Integration Tests.
 
 This test will run test code from nvmesh-csi-driver project against a management server.
-use ci_settings.yaml file to determine the branch of the nvmesh-csi-driver project to use.
+
+The CSI driver checkout is expected on disk at ../nvmesh-csi-driver relative to the process working
+directory (cloned by Jenkins/CI), not by this tester.
 
 The test covers only basic API operations used in the CSI Driver,
 Create / Delete Volume operations, and Attach / Detach functionality.
@@ -25,22 +27,17 @@ import yaml
 
 logger = logging.getLogger("csi-tester")
 
-CSI_REPO_URL = "ssh://git@gitlab-master.nvidia.com:12051/excelero/nvmesh-csi-driver.git"
 
-def git_clone_repo(parent_dir, repo_url, repo_name):
+def csi_driver_root_from_workdir():
     """
-    Clone a repository into the current directory.
+    nvmesh-csi-driver checkout is always ../nvmesh-csi-driver relative to cwd.
+
+    Slash/CI must set the working directory so that path exists (typically repo root beside the CSI clone).
     """
-    logger.info(f"Cloning repository {repo_name} from {repo_url} into {parent_dir}")
-    result = subprocess.run(
-        ["git", "clone", repo_url, repo_name],
-        cwd=parent_dir,
-        capture_output=True,
-        check=False
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to clone repository.\nstdout: {result.stdout}\nstderr: {result.stderr}")
-    return os.path.abspath(os.path.join(parent_dir, repo_name))
+    root = os.path.realpath(os.path.join(os.getcwd(), "..", "nvmesh-csi-driver"))
+    logger.info("CSI driver root=%s (cwd=%s)", root, os.getcwd())
+    return root
+
 
 def ensure_csi_venv(csi_driver_root):
     """
@@ -109,12 +106,15 @@ def run_csi_driver_pytests(csi_driver_root, python_bin, test_path, pytest_args):
     Run CSI driver management integration tests in an isolated subprocess
     with the CSI driver's own virtual environment.
     """
+    root_pytest = os.path.realpath(os.path.abspath(csi_driver_root))
+    test_config_abs = os.path.join(root_pytest, "test", "config.yaml")
+
     # Build pytest command
     pytest_cmd = [
         python_bin,
         "-m", "pytest",
         test_path,
-        f"--rootdir={csi_driver_root}",
+        f"--rootdir={root_pytest}",
     ]
 
     pytest_cmd.extend(pytest_args)
@@ -122,12 +122,13 @@ def run_csi_driver_pytests(csi_driver_root, python_bin, test_path, pytest_args):
     logger.info("Running command:")
     logger.info(" ".join(pytest_cmd))
     logger.info("=" * 70)
+    logger.info("Pytest CSI driver root=%s TEST_CONFIG_PATH=%s", root_pytest, test_config_abs)
 
     env = {
         **os.environ,
-        "PYTHONPATH": csi_driver_root,
-        "PROJECT_ROOT": csi_driver_root,
-        "TEST_CONFIG_PATH": os.path.join(csi_driver_root, "test/config.yaml"),
+        "PYTHONPATH": root_pytest,
+        "PROJECT_ROOT": root_pytest,
+        "TEST_CONFIG_PATH": test_config_abs,
     }
 
     # Stream pytest output line-by-line (merged stderr) while capturing for the result object
@@ -135,7 +136,7 @@ def run_csi_driver_pytests(csi_driver_root, python_bin, test_path, pytest_args):
 
     with subprocess.Popen(
         pytest_cmd,
-        cwd=csi_driver_root,
+        cwd=root_pytest,
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -152,73 +153,41 @@ def run_csi_driver_pytests(csi_driver_root, python_bin, test_path, pytest_args):
         pytest_cmd, proc.returncode, stdout="".join(stdout_lines), stderr=None
     )
 
-def ensure_csi_driver_cloned(branch_name):
-    """
-    Ensure the nvmesh-csi-driver project is cloned.
-    """
-    project_dir_name = "nvmesh-csi-driver"
-    if os.path.exists(os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")), project_dir_name)):
-        logger.info(f"Repository {project_dir_name} already exists at {os.path.abspath(os.path.join(os.path.dirname(__file__), '../../', project_dir_name))}")
-        return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", project_dir_name))
-
-    csi_driver_root = git_clone_repo(
-        parent_dir=os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")),
-        repo_url=CSI_REPO_URL,
-        repo_name=project_dir_name)
-
-    # Checkout the branch
-    logger.info(f"Checking out branch {branch_name} in {csi_driver_root}")
-
-    res = subprocess.run(
-        ["git", "checkout", branch_name],
-        cwd=csi_driver_root,
-        capture_output=True,
-        text=True,
-        check=False
-    )
-    if res.returncode != 0:
-        raise RuntimeError(f"Failed to checkout branch {branch_name} in {csi_driver_root}: {res.stdout} {res.stderr}")
-
-    return csi_driver_root
-
-def get_ci_settings():
-    """
-    Read the ci_settings.yaml file.
-    """
-    ci_settings_path = os.path.join(os.path.dirname(__file__), "../ci_settings.yaml")
-    try:
-        with open(ci_settings_path, "r", encoding="utf-8") as f:
-            ci_settings = yaml.safe_load(f)
-        return ci_settings
-    except FileNotFoundError:
-        raise RuntimeError(f"CI settings file not found at {ci_settings_path}")
-    except yaml.YAMLError as e:
-        raise RuntimeError(f"Failed to parse CI settings YAML: {e}")
-
 # pylint: disable=redefined-outer-name
-def update_test_config(csi_driver_root, manager):
+def create_test_config(csi_driver_root, manager):
     """
-    Update the test/config.yaml file with the management address.
+    Create the test/config.yaml file with the management address.
     """
+    root = os.path.realpath(os.path.abspath(csi_driver_root))
+    test_dir = os.path.join(root, "test")
+    template_path = os.path.join(test_dir, "config-template.yaml")
+    output_path = os.path.join(test_dir, "config.yaml")
+    os.makedirs(test_dir, exist_ok=True)
 
-    # Load config file
-    test_config_path = os.path.join(csi_driver_root, "test/config.yaml")
-    with open(test_config_path, "r", encoding="utf-8") as f:
+    with open(template_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    # set mgmt API params
-    config["mgmtIntegration"] = {
-        "apiParams": {
-            "managementServers": ",".join(manager.endpoints),
-            "managementProtocol": "http",
-            "user": "admin@nvidia.com",
-            "password": "admin",
-            "tlsVerify": False
-        }
+    api_params = {
+        "managementServers": ",".join(manager.endpoints),
+        "managementProtocol": "http",
+        "user": "admin@nvidia.com",
+        "password": "admin",
+        "tlsVerify": False
     }
+    # pytest_configure loads integration.* into TestConfig; mgmt tests read mgmtIntegration.*
+    config["mgmtIntegration"] = {"apiParams": api_params}
+    integration = config.get("integration")
+    if isinstance(integration, dict):
+        integration["apiParams"] = api_params
+    else:
+        config["integration"] = {"apiParams": api_params}
 
-    with open(test_config_path, "w", encoding="utf-8") as f:
+    logger.info("Writing CSI pytest config %s from template %s", output_path, template_path)
+    with open(output_path, "w", encoding="utf-8") as f:
         yaml.dump(config, f)
+
+    if not os.path.isfile(output_path):
+        raise RuntimeError("CSI test config was not written (expected file at %r)" % (output_path,))
 
 # pylint: disable=redefined-outer-name,unused-argument
 def test_csi_driver(manager, simulator):
@@ -227,16 +196,13 @@ def test_csi_driver(manager, simulator):
     with the CSI driver's own virtual environment.
     """
 
-    # Ensure the project is cloned
-    ci_settings = get_ci_settings()
-    csi_branch = ci_settings.get("build-with", {}).get("csi-driver", "master")
-    csi_driver_root = ensure_csi_driver_cloned(branch_name=csi_branch)
+    csi_driver_root = csi_driver_root_from_workdir()
 
     # Ensure venv exists and has all dependencies
     python_bin = ensure_csi_venv(csi_driver_root)
 
     # set the mgmt address in the test/config.yaml
-    update_test_config(csi_driver_root, manager)
+    create_test_config(csi_driver_root, manager)
 
     logger.info("Running CSI Driver Management Integration Tests")
 
