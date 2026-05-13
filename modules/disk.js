@@ -1876,9 +1876,16 @@ function executeInPlaceSegmentReplacement(serverQuery, newDiskSegmentStatus, cal
 			preReplaceValidation(server.disks, (err) => cb(err, server));
 		},
 		function updateDrive(server, cb) {
+			const { 'disks.diskID': diskID, 'disks.uuid': diskUUID, ...documentConditions } = serverQuery;
 			const query = {
-				...serverQuery,
-				'disks.version': server.disks.version,
+				...documentConditions,
+				disks: {
+					$elemMatch: {
+						diskID,
+						uuid: diskUUID,
+						version: server.disks.version,
+					}
+				}
 			};
 
 			const segmentPairsByVolume = buildSegmentReplacementPairsByVolume(server, newDiskSegmentStatus);
