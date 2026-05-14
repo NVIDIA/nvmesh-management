@@ -32,6 +32,8 @@ const cert = require('./cert.js');
 let isRecycleProducerInProgress = false;
 let lastConsumerRecycleTime = null;
 let consumerIdOnRecycle = null;
+let isRecycleConsumerInProgress = false;
+let pendingRecycleConsumerCallbacks = [];
 let currentConsumerIdCounter = 0;
 let currentProducerIdCounter = 0;
 let consumerRecycleBackoff = new Backoff({
@@ -1167,7 +1169,7 @@ scope.initConsumers = async function(id = app.get('managementId')) {
 			eachMessage: scope.handleMessage
 		}], consumerOptions);
 
-		consumer.subscribedTopics = new Set(scope.subscribableTopics);
+		consumer.subscribedTopics = new Set(topics);
 		consumer.debug = { runCalled: true };
 		app.set('kafkaConsumer', consumer);
 
@@ -1206,39 +1208,60 @@ async function disconnectProducer() {
 	}
 }
 
+async function doRecycleConsumer(callbacks) {
+	logger.sysWARNING('Going to recycle consumer');
+	lastConsumerRecycleTime = new Date();
+
+	const consumer = app.get('kafkaConsumer');
+	let error;
+
+	if (consumer)
+		error = await disconnectConsumers();
+
+	logger.sysDEBUG(`recycleConsumer:: disconnected consumers ${error ? error.toString() : ''}`);
+
+	if (!error) {
+		logger.sysDEBUG('recycleConsumer:: Initializing new consumer');
+		error = await scope.initConsumers();
+		logger.sysDEBUG('recycleConsumer:: initConsumers finished');
+	}
+
+	if (error) {
+		const sysMsg = new SystemMessage(systemMessages.KAFKA_RECYCLE_CONSUMER_ERROR).addInfo(Entities.Error, error).log();
+		callbacks.forEach(cb => cb(sysMsg));
+		return;
+	}
+
+	logger.sysWARNING('Consumer recycled successfully');
+	callbacks.forEach(cb => cb());
+}
+
 scope.recycleConsumer = callback => {
+	if (isRecycleConsumerInProgress) {
+		logger.sysDEBUG('recycleConsumer:: already in progress, coalescing into the next follow-up recycle');
+		pendingRecycleConsumerCallbacks.push(callback);
+		return;
+	}
+
+	isRecycleConsumerInProgress = true;
+
 	(async() => {
-		logger.sysWARNING('Going to recycle consumer');
-		lastConsumerRecycleTime = new Date();
-
-		const consumer = app.get('kafkaConsumer');
-		let error;
-
-		if (consumer)
-			error = await disconnectConsumers();
-
-		logger.sysDEBUG(`recycleConsumer:: disconnected consumers ${error ? error.toString() : ''}`);
-
-		if (!error) {
-			logger.sysDEBUG('recycleConsumer:: Initializing new consumer');
-			error = await scope.initConsumers();
-			logger.sysDEBUG('recycleConsumer:: initConsumers finished');
+		let currentCallbacks = [callback];
+		while (currentCallbacks.length > 0) {
+			await doRecycleConsumer(currentCallbacks);
+			currentCallbacks = pendingRecycleConsumerCallbacks;
+			pendingRecycleConsumerCallbacks = [];
 		}
-
-		if (error)
-			return callback(new SystemMessage(systemMessages.KAFKA_RECYCLE_CONSUMER_ERROR).addInfo(Entities.Error, error).log());
-
-		logger.sysWARNING('Consumer recycled successfully');
-		callback();
+		isRecycleConsumerInProgress = false;
 	})();
 };
 
-scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, requestID = uuid.v4(), retrying = false) => {
+scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, requestID = uuid.v4()) => {
 	const currentConsumer = app.get('kafkaConsumer');
 	const currentConsumerId = currentConsumer?.customConsumerInstanceID;
 	const currentConsumerSubscribedTopics = currentConsumer?.subscribedTopics || new Set();
 	const loggingInfo = `requestingConsumerId: ${requestingConsumerId}, currentConsumerId: ${currentConsumerId}, runTimeID: ${requestID}`;
-	const retryRequestConsumerRecycle = () => scope.requestConsumerRecycle(requestingConsumerId, callback, requestID, true);
+	const retryRequestConsumerRecycle = () => scope.requestConsumerRecycle(requestingConsumerId, callback, requestID);
 
 	logger.sysDEBUG(`Got a recycle consumer request, ${loggingInfo}`);
 
@@ -1254,7 +1277,7 @@ scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, reque
 			return scope.requestConsumerRecycle(currentConsumerId, callback);
 		}
 
-		if (consumerIdOnRecycle && (consumerIdOnRecycle > requestingConsumerId || (!retrying && consumerIdOnRecycle === requestingConsumerId))
+		if (consumerIdOnRecycle && consumerIdOnRecycle >= requestingConsumerId
 			&& utils.isEqualSet(currentConsumerSubscribedTopics, scope.subscribableTopics)) {
 			logger.sysDEBUG(`Recycle for consumer is already in progress, continuing... , ${loggingInfo}`);
 			return callback();
