@@ -23,6 +23,8 @@ usage:
 
 -S	--sign-rpm	    sign the rpm
 
+-u      --utils               build utils rpm
+
 -M      --management        build management rpm
 
 -n      --nhc               build nhc rpm
@@ -104,7 +106,7 @@ pkgDeb() {
         packDir=$packagePrefix-$rpm_version
 
         if [ -e $packDir/debian ]; then
-            if [ $rpm == $mgmt ]; then
+            if [ $rpm == $mgmt ] || [ $rpm == $utils ]; then
                 echo "Configuring deb dependencies..."
                 sed -i -E "s/^[ ]*Depends:\s.*$/&, $requiresUbuntu/g" $packDir/debian/control
             fi
@@ -135,6 +137,7 @@ pkgDeb() {
 }
 
 mgmtRPM=true
+utilsRPM=false
 nhcRPM=false
 isUbuntu=false
 ignoreWarning=false
@@ -172,6 +175,10 @@ case $key in
     ;;
     -S|--sign-rpm)
     signRPM=true
+    ;;
+    -u|--utils)
+    utilsRPM=true
+    mgmtRPM=false
     ;;
     -M|--management)
     mgmtRPM=true
@@ -213,11 +220,16 @@ if [ "$mgmtRPM" == true ]; then
 fi
 
 rpmsToCreate=()
+utils="utils"
 mgmt="management"
 nhc="nhc"
 
 if [ -z "$DISTRIBUTION_INFO" ]; then
     DISTRIBUTION_INFO=$(cat /etc/*release)
+fi
+
+if [ "$utilsRPM" == true ]; then
+    rpmsToCreate+=($utils)
 fi
 
 if [ "$mgmtRPM" == true ]; then
@@ -307,7 +319,15 @@ for rpm in "${rpmsToCreate[@]}"; do
     cp nvmesh-$rpm.spec ~/rpmbuild/SPECS/
     rm ~/rpmbuild/RPMS/$ARCH/$packagePrefix*$ARCH.rpm
 
-    if [ $rpm == $mgmt ]; then
+    if [ $rpm == $utils ]; then
+        cd ..
+	commonRequirements="coreutils, grep"
+        requires="$commonRequirements, rpm"
+	requiresUbuntu="$commonRequirements, dpkg"
+        rsync -aRPq --exclude=*.pyc $utils_transfer_list ~/"rpmbuild/SOURCES/$packagePrefix"
+        rsync --ignore-missing-args -aRPq --exclude=*.pyc $utils_optional_transfer_list ~/"rpmbuild/SOURCES/$packagePrefix"
+        cd RPM
+    elif [ $rpm == $mgmt ]; then
         cd ..
         requires="systemd, nodejs >= 1:17.0.0-0, nodejs < 2:19.0.0-0, mongodb-mongosh < 2.9.0, mongodb-org-tools >= 5.0, mongodb-org-tools < 9.0, nvmesh-utils >= 2.0.0"
         requiresUbuntu="systemd, nodejs (>= 17.0.0), nodejs (<< 19.0.0), mongodb-mongosh (< 2.9.0), mongodb-org-tools (>= 5.0), mongodb-org-tools (<< 9.0), nvmesh-utils (>= 2.0.0)"
@@ -362,7 +382,11 @@ for rpm in "${rpmsToCreate[@]}"; do
     echo "Starting rpmbuild for $rpm..."
     start_rpmbuild=$(date +%s)
 
-    if [ $rpm == $mgmt ]; then
+    if [ $rpm == $utils ]; then
+	    rpmbuild -ba ~/rpmbuild/SPECS/nvmesh-$rpm.spec --define "commit_id $commitID" --define "change_id $changeID" --define "branch $branchName" --define "version $rpm_version" --define "release $rpm_release" --define "requires $requires"
+        rpm_creation_retval=$?
+        utilsPackageFile=$(find ~/rpmbuild/RPMS/$ARCH/$packagePrefix*)
+    elif [ $rpm == $mgmt ]; then
         rpmbuild -ba ~/rpmbuild/SPECS/nvmesh-$rpm.spec --define "commit_id $commitID" --define "change_id $changeID" --define "branch $branchName" --define "version $rpm_version" --define "release $rpm_release" --define "requires $requires" --define "fast_dev_build $fastDevBuildInt"
         rpm_creation_retval=$?
         mgmtPackageFile=$(find ~/rpmbuild/RPMS/$ARCH/$packagePrefix*)
