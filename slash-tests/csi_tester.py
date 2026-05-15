@@ -7,7 +7,8 @@ CSI Driver Integration Tests.
 This test will run test code from nvmesh-csi-driver project against a management server.
 
 The CSI driver checkout is expected on disk at ../nvmesh-csi-driver relative to the process working
-directory (cloned by Jenkins/CI), not by this tester.
+directory. If it is missing, this tester will clone it from CSI_REPO_URL onto the branch configured
+in ci_settings.yaml (build-with.nvmesh-csi-driver, default "master").
 
 The test covers only basic API operations used in the CSI Driver,
 Create / Delete Volume operations, and Attach / Detach functionality.
@@ -27,6 +28,8 @@ import yaml
 
 logger = logging.getLogger("csi-tester")
 
+CSI_REPO_URL = "ssh://git@gitlab-master.nvidia.com:12051/excelero/nvmesh-csi-driver.git"
+
 
 def csi_driver_root_from_workdir():
     """
@@ -37,6 +40,65 @@ def csi_driver_root_from_workdir():
     root = os.path.realpath(os.path.join(os.getcwd(), "..", "nvmesh-csi-driver"))
     logger.info("CSI driver root=%s (cwd=%s)", root, os.getcwd())
     return root
+
+
+def git_clone_repo(parent_dir, repo_url, repo_name):
+    """
+    Clone a repository into parent_dir under the given repo_name.
+    """
+    logger.info(f"Cloning repository {repo_name} from {repo_url} into {parent_dir}")
+    os.makedirs(parent_dir, exist_ok=True)
+    result = subprocess.run(
+        ["git", "clone", repo_url, repo_name],
+        cwd=parent_dir,
+        capture_output=True,
+        check=False
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to clone repository.\nstdout: {result.stdout}\nstderr: {result.stderr}")
+    return os.path.abspath(os.path.join(parent_dir, repo_name))
+
+
+def get_ci_settings():
+    """
+    Read the ci_settings.yaml file.
+    """
+    ci_settings_path = os.path.join(os.path.dirname(__file__), "../ci_settings.yaml")
+    try:
+        with open(ci_settings_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except FileNotFoundError as e:
+        raise RuntimeError(f"CI settings file not found at {ci_settings_path}") from e
+    except yaml.YAMLError as e:
+        raise RuntimeError(f"Failed to parse CI settings YAML: {e}") from e
+
+
+def ensure_csi_driver_cloned(csi_driver_root, branch_name):
+    """
+    Ensure the nvmesh-csi-driver project is cloned at csi_driver_root on the requested branch.
+
+    No-op if the directory already exists (Slash/CI may have cloned it already).
+    """
+    if os.path.exists(csi_driver_root):
+        logger.info(f"Repository already exists at {csi_driver_root}")
+        return csi_driver_root
+
+    parent_dir = os.path.dirname(csi_driver_root)
+    repo_name = os.path.basename(csi_driver_root)
+    git_clone_repo(parent_dir=parent_dir, repo_url=CSI_REPO_URL, repo_name=repo_name)
+
+    logger.info(f"Checking out branch {branch_name} in {csi_driver_root}")
+    res = subprocess.run(
+        ["git", "checkout", branch_name],
+        cwd=csi_driver_root,
+        capture_output=True,
+        text=True,
+        check=False
+    )
+    if res.returncode != 0:
+        raise RuntimeError(f"Failed to checkout branch {branch_name} in {csi_driver_root}: {res.stdout} {res.stderr}")
+
+    return csi_driver_root
 
 
 def ensure_csi_venv(csi_driver_root):
@@ -197,6 +259,11 @@ def test_csi_driver(manager, simulator):
     """
 
     csi_driver_root = csi_driver_root_from_workdir()
+
+    # Ensure the project is cloned (no-op if Slash/CI already cloned it)
+    ci_settings = get_ci_settings()
+    csi_branch = ci_settings.get("build-with", {}).get("nvmesh-csi-driver", "master")
+    ensure_csi_driver_cloned(csi_driver_root, branch_name=csi_branch)
 
     # Ensure venv exists and has all dependencies
     python_bin = ensure_csi_venv(csi_driver_root)
