@@ -1732,14 +1732,33 @@ function applyReinstateSegmentPairsToVolume(segmentsPairs, volume){
 	});
 }
 
-scope.updateVolumesAfterReinstate = (segmentPairsByVolume, callback) => {
+// TOMA is never told about reserved volumes — update existing volume segment in-place.
+function applyReservedSegmentUpdatesToVolume(segments, volume) {
+	segments.forEach(({ segmentId, newStatus, newDiskUUID }) => {
+		volume.chunks.forEach(chunk => {
+			chunk.pRaids.forEach(pRaid => {
+				const seg = pRaid.diskSegments.find(s => s._id === segmentId);
+				if (!seg)
+					return;
+
+				seg.status = newStatus;
+				seg.diskUUID = newDiskUUID;
+			});
+		});
+	});
+}
+
+scope.updateVolumesAfterReinstate = (segmentPairsByVolume, reservedSegmentsByVolume, callback) => {
 	const db = app.get('db');
 	const volumeCollection = db.collection('volume');
 	let hadFailure;
 
-	async.eachSeries(Object.keys(segmentPairsByVolume), (volumeName, cb) => {
-		const segmentsPairs = segmentPairsByVolume[volumeName];
+	const allVolumes = [
+		...Object.keys(segmentPairsByVolume).map(name => ({ name, segments: segmentPairsByVolume[name], applyFn: applyReinstateSegmentPairsToVolume })),
+		...Object.keys(reservedSegmentsByVolume).map(name => ({ name, segments: reservedSegmentsByVolume[name], applyFn: applyReservedSegmentUpdatesToVolume }))
+	];
 
+	async.eachSeries(allVolumes, ({ name: volumeName, segments, applyFn }, cb) => {
 		async.waterfall([
 			function fetchVolume(cb) {
 				volumeCollection.findOne({ _id: volumeName }, (err, volume) => {
@@ -1758,7 +1777,7 @@ scope.updateVolumesAfterReinstate = (segmentPairsByVolume, callback) => {
 				if (!volume)
 					return cb();
 
-				applyReinstateSegmentPairsToVolume(segmentsPairs, volume);
+				applyFn(segments, volume);
 				const calcResult = volumeModule.calculateVolumeStatus(volume);
 
 				const query = {
@@ -1814,6 +1833,7 @@ scope.updateVolumesAfterReinstate = (segmentPairsByVolume, callback) => {
 
 function buildSegmentReplacementPairsByVolume(server, newDiskSegmentStatus) {
 	const segmentPairsByVolume = {};
+	const reservedSegmentsByVolume = {};
 
 	for (const oldSegment of server.disks.diskSegments) {
 		if (oldSegment.type !== consts.segmentTypes.DATA)
@@ -1824,26 +1844,43 @@ function buildSegmentReplacementPairsByVolume(server, newDiskSegmentStatus) {
 			oldSegment.status !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
 			continue;
 
-		if (!segmentPairsByVolume[oldSegment.volumeName])
-			segmentPairsByVolume[oldSegment.volumeName] = [];
+		const entryBuilder = oldSegment.isReserved ? buildReservedSegmentEntry : buildSegmentReplacementPair;
+		const map = oldSegment.isReserved ? reservedSegmentsByVolume : segmentPairsByVolume;
 
-		oldSegment.status = consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD;
+		if (!map[oldSegment.volumeName])
+			map[oldSegment.volumeName] = [];
 
-		const replacementUUID = uuid.v1();
-		const segmentsPair = {
-			oldSegment,
-			newSegment: utils.extend(true, {}, oldSegment, {
-				_id: replacementUUID,
-				uuid: replacementUUID,
-				status: newDiskSegmentStatus,
-				diskUUID: server.disks.uuid
-			})
-		};
-
-		segmentPairsByVolume[oldSegment.volumeName].push(segmentsPair);
+		map[oldSegment.volumeName].push(entryBuilder(oldSegment, server.disks.uuid, newDiskSegmentStatus));
 	}
 
-	return segmentPairsByVolume;
+	return { segmentPairsByVolume, reservedSegmentsByVolume };
+}
+
+// TOMA is never told about reserved volumes — update disk and volume segment in-place
+function buildReservedSegmentEntry(oldSegment, newDiskUUID, newDiskSegmentStatus) {
+	const newStatus = newDiskSegmentStatus === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING ?
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING :
+		consts.diskSegmentStatuses.NORMAL;
+
+	oldSegment.diskUUID = newDiskUUID;
+	oldSegment.status = newStatus;
+
+	return { segmentId: oldSegment._id, newStatus, newDiskUUID };
+}
+
+function buildSegmentReplacementPair(oldSegment, newDiskUUID, newDiskSegmentStatus) {
+	oldSegment.status = consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD;
+
+	const replacementUUID = uuid.v1();
+	return {
+		oldSegment,
+		newSegment: utils.extend(true, {}, oldSegment, {
+			_id: replacementUUID,
+			uuid: replacementUUID,
+			status: newDiskSegmentStatus,
+			diskUUID: newDiskUUID
+		})
+	};
 }
 
 function executeInPlaceSegmentReplacement(serverQuery, newDiskSegmentStatus, callback, preReplaceValidation) {
@@ -1888,7 +1925,7 @@ function executeInPlaceSegmentReplacement(serverQuery, newDiskSegmentStatus, cal
 				}
 			};
 
-			const segmentPairsByVolume = buildSegmentReplacementPairsByVolume(server, newDiskSegmentStatus);
+			const { segmentPairsByVolume, reservedSegmentsByVolume } = buildSegmentReplacementPairsByVolume(server, newDiskSegmentStatus);
 			const newSegments = Object.values(segmentPairsByVolume).flatMap(segmentPair => segmentPair.map(pair => pair.newSegment));
 
 			const drivePath = 'disks.$';
@@ -1907,11 +1944,29 @@ function executeInPlaceSegmentReplacement(serverQuery, newDiskSegmentStatus, cal
 
 				utils.incZonesConfigurationVersion([server.zone], () =>
 					zoneModule.dispatchZonesHardwareConfigurationByZones([server.zone], () =>
-						cb(null, segmentPairsByVolume)));
+						cb(null, segmentPairsByVolume, reservedSegmentsByVolume)));
 			});
 		},
-		function updateVolumes(segmentPairsByVolume, cb) {
-			scope.updateVolumesAfterReinstate(segmentPairsByVolume, cb);
+		function updateVolumes(segmentPairsByVolume, reservedSegmentsByVolume, cb) {
+			scope.updateVolumesAfterReinstate(segmentPairsByVolume, reservedSegmentsByVolume, (err) => cb(err, segmentPairsByVolume, reservedSegmentsByVolume));
+		},
+		function triggerFormatIfAllSegmentsReserved(segmentPairsByVolume, reservedSegmentsByVolume, cb) {
+			if (newDiskSegmentStatus !== consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
+				return cb();
+
+			if (Object.keys(segmentPairsByVolume).length)
+				return cb();
+
+			const driveID = serverQuery['disks.diskID'];
+			const driveUUID = serverQuery['disks.uuid'];
+
+			if (!Object.keys(reservedSegmentsByVolume).length) {
+				logger.sysDEBUG(`Drive ${driveID} does not have segments at all but still in the process of reinstate`);
+				return cb();
+			}
+
+			logger.sysDEBUG(`Drive ${driveID} has only reserved segments after reinstate, auto-triggering format`);
+			scope.formatDiskByIDsAndUUIDs([{ _id: driveID, uuid: driveUUID }], null, true, () => cb());
 		}
 	], callback);
 }

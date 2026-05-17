@@ -10,7 +10,7 @@ const assert = require('assert');
 const dbManager = require('./testUtils/dbManager.js');
 const { setup } = require('./testUtils/setup.js');
 const { generateTargets } = require('./testUtils/entityGenerators.js');
-const { Volume, VolumeRAID1, VolumeEC, VolumeConcatenated } = require('./models/volume.js');
+const { Volume, VolumeRAID1, VolumeEC, VolumeConcatenated, VolumeVPG } = require('./models/volume.js');
 const { pollUntil, stubMethod } = require('./testUtils/common.js');
 const { assertIsCausedBy } = require('./testUtils/errorUtils.js');
 const { clearAllQueues } = require('./testUtils/mockKafkaModule.js');
@@ -29,6 +29,7 @@ const systemMessages = require('../systemMessages.js');
 const diskModule = require('../modules/disk.js');
 const { checkAndResumeStuckReinstate } = require('../modules/sanityAndRecover.js');
 const { startVolumesRebuild } = require('../utils.js');
+const { saveVPG } = require('./testUtils/vpgUtils.js');
 
 const EXPECTED_RAID1_SEGMENT_COUNT = 2;
 
@@ -36,13 +37,16 @@ function runReinstateSanity() {
 	return new Promise((resolve, reject) => checkAndResumeStuckReinstate(err => err ? reject(err) : resolve()));
 }
 
-async function setupOnlineVolumeWithTargets(volumeName, VolumeClass, targetCount = 3) {
+async function setupOnlineVolumeWithTargets(volumeName, VolumeClass, targetCount = 3, { beforeCreate, createVolume } = {}) {
 	await setup.newSetup();
 	const targets = generateTargets(targetCount, 1);
 	targets.forEach(t => t.populateMetadataPartitionsOnDisks());
 	await Promise.all(targets.map(t => t.save()));
 
-	const volume = new VolumeClass(volumeName);
+	if (beforeCreate)
+		await beforeCreate();
+
+	const volume = createVolume ? createVolume(volumeName) : new VolumeClass(volumeName);
 	await volume.createOrReject();
 
 	let dbVolume = await Volume.getFromDB(volume.name);
@@ -52,8 +56,8 @@ async function setupOnlineVolumeWithTargets(volumeName, VolumeClass, targetCount
 	return { targets, volume, dbVolume };
 }
 
-async function setupReinstateEnvironment(volumeName, VolumeClass = VolumeRAID1, targetCount = 3) {
-	const { targets, volume, dbVolume } = await setupOnlineVolumeWithTargets(volumeName, VolumeClass, targetCount);
+async function setupReinstateEnvironment(volumeName, VolumeClass = VolumeRAID1, targetCount = 3, options = {}) {
+	const { targets, volume, dbVolume } = await setupOnlineVolumeWithTargets(volumeName, VolumeClass, targetCount, options);
 
 	const firstSegment = dbVolume.chunks[0].pRaids[0].diskSegments[0];
 	await evictDiskAndSyncTarget({ diskID: firstSegment.diskID, uuid: firstSegment.diskUUID }, targets);
@@ -62,6 +66,14 @@ async function setupReinstateEnvironment(volumeName, VolumeClass = VolumeRAID1, 
 	return { targets, volume, firstSegment, dbVolume: updatedVolume };
 }
 
+async function setupVPGReinstateEnvironment(vpgName, derivedVolName) {
+	const { targets, volume, firstSegment } = await setupReinstateEnvironment(derivedVolName, null, 2, {
+		beforeCreate: () => saveVPG(vpgName, 50, consts.RAIDLevel.MIRRORED_RAID_1, { numberOfMirrors: 1 }),
+		createVolume: name => new VolumeVPG(name, 10, vpgName)
+	});
+	const evictTarget = findTargetWithDisk(targets, firstSegment.diskID);
+	return { targets, volume, evictTarget, reservedSegDiskID: firstSegment.diskID, reservedSegDiskUUID: firstSegment.diskUUID };
+}
 
 describe('Reinstate Disks', () => {
 	const originalAutoFormatDelay = consts.AUTO_FORMAT_DELAY;
@@ -349,6 +361,59 @@ describe('Reinstate Disks', () => {
 		});
 	});
 
+	describe('#Only-reserved disk reinstate', function() {
+		const VPG_NAME = 'rstOnlyReservedVpg';
+		let target, diskID, diskUUID;
+
+		before(async() => {
+			await setup.newSetup();
+			const targets = generateTargets(2, 1);
+			targets.forEach(t => t.populateMetadataPartitionsOnDisks());
+			await Promise.all(targets.map(t => t.save()));
+
+			await saveVPG(VPG_NAME, 50, consts.RAIDLevel.MIRRORED_RAID_1, { numberOfMirrors: 1 });
+
+			const reservedVol = await Volume.getFromDB(VPG_NAME);
+			const firstSeg = reservedVol.chunks[0].pRaids[0].diskSegments[0];
+			diskID = firstSeg.diskID;
+			diskUUID = firstSeg.diskUUID;
+			target = findTargetWithDisk(targets, diskID);
+
+			await evictDisk({ diskID, uuid: diskUUID });
+			await target.clearQueues();
+		});
+
+		it('Should reinstate and immediately auto-trigger format — no OLD segments, no TOMA deprecation needed', async() => {
+			const logs = await reinstateDisks([{ diskID, uuid: diskUUID }]);
+			assert.strictEqual(logs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id, 'Reinstate should succeed');
+
+			const formatMsg = await target.readMessageFromCommandsTopic();
+			assert.strictEqual(formatMsg?.type, consts.kafkaMessageTypes.ManagementToTOMA.formatDrive, 'Format should auto-trigger immediately');
+		});
+
+		it('Should complete post-format replacement and bring disk back online', async function() {
+			this.timeout(10000);
+
+			await syncTargetDiskFromDB(target, diskID, true);
+			target.messageSequence += 1;
+			await target.sendReport();
+
+			await pollUntil(async() => {
+				const disk = await getDiskFromDB(diskID);
+				const reservedSegs = (disk?.diskSegments || []).filter(s => s.isReserved && s.type === consts.segmentTypes.DATA);
+				return disk && !disk.isOutOfService && reservedSegs.length > 0 &&
+					reservedSegs.every(s => s.status === consts.diskSegmentStatuses.NORMAL);
+			});
+
+			const disk = await getDiskFromDB(diskID);
+			assert.strictEqual(disk.isOutOfService, false, 'Disk should be back online after format');
+
+			const reservedDataSegs = disk.diskSegments.filter(s => s.isReserved && s.type === consts.segmentTypes.DATA);
+			assert(reservedDataSegs.length > 0, 'Expected reserved data segments on disk after format');
+			assertSegmentCount(reservedDataSegs, consts.diskSegmentStatuses.NORMAL, reservedDataSegs.length);
+		});
+	});
+
 	describe('#No data segments validation', function() {
 		let emptyDisk;
 
@@ -410,7 +475,7 @@ describe('Reinstate Disks', () => {
 		it('Should complete volume update when pending segments exist on disk but not in volume', async() => {
 			const { volume, firstSegment } = await setupReinstateEnvironment('rstSanOrpV1');
 
-			const restore = stubMethod('../../modules/disk.js', 'updateVolumesAfterReinstate', (pairs, cb) => cb(new Error('simulated crash')));
+			const restore = stubMethod('../../modules/disk.js', 'updateVolumesAfterReinstate', (pairs, reserved, cb) => cb(new Error('simulated crash')));
 			await reinstateDisks([{ diskID: firstSegment.diskID, uuid: firstSegment.diskUUID }]);
 			restore();
 
@@ -503,7 +568,7 @@ describe('Reinstate Disks', () => {
 			assert.strictEqual(formatMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.formatDrive);
 
 			const updateVolumesStub = stubMethod('../../modules/disk.js', 'updateVolumesAfterReinstate',
-				(pairs, cb) => cb(new Error('simulated post-format volume crash')));
+				(pairs, reserved, cb) => cb(new Error('simulated post-format volume crash')));
 
 			await syncTargetDiskFromDB(evictTarget, firstSegment.diskID, true);
 			evictTarget.messageSequence += 1;
@@ -574,6 +639,157 @@ describe('Reinstate Disks', () => {
 			const finalSegs = getAllVolumeSegments(dbVolume);
 			assertSegmentCount(finalSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, 0);
 			assertHasSegments(finalSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD);
+		});
+	});
+
+	describe('#VPG reserved segment sanity recovery', function() {
+		const VPG_NAME = 'rstSanVpg';
+		const DERIVED_VOL_NAME = `${VPG_NAME}-v1`;
+		let evictTarget, derivedVolume, reservedSegDiskID, reservedSegDiskUUID;
+
+		before(async() => {
+			({ evictTarget, volume: derivedVolume, reservedSegDiskID, reservedSegDiskUUID } =
+				await setupVPGReinstateEnvironment(VPG_NAME, DERIVED_VOL_NAME));
+			await evictTarget.clearQueues();
+		});
+
+		const getVpgSegsOnReinstatedDisk = (vpg) => getAllVolumeSegments(vpg).filter(s => s.diskID === reservedSegDiskID);
+
+		it('Phase 1 — volume update failed: sanity syncs VPG to PENDING and triggers format', async function() {
+			// Phase 1: disk update succeeds (segments → PENDING) but volume update fails
+			const restore = stubMethod('../../modules/disk.js', 'updateVolumesAfterReinstate',
+				(pairs, reserved, cb) => cb(new Error('simulated phase 1 volume crash')));
+			await reinstateDisks([{ diskID: reservedSegDiskID, uuid: reservedSegDiskUUID }]);
+			restore();
+
+			// Precondition: VPG segment at REMAP (phase 1 volume update failed)
+			const vpgSegsBefore = getVpgSegsOnReinstatedDisk(await Volume.getFromDB(VPG_NAME));
+			assert(vpgSegsBefore.length > 0, 'Expected VPG segments on reinstated disk before sanity');
+			assertSegmentCount(vpgSegsBefore, consts.diskSegmentStatuses.REMAP, vpgSegsBefore.length);
+
+			// Sanity: reservedVolumeCheck (first) syncs VPG REMAP → PENDING;
+			// diskBasedCheck applies missing OLD+PENDING pairs to the derived volume
+			await runReinstateSanity();
+
+			const vpgSegsAfterSanity = getVpgSegsOnReinstatedDisk(await Volume.getFromDB(VPG_NAME));
+			assert(vpgSegsAfterSanity.length > 0, 'Expected VPG segments on reinstated disk after sanity phase 1');
+			assertSegmentCount(vpgSegsAfterSanity, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, vpgSegsAfterSanity.length);
+
+			// Deprecate OLD derived-volume segments → format auto-triggers
+			const dbDerivedVol = await Volume.getFromDB(derivedVolume.name);
+			const derivedVolSegs = getAllVolumeSegments(dbDerivedVol);
+			assertHasSegments(derivedVolSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+
+			await evictTarget.clearQueues();
+			const oldSegs = getSegmentsByStatus(derivedVolSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+			await sendDeprecationReport(dbDerivedVol, oldSegs, evictTarget);
+
+			const formatMsg = await evictTarget.readMessageFromCommandsTopic();
+			assert.strictEqual(formatMsg?.type, consts.kafkaMessageTypes.ManagementToTOMA.formatDrive, 'Format should auto-trigger');
+		});
+
+		it('Phase 2 — volume update failed: sanity syncs VPG to NORMAL', async function() {
+			// Phase 2: disk update succeeds (segment → NORMAL) but volume update fails
+			const restore = stubMethod('../../modules/disk.js', 'updateVolumesAfterReinstate',
+				(pairs, reserved, cb) => cb(new Error('simulated phase 2 volume crash')));
+			await syncTargetDiskFromDB(evictTarget, reservedSegDiskID, true);
+			evictTarget.messageSequence += 1;
+			await evictTarget.sendReport();
+
+			await pollUntil(async() => {
+				const disk = await getDiskFromDB(reservedSegDiskID);
+				return disk && !disk.isOutOfService;
+			});
+
+			restore();
+
+			// Precondition: VPG segment still at PENDING (phase 2 volume update failed)
+			const stuckSegs = getVpgSegsOnReinstatedDisk(await Volume.getFromDB(VPG_NAME));
+			assert(stuckSegs.length > 0, 'Expected VPG segments on reinstated disk before sanity phase 2');
+			assertSegmentCount(stuckSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, stuckSegs.length);
+
+			// Sanity: reservedVolumeCheck syncs VPG PENDING → NORMAL to match disk
+			await runReinstateSanity();
+
+			const finalSegs = getVpgSegsOnReinstatedDisk(await Volume.getFromDB(VPG_NAME));
+			assert(finalSegs.length > 0, 'Expected VPG segments on reinstated disk after sanity phase 2');
+			assertSegmentCount(finalSegs, consts.diskSegmentStatuses.NORMAL, finalSegs.length);
+		});
+	});
+
+	describe('#VPG reserved-space segment reinstate', function() {
+		const VPG_NAME = 'rst-vpg-bug';
+		const DERIVED_VOL_NAME = `${VPG_NAME}-v1`;
+		let evictTarget, derivedVolume;
+		let reservedSegDiskID, reservedSegDiskUUID;
+
+		before(async() => {
+			({ evictTarget, volume: derivedVolume, reservedSegDiskID, reservedSegDiskUUID } =
+				await setupVPGReinstateEnvironment(VPG_NAME, DERIVED_VOL_NAME));
+
+			const reinstateLogs = await reinstateDisks([{ diskID: reservedSegDiskID, uuid: reservedSegDiskUUID }]);
+			assert.strictEqual(reinstateLogs[0].systemMessage.id, systemMessages.DRIVE_REINSTATED.id, 'Reinstate should succeed');
+		});
+
+		it('Should NOT create markedForRebuild_old for isReserved segments on disk after reinstate', async() => {
+			const disk = await getDiskFromDB(reservedSegDiskID);
+			const reservedOldSegs = disk.diskSegments.filter(s => s.isReserved && s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+			assert.strictEqual(reservedOldSegs.length, 0, 'Reserved segments must never be marked markedForRebuild_old');
+		});
+
+		it('Should not create markedForRebuild_old in the reserved volume doc', async() => {
+			const reservedVol = await Volume.getFromDB(VPG_NAME);
+			assert(reservedVol, 'Reserved volume document must exist');
+
+			const allSegs = reservedVol.chunks.flatMap(c => c.pRaids.flatMap(p => p.diskSegments));
+			assertSegmentCount(allSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD, 0);
+		});
+
+		it('Should set VPG volume segment to MARKED_FOR_REBUILD_PENDING after phase 1', async() => {
+			const reservedVol = await Volume.getFromDB(VPG_NAME);
+			assert(reservedVol, 'Reserved volume document must exist');
+
+			const allSegs = reservedVol.chunks.flatMap(c => c.pRaids.flatMap(p => p.diskSegments));
+			const pendingSegs = allSegs.filter(s => s.diskID === reservedSegDiskID &&
+				s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING);
+			assert(pendingSegs.length > 0, 'VPG volume segment must be MARKED_FOR_REBUILD_PENDING after phase 1');
+		});
+
+		it('Should auto-trigger format after TOMA deprecates derived-volume OLD segments', async() => {
+			const dbDerivedVol = await Volume.getFromDB(derivedVolume.name);
+			const oldSegs = getSegmentsByStatus(getAllVolumeSegments(dbDerivedVol), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+			assert(oldSegs.length > 0, 'Expected OLD segments on derived volume for the evicted disk');
+
+			await evictTarget.clearQueues();
+			await sendDeprecationReport(dbDerivedVol, oldSegs, evictTarget);
+
+			const formatMsg = await evictTarget.readMessageFromCommandsTopic();
+			assert.strictEqual(formatMsg?.type, consts.kafkaMessageTypes.ManagementToTOMA.formatDrive, 'Format should auto-trigger');
+		});
+
+		it('Should set VPG volume segment to NORMAL after phase 2 (format complete)', async function() {
+			this.timeout(10000);
+
+			await syncTargetDiskFromDB(evictTarget, reservedSegDiskID, true);
+			evictTarget.messageSequence += 1;
+			await evictTarget.sendReport();
+
+			let reservedVol;
+			await pollUntil(async() => {
+				reservedVol = await Volume.getFromDB(VPG_NAME);
+				if (!reservedVol) return false;
+
+				const allSegs = reservedVol.chunks.flatMap(c => c.pRaids.flatMap(p => p.diskSegments));
+				return allSegs
+					.filter(s => s.diskID === reservedSegDiskID)
+					.every(s => s.status === consts.diskSegmentStatuses.NORMAL);
+			});
+
+			const diskSegs = reservedVol.chunks
+				.flatMap(c => c.pRaids.flatMap(p => p.diskSegments))
+				.filter(s => s.diskID === reservedSegDiskID);
+			assert(diskSegs.length > 0, 'Expected VPG segments on disk after reinstate');
+			assertSegmentCount(diskSegs, consts.diskSegmentStatuses.NORMAL, diskSegs.length);
 		});
 	});
 

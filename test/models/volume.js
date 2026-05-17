@@ -44,10 +44,11 @@ class Volume extends Entity {
 	}
 
 	save() {
-		let volumeJson = this.preSave();
+		const volumeJson = this.preSave();
 		return new Promise(resolve => {
 			saveVolumes([volumeJson], user, logs => {
 				this.uuid = logs[0].getAdditionalInfoByKey(Entities.Volume.UUID);
+				this.afterSave(volumeJson);
 				resolve(logs[0].createApiResponse(Entities.Volume.ID, Entities.Volume.UUID));
 			});
 		});
@@ -171,6 +172,20 @@ class VolumeRAID1With2MirrorsMinimal extends Volume {
 	}
 }
 
+class VolumeVPG extends Volume {
+	constructor(name, capacity, vpgName) {
+		super(name);
+		this.capacity = capacity;
+		this.VPG = vpgName;
+	}
+
+	// Sync back every property that cloneVPGProperties assigned during save
+	// (RAIDLevel, numberOfMirrors, protectionLevel, diskClasses, etc.)
+	afterSave(volumeJson) {
+		Object.assign(this, volumeJson);
+	}
+}
+
 exports.Volume = Volume;
 exports.VolumeRAID0 = VolumeRAID0;
 exports.VolumeRAID1 = VolumeRAID1;
@@ -181,3 +196,4 @@ exports.VolumeRAID1With2MirrorsMinimal = VolumeRAID1With2MirrorsMinimal;
 exports.VolumeConcatenated = VolumeConcatenated;
 exports.VolumeEC = VolumeEC;
 exports.VolumeStripedEC = VolumeStripedEC;
+exports.VolumeVPG = VolumeVPG;

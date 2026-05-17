@@ -327,6 +327,9 @@ scope.incrementVersionOnTargets = function(targets, cb) {
 };
 
 scope.sendVolumeUpdateToTomaByVolume = (volume) => {
+	if (volume.isReserved)
+		return;
+
 	let zones = zoneModule.getZonesByVolume(volume);
 	let affectedZones = {};
 

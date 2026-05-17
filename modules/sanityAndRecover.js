@@ -3133,74 +3133,187 @@ scope.checkAndResumeStuckReinstate = function(callback) {
 	const debug = (msg) => logger.sysDEBUG(`checkAndResumeStuckReinstate: ${msg}`);
 	const debugDisk = (disk, msg) => debug(`disk ${disk.diskID} (uuid: ${disk.uuid}) ${msg}`);
 
-	const interestDiskSegmentsStatuses = [
-		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING,
-		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD,
-		consts.diskSegmentStatuses.MARKED_FOR_REBUILD
-	];
+	async.series([
+		function reservedVolumeCheck(cb) {
+			// Sync VPG volume segments to match their disk counterpart before disk-based recovery runs.
+			// If the volume update failed during phase 1 (disk PENDING, VPG still REMAP) or phase 2
+			// (disk NORMAL, VPG still REMAP/PENDING), this resets the VPG segment to match the disk.
+			const stuckStatuses = [consts.diskSegmentStatuses.REMAP, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING];
+			const syncableStatuses = [consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, consts.diskSegmentStatuses.NORMAL];
 
-	const stuckReinstateMatch = {
-		'disks.diskSegments.status': {
-			$in: [consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD]
-		}
-	};
+			function buildPipeline(volumeIds) {
+				const idFilter = volumeIds ? { _id: { $in: volumeIds } } : {};
 
-	const pipeline = [
-		{ $match: stuckReinstateMatch },
-		{ $unwind: '$disks' },
-		{ $match: stuckReinstateMatch },
-		{
-			$project: {
-				node_id: '$_id',
-				zone: 1,
-				'disks.diskID': 1,
-				'disks.uuid': 1,
-				'disks.isOutOfService': 1,
-				'disks.formatInProgress': 1,
-				'disks.isPendingFormat': 1,
-				'disks.diskSegments': {
-					$filter: {
-						input: '$disks.diskSegments',
-						as: 'seg',
-						cond: { $in: ['$$seg.status', interestDiskSegmentsStatuses] }
+				return [
+					{ $match: { ...idFilter, isReserved: true, 'chunks.pRaids.diskSegments.status': { $in: stuckStatuses } } },
+					{ $project: {
+						'chunks.pRaids.diskSegments._id': 1,
+						'chunks.pRaids.diskSegments.diskID': 1,
+						'chunks.pRaids.diskSegments.node_id': 1,
+						'chunks.pRaids.diskSegments.status': 1
+					} },
+					{ $unwind: '$chunks' },
+					{ $unwind: '$chunks.pRaids' },
+					{ $unwind: '$chunks.pRaids.diskSegments' },
+					{ $match: { 'chunks.pRaids.diskSegments.status': { $in: stuckStatuses } } },
+					{
+						$lookup: {
+							from: 'server',
+							let: {
+								segId: '$chunks.pRaids.diskSegments._id',
+								diskID: '$chunks.pRaids.diskSegments.diskID',
+								nodeId: '$chunks.pRaids.diskSegments.node_id',
+								volStatus: '$chunks.pRaids.diskSegments.status'
+							},
+							pipeline: [
+								{ $match: { $expr: { $eq: ['$_id', '$$nodeId'] } } },
+								{ $unwind: '$disks' },
+								{ $match: { $expr: { $eq: ['$disks.diskID', '$$diskID'] } } },
+								{ $unwind: '$disks.diskSegments' },
+								{ $match: { $expr: { $and: [
+									{ $eq: ['$disks.diskSegments._id', '$$segId'] },
+									{ $in: ['$disks.diskSegments.status', syncableStatuses] },
+									{ $ne: ['$disks.diskSegments.status', '$$volStatus'] }
+								] } } },
+								{ $project: { _id: 0, zone: '$zone', diskUUID: '$disks.uuid', newStatus: '$disks.diskSegments.status' } },
+								{ $limit: 1 }
+							],
+							as: 'diskMatch'
+						}
+					},
+					{ $match: { 'diskMatch.0': { $exists: true } } },
+					{ $project: {
+						_id: 0,
+						volumeId: '$_id',
+						segmentId: '$chunks.pRaids.diskSegments._id',
+						zone: { $arrayElemAt: ['$diskMatch.zone', 0] },
+						newStatus: { $arrayElemAt: ['$diskMatch.newStatus', 0] },
+						newDiskUUID: { $arrayElemAt: ['$diskMatch.diskUUID', 0] }
+					} }
+				];
+			}
+
+			volumeCollection.aggregate(buildPipeline()).toArray((err, stuckSegments) => {
+				if (err)
+					return cb(new MongoError(err));
+
+				if (!stuckSegments.length)
+					return cb();
+
+				debug(`found ${stuckSegments.length} VPG volume segments out of sync with disk`);
+
+				const segmentsByZone = stuckSegments.reduce((acc, seg) => {
+					if (!acc[seg.zone])
+						acc[seg.zone] = [];
+
+					acc[seg.zone].push(seg);
+					return acc;
+				}, {});
+
+				async.eachSeries(Object.keys(segmentsByZone), (zone, eachCb) => {
+					const candidateVolumeIds = [...new Set(segmentsByZone[zone].map(s => s.volumeId))];
+
+					lockModule.acquireLockByZone(zone, (err) => {
+						if (err)
+							return eachCb(err);
+
+						const done = (err) => lockModule.releaseLockByZone(zone, () => eachCb(err));
+
+						volumeCollection.aggregate(buildPipeline(candidateVolumeIds)).toArray((err, validatedSegments) => {
+							if (err)
+								return done(new MongoError(err));
+
+							if (!validatedSegments.length) {
+								debug(`zone ${zone}: no reserved segments still out of sync after recheck under lock`);
+								return done();
+							}
+
+							const reservedSegmentsByVolume = validatedSegments.reduce((acc, { volumeId, segmentId, newStatus, newDiskUUID }) => {
+								if (!acc[volumeId])
+									acc[volumeId] = [];
+
+								debug(`syncing reserved segment ${segmentId} on VPG volume ${volumeId} to ${newStatus}`);
+								acc[volumeId].push({ segmentId, newStatus, newDiskUUID });
+								return acc;
+							}, {});
+
+							diskModule.updateVolumesAfterReinstate({}, reservedSegmentsByVolume, done);
+						});
+					});
+				}, cb);
+			});
+		},
+		function diskBasedCheck(cb) {
+			const interestDiskSegmentsStatuses = [
+				consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING,
+				consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD,
+				consts.diskSegmentStatuses.MARKED_FOR_REBUILD
+			];
+
+			const stuckReinstateMatch = {
+				'disks.diskSegments.status': {
+					$in: [consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD]
+				}
+			};
+
+			const pipeline = [
+				{ $match: stuckReinstateMatch },
+				{ $unwind: '$disks' },
+				{ $match: stuckReinstateMatch },
+				{
+					$project: {
+						node_id: '$_id',
+						zone: 1,
+						'disks.diskID': 1,
+						'disks.uuid': 1,
+						'disks.isOutOfService': 1,
+						'disks.formatInProgress': 1,
+						'disks.isPendingFormat': 1,
+						'disks.diskSegments': {
+							$filter: {
+								input: '$disks.diskSegments',
+								as: 'seg',
+								cond: { $in: ['$$seg.status', interestDiskSegmentsStatuses] }
+							}
+						}
 					}
 				}
-			}
-		}
-	];
+			];
 
-	serverCollection.aggregate(pipeline).toArray((err, results) => {
-		if (err)
-			return callback(new MongoError(err));
+			serverCollection.aggregate(pipeline).toArray((err, results) => {
+				if (err)
+					return cb(new MongoError(err));
 
-		if (!results || !results.length)
-			return callback();
+				if (!results || !results.length)
+					return cb();
 
-		debug(`found ${results.length} disks with reinstate segments`);
+				debug(`found ${results.length} disks with reinstate segments`);
 
-		async.eachSeries(results, (server, cb) => {
-			const disk = server.disks;
-			const zone = server.zone;
+				async.eachSeries(results, (server, done) => {
+					const disk = server.disks;
+					const zone = server.zone;
 
-			if (disk.formatInProgress || disk.isPendingFormat) {
-				debugDisk(disk, 'format in progress/pending, deferring');
-				return cb();
-			}
+					if (disk.formatInProgress || disk.isPendingFormat) {
+						debugDisk(disk, 'format in progress/pending, deferring');
+						return done();
+					}
 
-			const { pendingSegments, oldSegments, rebuildSegments } = categorizeReinstateSegments(disk.diskSegments);
+					const { pendingSegments, oldSegments, rebuildSegments } = categorizeReinstateSegments(disk.diskSegments);
 
-			if (disk.isOutOfService && oldSegments.length && pendingSegments.length)
-				return handleReinstateIncompleteReplacement(disk, zone, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, cb);
-			else if (disk.isOutOfService && !oldSegments.length && pendingSegments.length)
-				return handleReinstateReadyForFormat(disk, pendingSegments.length, cb);
-			else if (!disk.isOutOfService && pendingSegments.length)
-				return handleReinstateStuckAfterFormat(disk, pendingSegments.length, cb);
-			else if (!disk.isOutOfService && oldSegments.length && rebuildSegments.length)
-				return handleReinstateIncompleteReplacement(disk, zone, consts.diskSegmentStatuses.MARKED_FOR_REBUILD, cb);
+					if (disk.isOutOfService && oldSegments.length && pendingSegments.length)
+						return handleReinstateIncompleteReplacement(disk, zone, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, done);
+					else if (disk.isOutOfService && !oldSegments.length && pendingSegments.length)
+						return handleReinstateReadyForFormat(disk, pendingSegments.length, done);
+					else if (!disk.isOutOfService && pendingSegments.length)
+						return handleReinstateStuckAfterFormat(disk, pendingSegments.length, done);
+					else if (!disk.isOutOfService && oldSegments.length && rebuildSegments.length)
+						return handleReinstateIncompleteReplacement(disk, zone, consts.diskSegmentStatuses.MARKED_FOR_REBUILD, done);
 
-			cb();
-		}, callback);
-	});
+					done();
+				}, cb);
+			});
+		},
+	], callback);
 
 	function categorizeReinstateSegments(diskSegments) {
 		return diskSegments.reduce((acc, seg) => {
@@ -3284,7 +3397,7 @@ scope.checkAndResumeStuckReinstate = function(callback) {
 				return callback();
 
 			debugDisk(disk, `completing volume update for volumes: ${missingVolumeNames.join(', ')}`);
-			diskModule.updateVolumesAfterReinstate(missingPairsByVolume, callback);
+			diskModule.updateVolumesAfterReinstate(missingPairsByVolume, {}, callback);
 		});
 	}
 

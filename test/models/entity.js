@@ -12,4 +12,6 @@ exports.Entity = class Entity {
 		let derivedClassName = this.constructor.name;
 		throw new Error(`Not Implemented. ${derivedClassName} does not implements save() method`);
 	}
+
+	afterSave(volumeJson) {} // eslint-disable-line no-unused-vars
 };
