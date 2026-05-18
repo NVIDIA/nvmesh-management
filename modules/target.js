@@ -47,42 +47,172 @@ scope.afterModuleLoaded = function() {
 	({ Entities, SystemMessage, MongoError, SystemAdminMessage, Differentiators, getNICID, getDriveID } = require('./error.js'));
 };
 
-function validateAndHandleTargetReport(message, cb) {
-	let db = app.get('db');
-	let server = db.collection('server');
 
+function fetchTargetDocument(message, logMetadata, cb) {
 	let nodeID = message.hostname;
+	let server = app.get('db').collection('server');
 
 	server.findOne({ _id: nodeID }, function(err, lastServer) {
 		if (err)
 			return cb(new MongoError(err).log());
 
 		if (!lastServer) {
-			logger.sysDEBUG(`Received a report for a target with nodeID ${nodeID}, the target could not be found in the DB. Dropping the report.`);
-			return cb();
+			logger.sysDEBUG(`Received a report for a target with nodeID ${nodeID}, the target could not be found in the DB. Dropping the report.`,
+				logMetadata);
+			return cb(null, null);
 		}
 
 		const lastMessageSequence = lastServer.kafkaMessageSequence?.[message.type];
 
-		if (lastServer.tomaToken === message.tomaToken && lastMessageSequence && lastMessageSequence >= message.messageSequence) {
-			logger.sysDEBUG('An irrelevant report target was received, dropping it. ', {
-				nodeID: nodeID,
-				lastServer: { kafkaMessageSequence: lastMessageSequence, tomaToken: lastServer.tomaToken },
-				reportedServer: { kafkaMessageSequence: message.messageSequence, tomaToken: message.tomaToken }
+		if (lastServer.tomaToken > message.tomaToken) {
+			logger.sysDEBUG('target report is not longer relevant, db has higher tomaToken, dropping the report.', {
+				recieved: logMetadata,
+				lastServer: { tomaToken: lastServer.tomaToken },
 			});
 
+			return cb(null, null);
+		}
+
+		if (lastServer.tomaToken === message.tomaToken && lastMessageSequence && lastMessageSequence >= message.messageSequence) {
+			logger.sysDEBUG('target report is not longer relevant, db has higher messageSequence, dropping the report.', {
+				recieved: logMetadata,
+				lastServer: { kafkaMessageSequence: lastMessageSequence, tomaToken: lastServer.tomaToken },
+			});
+
+			return cb(null, null);
+		}
+
+		cb(null, lastServer);
+	});
+}
+
+const requeueReportErr = { requeue: true };
+
+function reportLogFields(message) {
+	return {
+		[Entities.Target.tomaToken]: message.tomaToken,
+		[Entities.KafkaMessage.messageSequence]: message.messageSequence,
+		[Entities.Target.reportID]: message.payload?.node?.reportID,
+	};
+}
+
+function validateAndHandleTargetReport(message, cb) {
+	const executionTimer = new ExecutionTimer('handleServerReport');
+	const nodeID = message.hostname;
+	const logMetadata = {
+		[Entities.Target.ID]: nodeID,
+		...reportLogFields(message),
+	};
+
+	fetchTargetDocument(message, logMetadata, (fetchErr, lastServer) => {
+		if (fetchErr) {
+			executionTimer.stop();
+			return cb(fetchErr);
+		}
+
+		// Dropped report - target missing or report irrelevant.
+		if (!lastServer) {
+			executionTimer.stop();
 			return cb();
 		}
 
-		const executionTimer = new ExecutionTimer('handleServerReport');
-		handleServerReport(message, lastServer, false, (err) => {
+		handleServerReport(message, lastServer, false, logMetadata, (err) => {
+			executionTimer.stop();
+
+			if (err === requeueReportErr) {
+				logger.sysDEBUG(`Re-queueing target report for ${nodeID} due to concurrent update`, logMetadata);
+				return cb(err);
+			}
+
 			if (err)
 				new SystemMessage(systemMessages.SERVER_REPORT_FINISHED_WITH_ERROR).addInfo(Entities.Error, err);
+			else
+				logger.sysDEBUG(`Successfully handled target report for ${nodeID}`, logMetadata);
 
-			executionTimer.stop();
-			return cb(err);
+			cb(err);
 		});
 	});
+}
+
+const reportQueue = {};
+
+function isNewerReport(message, otherMessage) {
+	if (message.tomaToken > otherMessage.tomaToken)
+		return true;
+
+	if (message.tomaToken === otherMessage.tomaToken && message.messageSequence > otherMessage.messageSequence)
+		return true;
+
+	return false;
+}
+
+function processReportAndUpdateQueue(nodeID, message, callback) {
+	reportQueue[nodeID] = { inProgress: { message, callback }, pendingReport: null };
+	validateAndHandleTargetReport(message, function(err) {
+		if (err === requeueReportErr) {
+			// `addReportToQueue` will drop this message if a newer report arrived
+			// as pending during processing, otherwise set it as the new pending
+			addReportToQueue(nodeID, message, callback);
+		} else {
+			callback(err);
+		}
+
+		const entry = reportQueue[nodeID];
+		if (entry && entry.pendingReport) {
+			const next = entry.pendingReport;
+			return processReportAndUpdateQueue(nodeID, next.message, next.callback);
+		}
+
+		delete reportQueue[nodeID];
+	});
+}
+
+function addReportToQueue(nodeID, message, callback) {
+	const entry = reportQueue[nodeID];
+
+	if (!entry)
+		return processReportAndUpdateQueue(nodeID, message, callback);
+
+	if (!entry.pendingReport) {
+		// also here we can check if the incoming report is older than the inProgress one
+		if (isNewerReport(entry.inProgress.message, message)) {
+			logger.sysDEBUG(`Dropping incoming target report for ${nodeID} because it is older than the inProgress one`, {
+				[Entities.Target.ID]: nodeID,
+				dropped: reportLogFields(message),
+				inProgress: reportLogFields(entry.inProgress.message),
+			});
+			return callback();
+		}
+
+		entry.pendingReport = { message, callback };
+		logger.sysDEBUG(`Saving incoming target report for ${nodeID} as the pending report`, {
+			[Entities.Target.ID]: nodeID,
+			newPending: reportLogFields(message),
+		});
+
+		// end flow, callback will be called when the pending is processed
+		return;
+	}
+
+	// there is a pending report, check if the incoming is newer
+	if (isNewerReport(message, entry.pendingReport.message)) {
+		// the incoming is newer, replace the pending one
+		const dropped = entry.pendingReport;
+		entry.pendingReport = { message, callback };
+		logger.sysDEBUG(`Replacing pending target report for ${nodeID} with a newer one`, {
+			[Entities.Target.ID]: nodeID,
+			dropped: reportLogFields(dropped.message),
+			newPending: reportLogFields(message),
+		});
+		return dropped.callback();
+	}
+
+	logger.sysDEBUG(`Dropping incoming target report for ${nodeID}, a newer report is already pending`, {
+		[Entities.Target.ID]: nodeID,
+		dropped: reportLogFields(message),
+		pending: reportLogFields(entry.pendingReport.message),
+	});
+	return callback();
 }
 
 scope.report = function(message, callback) {
@@ -94,7 +224,14 @@ scope.report = function(message, callback) {
 
 	handleDuplicates(message.payload.node);
 
-	validateAndHandleTargetReport(message, callback);
+	const nodeID = message.hostname;
+
+	if (!nodeID) {
+		logger.sysERROR(`Dropping target report: no hostname on message (tomaToken=${message.tomaToken}, messageSequence=${message.messageSequence})`);
+		return callback();
+	}
+
+	addReportToQueue(nodeID, message, callback);
 };
 
 function deleteTarget(serverID, serverUUID, logs, affectedZones, callback) {
@@ -1631,7 +1768,7 @@ function isFirstReportHandled(target) {
 // calcDelta is an object that saves all the changes needed to be save by set / push / pull and generates the right query
 // PAY ATTENTION that push and pull cannot be done together for the same entitiy (nic/disk/diskSegment) at the same query,
 // therefore nics are always saved by using set (overriding), and we do not remove disks, so disk can be pushed
-function handleServerReport(message, lastServer, isPartialReportSave, cb) {
+function handleServerReport(message, lastServer, isPartialReportSave, logMetadata, cb) {
 	var GLOBAL_SETTINGS = app.get('globalSettings');
 	var GLOBAL_SETTINGS_HIDDEN = app.get('globalSettingsHidden');
 	var db = app.get('db');
@@ -1655,6 +1792,8 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 	const reappearingDisks = [];
 
 	var node = message.payload.node;
+
+	logMetadata = { ...logMetadata, isPartialReport: isPartialReportSave };
 
 	node.node_id = message.hostname;
 	node.tomaToken = message.tomaToken;
@@ -1857,14 +1996,32 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 			message.messageSequence = message.messageSequence - 0.5;
 
 			saveTargetReport(false, function(err) {
-				if (err)
-					logger.sysDEBUG(`Something went wrong while trying to save partial report of target: ${node.node_id}, err: `, err);
-
 				message.messageSequence = originalReportedKafkaMessageSequence;
-				handleServerReport(message, lastServer, true, cb);
+
+				if (err === requeueReportErr) {
+					// msgSequence in the db was updated since we fetched the lastServer
+					// we should retry the entire handleServerReport from a fresh snapshot
+					return cb(err);
+				}
+
+				if (err)
+					logger.sysDEBUG(`Something went wrong while trying to save new drives and nics report for target: ${node.node_id}, err: `,
+					 { ...logMetadata, error: err });
+				else
+					logger.sysDEBUG(`Finished handling new drives and nics report for target: ${node.node_id}`, logMetadata);
+				handleServerReport(message, lastServer, true, logMetadata, cb);
 			});
 		} else
-			handleExistingEntitiesReportChanges(isPartialReportSave, cb);
+			handleExistingEntitiesReportChanges(isPartialReportSave, err => {
+				if (err)
+					logger.sysDEBUG(`Something went wrong while trying to handle existing drives and nics report for target: ${node.node_id}, err: `,
+					 { ...logMetadata, error: err });
+				else
+					logger.sysDEBUG(`Finished handling existing drives and nics report for target: ${node.node_id}`, logMetadata);
+
+				// If err is requeueReportErr, forward the re-queue signal up; otherwise drop the report
+				cb(err === requeueReportErr ? err : null);
+			});
 	});
 
 	function handleExistingEntitiesReportChanges(isPartialReportSave, callback) {
@@ -2100,8 +2257,10 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 						tomaToken: { $exists: false }
 					}, {
 						tomaToken: message.tomaToken,
-						[`kafkaMessageSequence.${message.type}`]: lastServer.kafkaMessageSequence?.[message.type],
-						[`kafkaMessageSequence.${message.type}`]: { $lt: message.messageSequence }
+						[`kafkaMessageSequence.${message.type}`]: {
+							$eq: lastServer.kafkaMessageSequence?.[message.type],
+							$lt: message.messageSequence
+						}
 					}]
 				};
 
@@ -2127,22 +2286,19 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 						if (err)
 							return callback(new MongoError(err).log());
 
-						if (results.modifiedCount == 0) {
-							callback(new SystemMessage(systemMessages.REPORT_NOT_SAVED)
-								.addInfo(Entities.Target.ID, node.node_id)
-								.addInfo(Entities.Target.reportID, node.reportID)
-								.addInfo(Entities.Target.tomaToken, node.tomaToken));
-						} else {
-							savedToDB = true;
+						if (results.modifiedCount == 0)
+							return callback(requeueReportErr);
 
-							if (targetZoneChanged)
-								return scope.incZoneTargetsForNewTarget('1', node.node_id, () => {
-									objectNotifier.updateObject(objectNotifier.events.targetZoneChange.name);
-									callback();
-								});
+						logger.sysDEBUG(`Successfully saved target report for ${node.node_id}`, logMetadata);
+						savedToDB = true;
 
-							callback(null);
-						}
+						if (targetZoneChanged)
+							return scope.incZoneTargetsForNewTarget('1', node.node_id, () => {
+								objectNotifier.updateObject(objectNotifier.events.targetZoneChange.name);
+								callback();
+							});
+
+						callback(null);
 					});
 			},
 			//increase reappearingCounter for disks old presence (reappearing drives) before emitting resendReport events
@@ -2266,6 +2422,10 @@ function handleServerReport(message, lastServer, isPartialReportSave, cb) {
 				], function() {
 					mainCallback();
 				});
+			} else if (err === requeueReportErr) {
+				// Forward the re-queue signal up so processReportAndUpdateQueue routes this report back through the queue.
+				logger.sysDEBUG(`Re-queueing target report save for ${node.node_id} due to concurrent update`, logMetadata);
+				mainCallback(err);
 			} else {
 				logger.sysERROR(err);
 

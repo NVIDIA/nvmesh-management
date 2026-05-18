@@ -1731,11 +1731,6 @@ var systemMessages = {
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
-	REPORT_NOT_SAVED: {
-		message: 'Target report not saved',
-		id: 1617,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
 	TARGETS_MISSING_IN_ZONES_CACHE: {
 		message: 'Some targets are missing in the zones cache',
 		id: 1619,

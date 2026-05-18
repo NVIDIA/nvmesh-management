@@ -11,8 +11,11 @@ const dbManager = require('./testUtils/dbManager.js');
 const { setup, SetupOptions } = require('./testUtils/setup.js');
 const { Target } = require('./models/target.js');
 const { generateTarget } = require('./testUtils/entityGenerators.js');
+const { ReportTargetBuilder } = require('./kafkaMessages/fromTOMA/tomaMessageBuilders.js');
+const { TargetNIC } = require('./models/targetNic.js');
 const lockUtils = require('./testUtils/lockUtils.js');
 const { targetHealth } = require('../consts.js');
+const targetModule = require('../modules/target.js');
 
 var serverCollection;
 
@@ -111,6 +114,61 @@ describe('Target Report', function() {
 			let dbTarget = await serverCollection.findOne({ node_id: NODE_ID });
 			assert(dbTarget);
 			assert.strictEqual(dbTarget.disks[0].health, targetHealth.CRITICAL);
+		});
+	});
+
+	describe('target reports race with same tomaToken', function() {
+		before(async() => {
+			await setup.newSetup(new SetupOptions().setEnableZones(false));
+			new Target(NODE_ID);
+		});
+
+		const NUM_OF_REPORTS = 5;
+
+		function fireReport(message) {
+			return new Promise(resolve => {
+				targetModule.report(message, err => resolve(err || null));
+			});
+		}
+
+		function errSummary(err) {
+			if (!err) return 'ok';
+			return err.systemMessage?.id || err.message || String(err);
+		}
+
+		// Fire `NUM_OF_REPORTS` `reportTarget`s concurrently with the same `tomaToken` and
+		// consecutive `messageSequence` values; saveTargetReport's seq guard must prevent duplicate
+		// NIC entries in `server.nics` regardless of which racer wins.
+		it(`${NUM_OF_REPORTS} concurrent reportTarget messages: no duplicate NICs`, async() => {
+			const target = generateTarget(NODE_ID, 0, 0);
+			await target.save();
+
+			const initial = await serverCollection.findOne({ _id: NODE_ID });
+			assert.strictEqual(initial.nics.length, 0, 'target should start with no NICs');
+
+			const nicID = 'race-nic';
+			const nic = new TargetNIC(nicID, NODE_ID, target.uuid);
+			const startSeq = (initial.kafkaMessageSequence?.reportTarget || 0) + 1;
+
+			target.nics = [nic];
+			const messages = [];
+			for (let r = 0; r < NUM_OF_REPORTS; r++) {
+				target.messageSequence = startSeq + r;
+				messages.push(ReportTargetBuilder.fromTarget(target).build());
+			}
+
+			const errors = await Promise.all(messages.map(m => fireReport(m)));
+
+			const finalDoc = await serverCollection.findOne({ _id: NODE_ID });
+			const finalRows = finalDoc.nics.filter(n => n.nicID === nicID);
+
+			assert.strictEqual(finalRows.length, 1,
+				`expected exactly 1 row for nicID=${nicID}, got ${finalRows.length} `
+				+ `(uuids=${JSON.stringify(finalRows.map(r => r.uuid))}, errs=${JSON.stringify(errors.map(errSummary))})`);
+
+			assert(errors.some(e => !e),
+				'every racer\'s callback returned an error -- expected at least one to commit '
+				+ `(errs=${JSON.stringify(errors.map(errSummary))})`);
 		});
 	});
 });
