@@ -827,14 +827,14 @@ scope.deleteDisksFromVolumeLimiter = function(diskClass, diskClassDisks, disksGo
 			//Remove the current diskClass from the array.
 			//This is only needed when removing the whole diskclass
 			const classes = volume.diskClasses.filter(d => d !== diskClass._id).map(d => ({ _id: d }));
-			scope.getDisksByDiskClass(classes, null, null, function(err, results) {
+			scope.getDisksByDiskClass(classes, null, null, function(err, classDocs) {
 				if (err) {
 					logger.sysDEBUG(err);
 					return callback(err);
 				}
 
 				//Get all the diskClass disk that aren't going to be removed.
-				volume.limitByDisks = results.map(function(e) { return e._id; });
+				volume.limitByDisks = getDisksFromClassDocs(classDocs, null).map(e => e._id);
 				//Add all the other disks this diskClass has.
 				volume.limitByDisks = scope.uniqueUnion([
 					volume.limitByDisks,
@@ -874,14 +874,14 @@ scope.deleteServersFromVolumeLimiter = function(serverClass, serverClassServers,
 			//Remove the current diskClass from the array.
 			//This is only needed when removing the whole diskclass
 			const classes = volume.serverClasses.filter(s => s !== serverClass._id).map(s => ({ _id: s }));
-			scope.getServersByServerClass(classes, null, null, function(err, results) {
+			scope.getServersByServerClass(classes, null, null, function(err, classDocs) {
 				if (err) {
 					logger.sysDEBUG(err);
 					return callback(err);
 				}
 
 				//Get all the serverClass server that aren't going to be removed.
-				volume.limitByNodes = results.map(function(e) { return e.serverID; });
+				volume.limitByNodes = getServersFromClassDocs(classDocs, null).map(function(e) { return e.serverID; });
 				//Add all the other servers this serverClass has.
 				volume.limitByNodes = scope.uniqueUnion([
 					volume.limitByNodes,
@@ -1369,69 +1369,79 @@ function getQueryByClassesAndDomains(classes, domain, identifiersToExclude) {
 	return $query;
 }
 
-scope.getDisksByDiskClass = function(classes, domain, identifiersToExclude, callback) {
-	var db = app.get('db');
-	var diskClassCollection = db.collection('diskClass');
+// Flattens class documents into a deduplicated member list, annotating each item with its matching domain entry.
+function collectClassMembers(classDocs, domain, getMembers, getID, buildItem) {
+	const seen = new Set();
+	const items = [];
 
-	var $query = getQueryByClassesAndDomains(classes, domain, identifiersToExclude);
+	for (const classDoc of classDocs) {
+		for (const raw of (getMembers(classDoc) || [])) {
+			const id = getID(raw);
+			if (seen.has(id))
+				continue;
 
-	diskClassCollection.find($query).project({ _id: 0, disks: 1, domains: 1 }).toArray(function(err, results) {
-		if (err)
-			err = new MongoError(err).log();
+			seen.add(id);
 
-		//Get unique disks.
-		var disks = [];
-		results.forEach(function(e) {
-			e.disks.forEach(function(disk) {
-				if (disks.map(function(e) { return e.diskID; }).indexOf(disk.diskID) === -1) {
-					if (e.domains && e.domains.length)
-						disk.domain = e.domains.filter(function(d) { return d.scope === domain; })[0];
+			const item = buildItem(raw, id);
 
-					disk._id = disk.diskID;
-					disks.push(disk);
-				}
+			if (classDoc.domains?.length)
+				item.domain = classDoc.domains.find(d => d.scope === domain);
+
+			items.push(item);
+		}
+	}
+
+	return items;
+}
+
+function getDisksFromClassDocs(classDocs, domain) {
+	return collectClassMembers(classDocs, domain,
+		classDoc => classDoc.disks,
+		disk => disk.diskID,
+		(disk, diskID) => ({ ...disk, _id: diskID })
+	);
+}
+
+function getServersFromClassDocs(classDocs, domain) {
+	return collectClassMembers(classDocs, domain,
+		classDoc => classDoc.targetNodes,
+		serverID => serverID,
+		serverID => ({ serverID })
+	);
+}
+
+function queryClassCollection(collectionName, membersField) {
+	return (classes, domain, identifiersToExclude, callback) => {
+		const db = app.get('db');
+		const query = getQueryByClassesAndDomains(classes, domain, identifiersToExclude);
+
+		db
+			.collection(collectionName)
+			.find(query)
+			.project({ _id: 0, [membersField]: 1, domains: 1 })
+			.toArray((err, results) => {
+				if (err)
+					err = new MongoError(err).log();
+
+				callback(err, results);
 			});
-		});
-		callback(err, disks);
-	});
-};
+	};
+}
 
-scope.getServersByServerClass = function(classes, domain, identifiersToExclude, callback) {
-	var db = app.get('db');
-	var serverClassCollection = db.collection('serverClass');
-
-	var $query = getQueryByClassesAndDomains(classes, domain, identifiersToExclude);
-
-	//Get all the servers
-	serverClassCollection.find($query).project({ _id: 0, targetNodes: 1, domains: 1 }).toArray(function(err, results) {
-		if (err)
-			err = new MongoError(err).log();
-
-		//Get unique servers.
-		var servers = [];
-		results.forEach(function(e) {
-			e.targetNodes.forEach(function(target) {
-				if (servers.map(function(e) { return e.serverID; }).indexOf(target) == -1) {
-					var server = { serverID: target };
-
-					if (e.domains && e.domains.length)
-						server.domain = e.domains.filter(function(d) { return d.scope === domain; })[0];
-
-					servers.push(server);
-				}
-			});
-		});
-
-		callback(err, servers);
-	});
-};
+scope.getDisksByDiskClass = queryClassCollection(consts.dbCollections.DRIVE_CLASS, 'disks');
+scope.getServersByServerClass = queryClassCollection(consts.dbCollections.TARGET_CLASS, 'targetNodes');
 
 scope.getDisksByServerClass = function(classes, domain, identifiersToExclude, callback) {
-	scope.getServersByServerClass(classes, domain, identifiersToExclude, function(err, servers) {
-		if (!servers.length)
-			return callback(err, []);
+	scope.getServersByServerClass(classes, domain, identifiersToExclude, (err, classDocs) => {
+		if (err)
+			return callback(err);
 
-		scope.getDisksByNodes(servers, function(err, data) {
+		const servers = getServersFromClassDocs(classDocs, domain);
+
+		if (!servers.length)
+			return callback(null, []);
+
+		scope.getDisksByNodes(servers, (err, data) => {
 			callback(err, data);
 		});
 	});
@@ -1531,8 +1541,11 @@ scope.getDisksByClasses = function(diskClasses, serverClasses, domain, identifie
 				if (!hasDiskClasses)
 					return callback(null, []);
 
-				scope.getDisksByDiskClass(diskClasses.map(d => ({ _id: d })), domain, identifiersToExclude, function(err, data) {
-					callback(err, data);
+				scope.getDisksByDiskClass(diskClasses.map(d => ({ _id: d })), domain, identifiersToExclude, (err, classDocs) => {
+					if (err)
+						return callback(err);
+
+					callback(null, getDisksFromClassDocs(classDocs, domain));
 				});
 			}
 		], function(err, results) {

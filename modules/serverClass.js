@@ -62,7 +62,7 @@ function checkForTargetClassProtectionDomainViolations(targetClass, messages, cb
 				if (err)
 					return cb(handleConflictResponses(err));
 				else if (!disks || !disks.length)
-					return cb(); 
+					return cb();
 
 				// make sure that the drives of the targets in the target class does not have a conflict with their Drive Classes domains
 				classesUtils.checkForProtectionDomainViolations(
@@ -194,19 +194,19 @@ scope.updateTargetClasses = (targetClasses, user, callback) => {
 			if (err)
 				return callback();
 
-			utils.getServersByServerClass([{ _id: targetClass._id, uuid: targetClass.uuid }], null, null, (err, results) => {
+			utils.getServersByServerClass([{ _id: targetClass._id, uuid: targetClass.uuid }], null, null, (err, classDocs) => {
 				if (err) {
 					messages.push(addInfoToMessage(
-						new SystemAdminMessage(systemMessages.TARGETCLASS_UPDATE_FAILED).addInfo(Entities.Error, new MongoError(err).log())));
+						new SystemAdminMessage(systemMessages.TARGETCLASS_UPDATE_FAILED).addInfo(Entities.Error, err)));
 					return callback();
 				}
 
-				if (!results?.length) {
+				if (!classDocs.length) {
 					messages.push(addInfoToMessage(new SystemAdminMessage(systemMessages.TARGETCLASS_UPDATE_NOT_FOUND)));
 					return callback();
 				}
 
-				const existingServerIDs = results.map(r => r.serverID);
+				const existingServerIDs = classDocs[0].targetNodes || [];
 				const serverIDsToUpdate = targetClass.targetNodes;
 				const newServerIDs = serverIDsToUpdate.filter(targetID => !existingServerIDs.includes(targetID));
 				const deleteServerIDs = existingServerIDs.filter(targetID => !serverIDsToUpdate.includes(targetID));
