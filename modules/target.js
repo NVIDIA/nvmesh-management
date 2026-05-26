@@ -1218,6 +1218,11 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 				}
 			};
 
+			if (message.payload.raftMembers) {
+				$update.$set.raftMembers = message.payload.raftMembers;
+				$update.$set.isReconciled = !!message.payload.isReconciled;
+			}
+
 			versionCollection.findOneAndUpdate($query, $update, { returnDocument: consts.mongoReturnDocument.BEFORE }, (err, result) => {
 				if (err)
 					return callback(new MongoError(err).log());
@@ -1251,7 +1256,7 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 				}
 
 				const isValidToken = versionDocument.leaderToken === message.leaderToken;
-				const isLeaderChanged = versionDocument.raftTerm < message.payload.raftTerm;
+				const isLeaderChanged = (versionDocument.updateKeepaliveTokenSentRaftTerm || 0) < message.payload.raftTerm;
 
 				shouldSendUpdateKeepaliveToken = !isValidToken && (isLeaderChanged || !versionDocument.stopSendingKeepaliveToken);
 
@@ -1322,7 +1327,6 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 			});
 		},
 		function checkIfUpdatePRaidTokenShouldBeSent(callback) {
-			// TODO: drop this check on 3.5.0.
 			if (!message.updatePRaidToken) {
 				return callback();
 			}
@@ -1365,7 +1369,7 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 							return callback(new MongoError(err).log());
 
 						if (!result)
-							return callback(true);
+							return callback();
 
 						dbUpdatePRaidToken = result.updatePRaidToken;
 						callback();
@@ -1393,25 +1397,13 @@ scope.handleLeaderKeepAlive = function(message, mainCallback) {
 					true
 				);
 				const $update = {
-					$set: {
-						kafkaMessageSequence: message.messageSequence,
-						raftTerm: message.payload.raftTerm,
-						stopSendingKeepaliveToken: true
-					}
+					$set: { stopSendingKeepaliveToken: true },
+					$max: { updateKeepaliveTokenSentRaftTerm: message.payload.raftTerm }
 				};
 
-				// TODO: drop this check on 3.5.0. just add to $set.
-				if (message.payload.raftMembers) {
-					$update.$set.raftMembers = message.payload.raftMembers;
-					$update.$set.isReconciled = !!message.payload.isReconciled;
-				}
-
-				versionCollection.updateOne($query, $update, (error, result) => {
+				versionCollection.updateOne($query, $update, error => {
 					if (error)
 						return callback(new MongoError(error).log());
-
-					if (result.modifiedCount !== 1)
-						return callback(true);
 
 					callback();
 				});

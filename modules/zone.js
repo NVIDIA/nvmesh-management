@@ -555,6 +555,7 @@ scope.setZoneAsUnavailable = (zoneID, leaderToken, callback) => {
 			$set: {
 				isUnavailable: true,
 				stopSendingKeepaliveToken: false,
+				updateKeepaliveTokenSentRaftTerm: 0,
 			},
 			$inc: { 'leaderToken': 1 }
 		}, (err, res) => {

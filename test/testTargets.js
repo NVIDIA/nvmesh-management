@@ -10,6 +10,7 @@ const assert = require('assert');
 const dbManager = require('./testUtils/dbManager.js');
 const { setup, SetupOptions } = require('./testUtils/setup.js');
 const targetModule = require('../modules/target.js');
+const zoneModule = require('../modules/zone.js');
 const consts = require('../consts.js');
 const diskModule = require('../modules/disk.js');
 const lockUtils = require('./testUtils/lockUtils.js');
@@ -1156,6 +1157,333 @@ describe('Targets', function() {
 			assert.strictEqual(dbZone.updatePRaidToken, dbBefore.updatePRaidToken + 1);
 			assert.deepStrictEqual(dbZone.raftMembers, raftMembersWithNewMember);
 			assert.strictEqual(dbZone.isReconciled, true);
+		});
+	});
+
+	// These tests cover management's recovery contract when a stale leaderKeepalive lands in the
+	// Kafka backlog and `handleLeaderTimeout` later bumps the zone's `leaderToken`. After the bump
+	// the real leader's keepalives carry a `leaderToken` that lags the DB, so management is the
+	// one that must close the gap by sending `UpdateLeaderKeepaliveToken(<new-leaderToken>)`. Any
+	// regression in `handleLeaderKeepAlive` that either (a) lets a stale message overwrite trusted
+	// DB state or (b) prevents the resync message from being sent will leave the zone permanently
+	// `isUnavailable`.
+	describe('#handleLeaderKeepAlive #stale-message-recovery', () => {
+		const leaderNodeID = 'leader-stale-1';
+		const otherMemberID = 'leader-stale-other';
+		let leaderTarget;
+		let configurationVersionCollection;
+		let leaderIncrementalUpdatesTopic;
+
+		const STEADY_RAFT_TERM = 20;
+		const STEADY_RAFT_MEMBERS = [
+			{ memberID: leaderNodeID, version: '3.5.0-32' },
+			{ memberID: otherMemberID, version: '3.5.0-32' }
+		];
+
+		// Configure a target the way a real TOMA leader sends it: raft state populated,
+		// reconciled, and a non-zero `updatePRaidToken` so management enters the persistence path.
+		function asLeader(target, raftMembers) {
+			target.raftTerm = STEADY_RAFT_TERM;
+			target.raftMembers = raftMembers;
+			target.isReconciled = true;
+			target.updatePRaidToken = 1;
+			return target;
+		}
+
+		before(async() => {
+			await setupEnvironment();
+
+			leaderTarget = asLeader(generateLeaderTarget(leaderNodeID), STEADY_RAFT_MEMBERS);
+			leaderTarget = await leaderTarget.save().then(t => t.setZone(ZONE_1));
+
+			configurationVersionCollection = app.get('db').collection('configurationVersion');
+			leaderIncrementalUpdatesTopic = await new Promise(resolve => getIncrementalUpdatesTopic(ZONE_1, resolve));
+
+			// Bootstrap: first KA populates the doc, second KA leaves it in steady state
+			// (handleLeaderKeepAliveSave wrote stopSendingKeepaliveToken=false).
+			await leaderTarget.sendLeaderKeepAlive();
+			leaderTarget.messageSequence += 1;
+			await leaderTarget.sendLeaderKeepAlive();
+			leaderTarget.messageSequence += 1;
+
+			getOrCreateQueue(leaderIncrementalUpdatesTopic).clear();
+		});
+
+		it('stale leaderKeepalive (leaderToken=-1) must not overwrite DB raftTerm / raftMembers / kafkaMessageSequence', async() => {
+			const before = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+
+			assert.strictEqual(before.raftTerm, STEADY_RAFT_TERM,
+				'precondition: DB raftTerm should equal the leader\'s raftTerm');
+			assert.deepStrictEqual(before.raftMembers, STEADY_RAFT_MEMBERS,
+				'precondition: DB raftMembers should equal the leader\'s raftMembers');
+
+			// Stale leaderKeepalive: a non-leader TOMA briefly self-elected during a mgmt-down
+			// window, so its message carries leaderToken=-1, an older raftTerm, a partial /
+			// null-versioned raftMembers list, and isReconciled=false.
+			const staleSender = asLeader(generateLeaderTarget('stale-elector-1'), [
+				{ memberID: leaderNodeID, version: null },
+				{ memberID: otherMemberID, version: '3.5.0-32' }
+			]);
+			staleSender.zone = ZONE_1;
+			staleSender.leaderToken = -1;
+			staleSender.raftTerm = STEADY_RAFT_TERM - 5;
+			staleSender.messageSequence = before.kafkaMessageSequence + 100;
+			staleSender.isReconciled = false;
+			staleSender.featureCompatibilityVersion = before.featureCompatibilityVersion;
+
+			await staleSender.sendLeaderKeepAlive();
+
+			const after = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+
+			assert.strictEqual(after.leaderToken, before.leaderToken,
+				'DB leaderToken must not change due to stale message');
+			assert.strictEqual(after.raftTerm, before.raftTerm,
+				`DB raftTerm must not be downgraded by stale message (expected ${before.raftTerm}, got ${after.raftTerm})`);
+			assert.strictEqual(after.kafkaMessageSequence, before.kafkaMessageSequence,
+				'DB kafkaMessageSequence must not be overwritten by stale message');
+			assert.deepStrictEqual(after.raftMembers, before.raftMembers,
+				'DB raftMembers must not be overwritten by stale message');
+		});
+
+		it('after timeout + raftMembers mismatch in DB, a real leader KA must still trigger UpdateLeaderKeepaliveToken', async() => {
+			const before = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+
+			// Drive the DB into the post-timeout state: setZoneAsUnavailable bumps leaderToken,
+			// flips isUnavailable=true, and resets stopSendingKeepaliveToken=false — exactly what
+			// handleLeaderTimeout would do at this point.
+			await new Promise((resolve, reject) =>
+				zoneModule.setZoneAsUnavailable(ZONE_1, before.leaderToken,
+					err => err ? reject(err) : resolve()));
+
+			// Inject a raftMembers list where one member has a missing version. This mirrors the
+			// kind of mismatch that triggers checkIfUpdatePRaidTokenShouldBeSent's raftMembers
+			// branch when the real leader's KA arrives.
+			await configurationVersionCollection.updateOne(
+				{ _id: ZONE_1 },
+				{ $set: { raftMembers: [
+					{ memberID: leaderNodeID, version: null },
+					{ memberID: otherMemberID, version: '3.5.0-32' }
+				] } }
+			);
+
+			const corrupted = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+			assert.strictEqual(corrupted.isUnavailable, true, 'precondition: zone is marked UNAVAILABLE');
+			assert.strictEqual(corrupted.leaderToken, before.leaderToken + 1,
+				'precondition: leaderToken was bumped by setZoneAsUnavailable');
+
+			getOrCreateQueue(leaderIncrementalUpdatesTopic).clear();
+
+			// Real leader sends a keepalive carrying its (pre-bump) leaderToken. Management is
+			// expected to send UpdateLeaderKeepaliveToken(<new-DB-leaderToken>) so the leader adopts
+			// the new value; its next KA can then clear isUnavailable.
+			leaderTarget.messageSequence += 1;
+			await leaderTarget.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(leaderIncrementalUpdatesTopic);
+			assert.notStrictEqual(queue.q.length, 0,
+				'mgmt did not send UpdateLeaderKeepaliveToken — leader cannot resync, zone stays UNAVAILABLE');
+
+			const updateMsg = await queue.readMessageOrWait();
+			assert.strictEqual(updateMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateLeaderKeepaliveToken);
+			assert.strictEqual(updateMsg.token, corrupted.leaderToken,
+				'UpdateLeaderKeepaliveToken must carry the new (post-timeout) DB leaderToken so the leader resyncs');
+		});
+
+		// End-to-end: chain the two scenarios (stale message followed by timeout) and assert
+		// that recovery still completes. Uses a fresh zone so the DB doc starts clean.
+		it('end-to-end: stale leaderKeepalive followed by handleLeaderTimeout must not deadlock recovery', async() => {
+			const e2eLeaderNodeID = 'leader-e2e-1';
+			const e2eOtherMemberID = 'leader-e2e-other';
+			const e2eRaftMembers = [
+				{ memberID: e2eLeaderNodeID, version: '3.5.0-32' },
+				{ memberID: e2eOtherMemberID, version: '3.5.0-32' }
+			];
+
+			const e2eLeader = asLeader(generateLeaderTarget(e2eLeaderNodeID), e2eRaftMembers);
+			await e2eLeader.save().then(t => t.setZone('2'));
+
+			const e2eTopic = await new Promise(resolve => getIncrementalUpdatesTopic('2', resolve));
+
+			// Bootstrap: two keepalives establish the steady state mgmt sees just before restart;
+			// the second goes through handleLeaderKeepAliveSave, which sets
+			// stopSendingKeepaliveToken=false.
+			await e2eLeader.sendLeaderKeepAlive();
+			e2eLeader.messageSequence += 1;
+			await e2eLeader.sendLeaderKeepAlive();
+			e2eLeader.messageSequence += 1;
+			getOrCreateQueue(e2eTopic).clear();
+
+			const beforeStale = await configurationVersionCollection.findOne({ _id: '2' });
+			assert.strictEqual(beforeStale.raftTerm, STEADY_RAFT_TERM, 'precondition: steady-state raftTerm');
+			assert.strictEqual(beforeStale.stopSendingKeepaliveToken, false,
+				'precondition: steady-state stopSendingKeepaliveToken=false (set by the last save)');
+
+			// Step 1: stale leaderKeepalive arrives in the backlog right after mgmt restart.
+			const staleSender = asLeader(generateLeaderTarget('stale-elector-e2e'), [
+				{ memberID: e2eLeaderNodeID, version: null },
+				{ memberID: e2eOtherMemberID, version: '3.5.0-32' }
+			]);
+			staleSender.zone = '2';
+			staleSender.leaderToken = -1;
+			staleSender.raftTerm = STEADY_RAFT_TERM - 5;
+			staleSender.messageSequence = beforeStale.kafkaMessageSequence + 100;
+			staleSender.isReconciled = false;
+			staleSender.featureCompatibilityVersion = beforeStale.featureCompatibilityVersion;
+
+			await staleSender.sendLeaderKeepAlive();
+			// Drain anything management sent in response to the stale message.
+			getOrCreateQueue(e2eTopic).clear();
+
+			// Step 2: keepalive validator fires handleLeaderTimeout, which bumps leaderToken.
+			const beforeTimeout = await configurationVersionCollection.findOne({ _id: '2' });
+			await new Promise((resolve, reject) =>
+				zoneModule.setZoneAsUnavailable('2', beforeTimeout.leaderToken,
+					err => err ? reject(err) : resolve()));
+			const afterTimeout = await configurationVersionCollection.findOne({ _id: '2' });
+
+			assert.strictEqual(afterTimeout.isUnavailable, true);
+			assert.strictEqual(afterTimeout.leaderToken, beforeTimeout.leaderToken + 1);
+
+			// Step 3: real leader's next keepalive must trigger UpdateLeaderKeepaliveToken(<new>).
+			e2eLeader.messageSequence += 1;
+			await e2eLeader.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(e2eTopic);
+			assert.notStrictEqual(queue.q.length, 0,
+				'recovery deadlocked end-to-end: mgmt did not send UpdateLeaderKeepaliveToken');
+			const updateMsg = await queue.readMessageOrWait();
+			assert.strictEqual(updateMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateLeaderKeepaliveToken);
+			assert.strictEqual(updateMsg.token, afterTimeout.leaderToken);
+		});
+
+		// Same family of corruption as the token=-1 stale message, but harder to spot: a delayed
+		// keepalive from the *real* leader carries a matching leaderToken with an older
+		// kafkaMessageSequence (e.g. an out-of-order kafka redelivery). Even though the token
+		// looks right, the message's raft progress lags the DB and must not be persisted.
+		it('leaderKeepalive with matching leaderToken but older sequence must not downgrade DB kafkaMessageSequence / raftMembers', async() => {
+			const before = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+
+			// Build a message with the right leaderToken / raftTerm but a stale sequence and a
+			// mismatched updatePRaidToken — the latter forces shouldSendUpdatePRaidToken=true so
+			// sendUpdateKeepaliveTokenIfNeeded actually runs (otherwise nothing would be written).
+			const staleSender = asLeader(generateLeaderTarget(leaderNodeID), [
+				{ memberID: leaderNodeID, version: null },
+				{ memberID: otherMemberID, version: '3.5.0-32' }
+			]);
+			staleSender.zone = ZONE_1;
+			staleSender.leaderToken = before.leaderToken;
+			staleSender.raftTerm = before.raftTerm;
+			staleSender.messageSequence = Math.max(before.kafkaMessageSequence - 1, 0);
+			staleSender.updatePRaidToken = (before.updatePRaidToken || 1) + 1;
+			staleSender.isReconciled = true;
+			staleSender.featureCompatibilityVersion = before.featureCompatibilityVersion;
+
+			await staleSender.sendLeaderKeepAlive();
+
+			const after = await configurationVersionCollection.findOne({ _id: ZONE_1 });
+
+			assert.strictEqual(after.kafkaMessageSequence, before.kafkaMessageSequence,
+				'DB kafkaMessageSequence must not be downgraded by a stale-but-token-matching message'
+				+ ` (expected ${before.kafkaMessageSequence}, got ${after.kafkaMessageSequence})`);
+			assert.strictEqual(after.raftTerm, before.raftTerm,
+				'DB raftTerm must not change');
+			assert.deepStrictEqual(after.raftMembers, before.raftMembers,
+				'DB raftMembers must not be overwritten with the stale message\'s payload');
+		});
+
+		// After mgmt has already resynced once for a stale message at term T, a follow-up stale
+		// message at term <= T must be throttled — otherwise the stale spam from a partitioned /
+		// self-electing TOMA would keep flooding the leader topic with UpdateLeaderKeepaliveToken.
+		// Each test below sets up its own fresh zone to avoid the resync state from earlier tests
+		// (updateKeepaliveTokenSentRaftTerm / stopSendingKeepaliveToken) leaking into the assertions.
+		async function setupFreshZone(zoneID, leaderNode) {
+			const otherMember = leaderNode + '-other';
+			const raftMembers = [
+				{ memberID: leaderNode, version: '3.5.0-32' },
+				{ memberID: otherMember, version: '3.5.0-32' }
+			];
+			const leader = asLeader(generateLeaderTarget(leaderNode), raftMembers);
+			await leader.save().then(t => t.setZone(zoneID));
+
+			const topic = await new Promise(resolve => getIncrementalUpdatesTopic(zoneID, resolve));
+
+			// Two keepalives put the zone in steady state (handleLeaderKeepAliveSave wrote
+			// stopSendingKeepaliveToken=false; uktsRT is unset).
+			await leader.sendLeaderKeepAlive();
+			leader.messageSequence += 1;
+			await leader.sendLeaderKeepAlive();
+			leader.messageSequence += 1;
+
+			getOrCreateQueue(topic).clear();
+			return { leader, topic, raftMembers };
+		}
+
+		it('repeated stale leaderKeepalives at the same raftTerm must not re-trigger UpdateLeaderKeepaliveToken', async() => {
+			const { topic, raftMembers } = await setupFreshZone('3', 'leader-throttle-1');
+			const before = await configurationVersionCollection.findOne({ _id: '3' });
+
+			const makeStale = (seqOffset) => {
+				const s = asLeader(generateLeaderTarget('stale-throttle-' + seqOffset), [
+					{ memberID: raftMembers[0].memberID, version: null },
+					{ memberID: raftMembers[1].memberID, version: '3.5.0-32' }
+				]);
+				s.zone = '3';
+				s.leaderToken = -1;
+				s.raftTerm = STEADY_RAFT_TERM - 5;
+				s.messageSequence = before.kafkaMessageSequence + seqOffset;
+				s.isReconciled = false;
+				s.featureCompatibilityVersion = before.featureCompatibilityVersion;
+				return s;
+			};
+
+			await makeStale(10).sendLeaderKeepAlive();
+			const queue = getOrCreateQueue(topic);
+			assert.strictEqual(queue.q.length, 1,
+				'first stale message must trigger exactly one UpdateLeaderKeepaliveToken');
+			await queue.readMessageOrWait();
+
+			await makeStale(11).sendLeaderKeepAlive();
+			await makeStale(12).sendLeaderKeepAlive();
+			assert.strictEqual(queue.q.length, 0,
+				'subsequent stale messages at the same raftTerm must not re-trigger UpdateLeaderKeepaliveToken');
+		});
+
+		// The throttle must NOT silence a real leader change: a message at a higher raftTerm than
+		// anything mgmt has resynced to before must still produce UpdateLeaderKeepaliveToken.
+		it('after throttling stale messages, a leaderKeepalive at a higher raftTerm must still trigger UpdateLeaderKeepaliveToken', async() => {
+			const { topic, raftMembers } = await setupFreshZone('4', 'leader-bump-1');
+			const before = await configurationVersionCollection.findOne({ _id: '4' });
+
+			const stale = asLeader(generateLeaderTarget('stale-bump-1'), [
+				{ memberID: raftMembers[0].memberID, version: null },
+				{ memberID: raftMembers[1].memberID, version: '3.5.0-32' }
+			]);
+			stale.zone = '4';
+			stale.leaderToken = -1;
+			stale.raftTerm = STEADY_RAFT_TERM - 5;
+			stale.messageSequence = before.kafkaMessageSequence + 20;
+			stale.isReconciled = false;
+			stale.featureCompatibilityVersion = before.featureCompatibilityVersion;
+			await stale.sendLeaderKeepAlive();
+			getOrCreateQueue(topic).clear();
+
+			const higherTerm = asLeader(generateLeaderTarget('higher-term-elector'), [
+				{ memberID: raftMembers[0].memberID, version: null },
+				{ memberID: raftMembers[1].memberID, version: '3.5.0-32' }
+			]);
+			higherTerm.zone = '4';
+			higherTerm.leaderToken = -1;
+			higherTerm.raftTerm = STEADY_RAFT_TERM + 5;
+			higherTerm.messageSequence = before.kafkaMessageSequence + 30;
+			higherTerm.isReconciled = false;
+			higherTerm.featureCompatibilityVersion = before.featureCompatibilityVersion;
+			await higherTerm.sendLeaderKeepAlive();
+
+			const queue = getOrCreateQueue(topic);
+			assert.notStrictEqual(queue.q.length, 0,
+				'a higher-raftTerm message must bypass the throttle and produce UpdateLeaderKeepaliveToken');
+			const updateMsg = await queue.readMessageOrWait();
+			assert.strictEqual(updateMsg.type, consts.kafkaMessageTypes.ManagementToTOMA.updateLeaderKeepaliveToken);
 		});
 	});
 });
