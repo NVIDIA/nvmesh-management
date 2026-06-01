@@ -213,7 +213,7 @@ function subtituteDiskSegment(volume, chunk, pRaid, diskSegment, cb) {
 
 		if (volume.isReserved) {
 			segment.isReserved = true;
-			segment._id = diskSegment.id;
+			segment._id = diskSegment._id;
 			segment.uuid = diskSegment.uuid;
 		}
 
