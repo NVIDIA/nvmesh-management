@@ -138,7 +138,6 @@ describe('Target Report', function() {
 
 		// Fire `NUM_OF_REPORTS` `reportTarget`s concurrently with the same `tomaToken` and
 		// consecutive `messageSequence` values; saveTargetReport's seq guard must prevent duplicate
-		// NIC entries in `server.nics` regardless of which racer wins.
 		it(`${NUM_OF_REPORTS} concurrent reportTarget messages: no duplicate NICs`, async() => {
 			const target = generateTarget(NODE_ID, 0, 0);
 			await target.save();
@@ -169,6 +168,14 @@ describe('Target Report', function() {
 			assert(errors.some(e => !e),
 				'every racer\'s callback returned an error -- expected at least one to commit '
 				+ `(errs=${JSON.stringify(errors.map(errSummary))})`);
+
+			// verify NIC attributes were not double parsed
+			const persisted = finalRows[0];
+			assert.strictEqual(persisted.pkey, 0xFFFF,
+				`pkey must be 65535 (single parse), got ${persisted.pkey}`);
+			assert.strictEqual(persisted.mtu, nic.mtu, 'mtu must be unchanged');
+			assert.strictEqual(persisted.status, nic.status, 'status must be unchanged');
+			assert.strictEqual(persisted.protocol, nic.protocol, 'protocol must be unchanged');
 		});
 	});
 });

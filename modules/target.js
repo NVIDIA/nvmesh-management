@@ -231,6 +231,8 @@ scope.report = function(message, callback) {
 		return callback();
 	}
 
+	message.payload.node.nics.forEach(parseNicAttributes);
+
 	addReportToQueue(nodeID, message, callback);
 };
 
@@ -1958,9 +1960,6 @@ function handleServerReport(message, lastServer, isPartialReportSave, logMetadat
 						newNic.uuid = uuid.v1();
 					}
 
-					newNic.status = getNicStatus(newNic);
-					newNic.protocol = getNicProtocol(newNic);
-					newNic.pkey = parseInt(newNic.pkey, 16);
 					newNic.nodeUUID = lastServer.uuid;
 
 					checkNicStatus.bind(calcDelta)(null, newNic, eventsToEmitOnInsert, node, calcDelta);
@@ -2132,8 +2131,6 @@ function handleServerReport(message, lastServer, isPartialReportSave, logMetadat
 					shouldIncreaseNicsVersion = true;
 				}
 			} else {
-				parseNicAttributes(existingReportNic);
-
 				if (oldNic.status !== existingReportNic.status) {
 					setNicsCount(oldNic.status === consts.nicStatus.OK ? -1 : 1, 0);
 					shouldIncreaseNicsVersion = true;
