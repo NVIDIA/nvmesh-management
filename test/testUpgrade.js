@@ -115,6 +115,12 @@ async function seedPRaidsForHost(host, updatePRaidToken, zone = ZONE) {
 		{ chunks: [{ pRaids: [pRaid] }] });
 }
 
+async function seedReservedPRaidsForHost(host, updatePRaidToken, zone = ZONE) {
+	const pRaid = entityGenerators.generatePRaid({ zone, host, updatePRaidToken });
+	await app.get('db').collection('volume').insertOne(
+		{ isReserved: true, chunks: [{ pRaids: [pRaid] }] });
+}
+
 async function seedCompletedPrevStep({ hostname = PREV_HOSTNAME, finishedAt } = {}) {
 	const stepIndex = nextStepIndex();
 	await app.get('db').collection('upgradeStep').insertOne(
@@ -349,6 +355,40 @@ describe('Upgrade', function() {
 			});
 			await seedPRaidsForHost(HOSTNAME);
 			await seedCompletedPrevStep();
+
+			await assert.rejects(
+				verifyVolumeStateIsFreshAsync(generateUpgrade(), generateStep()),
+				expectMessage(systemMessages.UPGRADE_STEP_CANNOT_BE_EXECUTED_VOLUME_STATE.id));
+		});
+
+		it('ignores reserved volumes (never reported by TOMA, so their pRaids never carry a token)', async() => {
+			await seedLeader({
+				updatePRaidToken: 7,
+				raftMembers: [
+					{ memberID: HOSTNAME, version: SOURCE_VERSION },
+					{ memberID: PREV_HOSTNAME, version: SOURCE_VERSION }
+				],
+				isReconciled: true
+			});
+			// A real, TOMA-managed volume that is fresh...
+			await seedPRaidsForHost(HOSTNAME, 7);
+			// ...alongside a reserved volume whose pRaid has no token must not block the step.
+			await seedReservedPRaidsForHost(HOSTNAME);
+
+			await verifyVolumeStateIsFreshAsync(generateUpgrade(), generateStep());
+		});
+
+		it('still rejects with VOLUME_STATE for a stale non-reserved volume even when a reserved volume is present', async() => {
+			await seedLeader({
+				updatePRaidToken: 7,
+				raftMembers: [
+					{ memberID: HOSTNAME, version: SOURCE_VERSION },
+					{ memberID: PREV_HOSTNAME, version: SOURCE_VERSION }
+				],
+				isReconciled: true
+			});
+			await seedReservedPRaidsForHost(HOSTNAME);
+			await seedPRaidsForHost(HOSTNAME, 3);
 
 			await assert.rejects(
 				verifyVolumeStateIsFreshAsync(generateUpgrade(), generateStep()),

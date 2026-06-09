@@ -1200,6 +1200,9 @@ scope.handlePRaidStatusMessage = function(message, mainCallback) {
 	message.payload.pRaidsUpdate.forEach((pRaid) => {
 		convertReportPRaidFormatToDBFormat(pRaid);
 
+		if (message.updatePRaidToken > 0)
+			pRaid.updatePRaidToken = message.updatePRaidToken;
+
 		var hasDeprecations = pRaid.segments.some((seg) => seg.status === consts.diskSegmentStatuses.DEPRECATED);
 
 		if (hasDeprecations)

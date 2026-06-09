@@ -206,6 +206,11 @@ exports.UpdatePRaidReportBuilder = class UpdatePRaidReportBuilder extends export
 		return this;
 	}
 
+	setUpdatePRaidToken(value) {
+		this.msg.updatePRaidToken = value;
+		return this;
+	}
+
 	static fromTarget(target) {
 		const builder = new UpdatePRaidReportBuilder(target.node_id);
 		builder.updateDataFromTarget(target);

@@ -1321,6 +1321,7 @@ function verifyVolumeStateIsFreshByLeader(upgrade, step, cb) {
 				return callback();
 
 			volumeCollection.findOne({
+				isReserved: { $ne: true },
 				'chunks.pRaids': {
 					$elemMatch: { $or: stalenessClauses }
 				}

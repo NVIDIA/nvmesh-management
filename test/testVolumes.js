@@ -951,4 +951,58 @@ describe('Volumes', () => {
 			});
 		});
 	});
+
+	describe('#updatePRaidToken stamping (volume freshness)', () => {
+		const volume = new VolumeConcatenated('praidtoken_vol');
+		let targets;
+
+		before(() => {
+			return setup.newSetup()
+				.then(() => targets = generateTargets(3, 2))
+				.then(() => Promise.all(targets.map(t => t.save())))
+				.then(() => volume.save())
+				.then(result => assert(result.success, 'error: ' + getErrorChainString(result.error)));
+		});
+
+		function reportPRaidsOnline(updatePRaidToken, cb) {
+			volumeCollection.findOne({ _id: volume._id }, (err, vol) => {
+				assert(!err);
+
+				vol.chunks.forEach(c => c.pRaids.forEach(p => p.diskSegments.forEach(d => {
+					d.status = consts.diskSegmentStatuses.NORMAL;
+					d.vitality = consts.segmentVitality.UP;
+				})));
+
+				const message = UpdatePRaidReportBuilder.fromVolume(vol, targets[0])
+					.setUpdatePRaidToken(updatePRaidToken)
+					.build();
+
+				handlePRaidStatusMessage(message, cb);
+			});
+		}
+
+		function getPRaidTokens() {
+			return volumeCollection.findOne({ _id: volume._id }, { projection: { 'chunks.pRaids.updatePRaidToken': 1 } })
+				.then(vol => vol.chunks.flatMap(c => c.pRaids.map(p => p.updatePRaidToken)));
+		}
+
+		it('stamps the message-level updatePRaidToken onto every reported pRaid', (done) => {
+			reportPRaidsOnline(5, () => {
+				getPRaidTokens().then(tokens => {
+					assert(tokens.length > 0, 'expected at least one pRaid to be reported');
+					tokens.forEach(token => assert.strictEqual(token, 5, 'each pRaid should carry the reported updatePRaidToken'));
+					done();
+				});
+			});
+		});
+
+		it('does not persist the -1 "no token yet" sentinel (keeps the previously stamped token)', (done) => {
+			reportPRaidsOnline(-1, () => {
+				getPRaidTokens().then(tokens => {
+					tokens.forEach(token => assert.strictEqual(token, 5, 'a -1 sentinel report must not overwrite a valid token'));
+					done();
+				});
+			});
+		});
+	});
 });
