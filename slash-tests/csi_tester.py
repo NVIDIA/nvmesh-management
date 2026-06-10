@@ -112,9 +112,9 @@ def ensure_csi_venv(csi_driver_root):
     # Check if venv exists and has python
     if not os.path.exists(python_bin):
         logger.info(f"Creating virtual environment at {venv_path}...")
-        # Create venv with Python 3.9
+        # Create venv with Python 3.13 (matches the CSI driver runtime / its pyproject deps)
         result = subprocess.run(
-            ["python3.9", "-m", "venv", venv_path],
+            ["python3.13", "-m", "venv", venv_path],
             cwd=csi_driver_root,
             capture_output=True,
             text=True,
