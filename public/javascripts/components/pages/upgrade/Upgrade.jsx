@@ -45,6 +45,13 @@ const Upgrade = () => {
 			SocketService.addHandler(events.connectedToClusterManagementEvent.name, () => {
 				unregisterFromEvents(upgrade._id);
 				registerToEvents(upgrade._id);
+
+				// we may have missed step events while the cluster link was down / before we finished
+				// re-registering on the peer mgmt — reconcile from the DB
+				setTimeout(() => {
+					reloadUpgrade();
+					reloadTable();
+				}, 1000);
 			});
 
 			// reload table again in case we missed events by the time we registered for them
