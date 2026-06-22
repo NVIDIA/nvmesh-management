@@ -105,6 +105,18 @@ describe('parseVersionString', () => {
 				extension: 'deb'
 			});
 		});
+
+		it('should parse DEB with malformed Ubuntu distTag', async() => {
+			assert.deepStrictEqual(parseVersionString('nvmesh-upgrade-agent_3.4.0-21.ubuntu24.04.2lts2404.0.0_amd64.deb'), {
+				packageName: 'nvmesh-upgrade-agent',
+				baseVersion: '3.4.0',
+				releaseNumber: '21',
+				distTag: 'ubuntu24.04.2lts2404',
+				buildNumber: '0.0',
+				arch: 'amd64',
+				extension: 'deb'
+			});
+		});
 	});
 
 	// versions string such as reported by upgradeAgents.nvmeshVersions
@@ -165,6 +177,18 @@ describe('parseVersionString', () => {
 				distTag: 'el8_10',
 				buildNumber: '',
 				arch: 'x86_64',
+				extension: ''
+			});
+		});
+
+		it('should parse malformed Ubuntu distTag with embedded dots', async() => {
+			assert.deepStrictEqual(parseVersionString('3.4.0-21.ubuntu24.04.2lts2404.1.985'), {
+				packageName: '',
+				baseVersion: '3.4.0',
+				releaseNumber: '21',
+				distTag: 'ubuntu24.04.2lts2404',
+				buildNumber: '1.985',
+				arch: '',
 				extension: ''
 			});
 		});
