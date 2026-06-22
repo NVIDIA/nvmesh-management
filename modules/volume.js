@@ -1694,7 +1694,7 @@ scope.deprecateSegments = function(segmentIds, lockedZone, user, callback) {
 
 function getPraidAction(effectiveSegments) {
 	var hasDeadDataSegment = effectiveSegments.some((s) => {
-		return (s.isDead || s.status == consts.diskSegmentStatuses.DEAD)
+		return ((s.isDead && s.status !== consts.diskSegmentStatuses.BOOTING) || s.status == consts.diskSegmentStatuses.DEAD)
 				&& s.type === consts.segmentTypes.DATA;
 	});
 	var segmentsGroupedByStatus = effectiveSegments.reduce((rv, seg) => { rv[seg.status] = (rv[seg.status] + 1 || 1); return rv; }, {});

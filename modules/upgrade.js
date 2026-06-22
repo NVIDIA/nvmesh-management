@@ -1108,7 +1108,11 @@ scope.verifyVolumesAvailability = (upgrade, step, cb) => {
 		pRaidsWithDeadSegments.forEach(pRaid => {
 			if (error) return;
 
-			if (pRaid.status === consts.volumeStatuses.OFFLINE && pRaid.action === consts.volumeActions.BOOTING)
+			const volumeStatus = pRaid.status;
+			const volumeAction = pRaid.action;
+
+			if (volumeStatus === consts.volumeStatuses.OFFLINE && volumeAction === consts.volumeActions.BOOTING
+				|| volumeStatus === consts.volumeStatuses.UNAVAILABLE && volumeAction === consts.volumeActions.INITIALIZING)
 				return;
 
 			const faultsAfterUpgrade = pRaid.numOfOtherDeadSegments + pRaid.numOfOwnSegments;
