@@ -1035,6 +1035,17 @@ scope.resumeConsumer = function() {
 		+ `pausedTopics: ${pausedTopics}`);
 };
 
+scope.resetConsumerState = function() {
+	if (scope.resumeRetryTimer) {
+		clearTimeout(scope.resumeRetryTimer);
+		scope.resumeRetryTimer = null;
+	}
+
+	scope.isConsumerPaused = false;
+	scope.lastConsumerPauseTime = new Date(0);
+	scope.isResumeInProgress = false;
+};
+
 scope.pauseConsumerIfNeeded = function() {
 	const tooManyMessages = scope.messagesInProcess > consts.KAFKA_CONSUMER_MAX_IN_PROCESS_MESSAGES;
 
@@ -1221,6 +1232,8 @@ async function doRecycleConsumer(callbacks) {
 	logger.sysDEBUG(`recycleConsumer:: disconnected consumers ${error ? error.toString() : ''}`);
 
 	if (!error) {
+		scope.resetConsumerState();
+
 		logger.sysDEBUG('recycleConsumer:: Initializing new consumer');
 		error = await scope.initConsumers();
 		logger.sysDEBUG('recycleConsumer:: initConsumers finished');
