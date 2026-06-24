@@ -167,7 +167,6 @@ scope.run = cb => {
 	//
 	// Examples where it's used: `checkAndRemovePendingVolumes`, `checkAndRemoveToBeExtendedVolumes`, `checkPendingAttachments`, `checkForIncompleteSnapshots`
 	async.series([
-		checkForUnusedTopics,
 		scope.checkAndRemovePendingUpgrades,
 		scope.checkAndRemovePendingVolumes,
 		scope.checkAndRemoveToBeExtendedVolumes,
@@ -191,7 +190,6 @@ scope.run = cb => {
 		scope.checkLastReservationVersionSentToTOMA,
 		scope.checkLastEmulationAttachmentsVersionSentToClient,
 		scope.checkAndResumeStuckUpgrades,
-		cleanupUnusedTopics,
 		dbUpgradeModule.upgradeDBIfNeeded,
 		scope.addAvailableSpaceZoneRankingCriteriaToDB,
 		scope.verifySegmentStatusAfterEvict
@@ -205,188 +203,6 @@ scope.run = cb => {
 		cb();
 	});
 };
-
-let checkForUnusedTopicsTime, topicsToOffsetsInfoFound;
-
-function checkForUnusedTopics(callback) {
-	if (app.get('nonLatestVersion')) {
-		logger.sysDEBUG('This management is not the latest version, skipping checkForUnusedTopics');
-		return callback();
-	}
-
-	let unusedTopicsFound;
-	let skip;
-
-	async.series([
-		cb => {
-			const db = app.get('db');
-			const upgradeCollection = db.collection('upgrade');
-
-			upgradeCollection.findOne({ status: consts.upgradeStatuses.IN_PROGRESS }, { _id: 1 }, (err, upgrade) => {
-				if (err)
-					return cb(new MongoError(err));
-
-				if (upgrade) {
-					logger.sysDEBUG(`Upgrade ${upgrade._id} is in progress, skipping checkForUnusedTopics`);
-					skip = true;
-					return cb();
-				}
-
-				cb();
-			});
-		},
-		cb => {
-			if (skip)
-				return cb();
-
-			kafkaModule.getUnusedTopics((err, unusedTopics) => {
-				if (err)
-					return cb(err);
-
-				if (!unusedTopics.length) {
-					logger.sysDEBUG('No unused topics found, skipping checkForUnusedTopics');
-					skip = true;
-					return cb();
-				}
-
-				unusedTopicsFound = unusedTopics;
-				cb();
-			});
-		},
-		cb => {
-			if (skip)
-				return cb();
-
-			kafkaModule.getOffsetsInformationByTopics(unusedTopicsFound, (err, offsetsInfo) => {
-				if (err)
-					return cb(err);
-
-				if (!Object.keys(offsetsInfo).length) {
-					logger.sysDEBUG('No offsets info found, skipping checkForUnusedTopics');
-					skip = true;
-					return cb();
-				}
-
-				logger.sysDEBUG(`Found ${Object.keys(offsetsInfo).length} potential topics to delete`);
-				topicsToOffsetsInfoFound = offsetsInfo;
-				checkForUnusedTopicsTime = new Date();
-				cb();
-			});
-		}
-	], err => {
-		if (err)
-			new SystemMessage(systemMessages.CHECK_FOR_UNUSED_TOPICS_FAILED).addInfo(Entities.Error, err).log();
-
-		callback();
-	});
-}
-
-function cleanupUnusedTopics(callback) {
-	let unusedTopicsFound;
-	let skip;
-
-	async.series([
-		cb => {
-			if (!checkForUnusedTopicsTime) {
-				logger.sysDEBUG('checkForUnusedTopics was skipped, skipping cleanupUnusedTopics');
-				skip = true;
-				return cb();
-			}
-
-			async.whilst(
-				whilstCb => {
-					const timeDiff = new Date() - checkForUnusedTopicsTime;
-					const shouldWait = timeDiff < consts.SECONDS_TO_WAIT_BETWEEN_CHECK_AND_CLEANUP_UNUSED_TOPICS * 1000;
-					logger.sysDEBUG(`checkForUnusedTopics was called ${timeDiff / 1000} seconds ago, ${shouldWait ? 'waiting' : 'starting'} cleanup`);
-					whilstCb(null, shouldWait);
-				},
-				whilstCb => setTimeout(() => whilstCb(null, true), consts.SECONDS_INTERVAL_BETWEEN_CLEANUP_UNUSED_TOPICS_TIME_PASSED * 1000),
-				() => {
-					checkForUnusedTopicsTime = null;
-					cb();
-				}
-			);
-		},
-		cb => {
-			if (!skip && app.get('nonLatestVersion')) {
-				logger.sysDEBUG('This management is not the latest version, skipping cleanupUnusedTopics');
-				skip = true;
-			}
-
-			if (skip)
-				return cb();
-
-			kafkaModule.getUnusedTopics((err, unusedTopics) => {
-				if (err)
-					return cb(err);
-
-				if (!unusedTopics.length) {
-					logger.sysDEBUG('No unused topics found, skipping cleanupUnusedTopics');
-					skip = true;
-					return cb();
-				}
-
-				unusedTopicsFound = unusedTopics;
-				cb();
-			});
-		},
-		cb => {
-			if (skip)
-				return cb();
-
-			kafkaModule.getOffsetsInformationByTopics(unusedTopicsFound, (err, offsetsInfo) => {
-				if (err)
-					return cb(err);
-
-				if (!Object.keys(offsetsInfo).length) {
-					logger.sysDEBUG('No offsets info found, skipping cleanupUnusedTopics');
-					skip = true;
-					return cb();
-				}
-
-				// find all topics where offsets did not change since last check
-				const topicsToDelete = Object.keys(topicsToOffsetsInfoFound)
-					.filter(topic => {
-						const topicPartitions = Object.keys(offsetsInfo[topic] || {});
-						if (!topicPartitions.length) {
-							logger.sysDEBUG(`${topic} was detected in checkForUnusedTopics but is missing or has no partitions during cleanupUnusedTopics`);
-							return false;
-						}
-
-						return topicPartitions.every(partition => topicsToOffsetsInfoFound[topic][partition] === offsetsInfo[topic][partition]);
-					});
-
-				if (!topicsToDelete.length) {
-					logger.sysDEBUG('No topics to delete, skipping cleanupUnusedTopics');
-					skip = true;
-					return cb();
-				}
-
-				kafkaModule.deleteTopics(topicsToDelete, err => {
-					if (err)
-						return cb(err);
-
-					const deletedUpstreamTopics = topicsToDelete.filter(kafkaModule.isUpstreamTopicByName);
-					if (deletedUpstreamTopics.length) {
-						const ids = deletedUpstreamTopics
-							.filter(topic => topic.includes(consts.topicPrefix.ZONE)) // default/management topics don't require an ID
-							.map(topic => events.getZoneID(topic.slice(consts.topicPrefix.ZONE.length, topic.indexOf('.'))));
-
-						events.emitEvent(ids, objectNotifier.events.removedUpstreamTopicEvent, { topics: deletedUpstreamTopics });
-					}
-
-					cb();
-				});
-			});
-		}
-	], err => {
-		if (err)
-			new SystemMessage(systemMessages.CLEANUP_UNUSED_TOPICS_FAILED).addInfo(Entities.Error, err).log();
-
-		callback();
-	});
-}
-
 
 function getDeletedVolumesWithExistingDiskSegmentsPipeline(segmentUUIDS) {
 	return [

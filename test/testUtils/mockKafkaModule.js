@@ -160,16 +160,6 @@ exports.mockKafkaModule = function() {
 			callback();
 	};
 
-	kafkaModule.deleteTopics = function(topicsToDelete, callback) {
-		log(`deleteTopics: ${JSON.stringify(topicsToDelete)}`);
-		topicsToDelete.forEach(topic => {
-			if (topic in kafkaQueues)
-				delete kafkaQueues[topic];
-		});
-
-		callback();
-	};
-
 	kafkaModule.deleteTopicRecords = function(topic, callback) {
 		log(`deleteTopicRecords: ${topic}`);
 

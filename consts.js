@@ -147,11 +147,6 @@ consts.topicSuffix = {
 	UPGRADE_AGENT_COMMANDS: '.upgradeAgent.commands'
 };
 
-consts.topicPrefix = {
-	DEFAULT: 'default',
-	ZONE: 'zone'
-};
-
 consts.errno = {
 	ETIMEDOUT: 110
 };
@@ -1220,8 +1215,6 @@ consts.TOPIC_NAME_PLACEHOLDERS = {
 	ZONE: '<ZONE>'
 };
 
-consts.SECONDS_TO_WAIT_BETWEEN_CHECK_AND_CLEANUP_UNUSED_TOPICS = 60;
-consts.SECONDS_INTERVAL_BETWEEN_CLEANUP_UNUSED_TOPICS_TIME_PASSED = 10;
 consts.MAX_METADATA_SIZE = 256 * 1024;
 
 consts.preUpgradeCheckRelaxationsMode = {

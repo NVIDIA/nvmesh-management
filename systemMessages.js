@@ -81,11 +81,6 @@ var systemMessages = {
 		id: 3004,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
-	KAFKA_DELETE_TOPICS_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to delete topics, contact support.',
-		id: 3005,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
 	KAFKA_LIST_TOPICS_ERROR: {
 		message: 'Management received an unexpected generic error from Kafka while trying to list topics, contact support.',
 		id: 3006,
@@ -1448,21 +1443,6 @@ var systemMessages = {
 		header: 'Limited MongoDB Feature',
 		logLevel: consts.loggingLevel.WARNING,
 		sysLogLevel: consts.loggingLevel.WARNING
-	},
-	KAFKA_GROUP_ID_NOT_FOUND: {
-		message: 'Kafka group ID not found',
-		id: 1955,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
-	CHECK_FOR_UNUSED_TOPICS_FAILED: {
-		message: 'Failed to check for unused topics',
-		id: 1956,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
-	CLEANUP_UNUSED_TOPICS_FAILED: {
-		message: 'Failed to cleanup unused topics',
-		id: 1957,
-		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DISK_FORMAT_FAILED: {
 		message: 'Failed to format drive',
