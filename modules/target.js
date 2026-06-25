@@ -1147,7 +1147,7 @@ function handleLeaderFeatureCompatibilityVersionChanged(zoneID, versions, handle
 
 					const deprecatedUpstreamTopics = deprecatedTopics.filter(kafkaModule.isUpstreamTopicByName);
 					if (deprecatedUpstreamTopics.length)
-						events.emitEvent([events.getZoneID(zoneID)], objectNotifier.events.removedUpstreamTopicEvent, { topics: deprecatedUpstreamTopics });
+						events.emitEvent([events.getZoneID(zoneID)], objectNotifier.events.deprecatedUpstreamTopicsEvent, { topics: deprecatedUpstreamTopics });
 
 					cb();
 				});

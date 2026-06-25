@@ -596,8 +596,8 @@ function registerToLogsHandlers(eventEmitter) {
 	});
 
 
-	eventEmitter.on(objectNotifier.events.removedUpstreamTopicEvent.name, ({ payload: { topics } }) => {
-		logger.sysDEBUG(`Got ${objectNotifier.events.removedUpstreamTopicEvent.name} event about removed topics: ${topics}`);
+	eventEmitter.on(objectNotifier.events.deprecatedUpstreamTopicsEvent.name, ({ payload: { topics } }) => {
+		logger.sysDEBUG(`Got ${objectNotifier.events.deprecatedUpstreamTopicsEvent.name} event about deprecated topics: ${topics}`);
 
 		const before = kafkaModule.subscribableTopics.size;
 		topics.forEach(topic => kafkaModule.subscribableTopics.delete(topic));

@@ -254,7 +254,7 @@ scope.events = {
 	upgradeStepScenarioChangedEvent: { name: 'upgradeStepScenarioChangedEvent' },
 
 	newUpstreamTopicEvent: { name: 'newUpstreamTopicEvent' },
-	removedUpstreamTopicEvent: { name: 'removedUpstreamTopicEvent' },
+	deprecatedUpstreamTopicsEvent: { name: 'deprecatedUpstreamTopicsEvent' },
 	upstreamTopicChangeEvent: { name: 'upstreamTopicChangeEvent' },
 
 	upgradeStatusChangedEvent: {
@@ -592,7 +592,7 @@ monitoredObjects[scope.events.volumesVersionsChangeEvent.name] = {
 	}
 };
 
-monitoredObjects[scope.events.removedUpstreamTopicEvent.name] = {
+monitoredObjects[scope.events.deprecatedUpstreamTopicsEvent.name] = {
 	getUpdatedObj: function(callback) {
 		callback();
 	}
