@@ -309,8 +309,8 @@ for rpm in "${rpmsToCreate[@]}"; do
 
     if [ $rpm == $mgmt ]; then
         cd ..
-        requires="systemd, nodejs >= 1:17.0.0-0, nodejs < 2:19.0.0-0, mongodb-mongosh < 2.9.0, mongodb-org-tools >= 5.0, mongodb-org-tools < 9.0, nvmesh-utils >= 2.0.0"
-        requiresUbuntu="systemd, nodejs (>= 17.0.0), nodejs (<< 19.0.0), mongodb-mongosh (< 2.9.0), mongodb-org-tools (>= 5.0), mongodb-org-tools (<< 9.0), nvmesh-utils (>= 2.0.0)"
+        requires="systemd, nodejs >= 1:17.0.0-0, nodejs < 2:19.0.0-0, mongodb-mongosh < 3.0.0, mongodb-org-tools >= 5.0, mongodb-org-tools < 9.0, nvmesh-utils >= 2.0.0"
+        requiresUbuntu="systemd, nodejs (>= 17.0.0), nodejs (<< 19.0.0), mongodb-mongosh (< 3.0.0), mongodb-org-tools (>= 5.0), mongodb-org-tools (<< 9.0), nvmesh-utils (>= 2.0.0)"
 
         cloned_interop_db_path="../interop-db"
         if [ ! -d "$cloned_interop_db_path" ] || [ ! -n "$(ls -A "$cloned_interop_db_path" 2>/dev/null)" ]; then
