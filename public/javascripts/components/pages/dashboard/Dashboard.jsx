@@ -17,6 +17,7 @@ import { VolumesService } from '../../services/api/volumes.service.js';
 import { useAppContext } from '../../App.jsx';
 import { useAlerts } from '../../core/Alert.jsx';
 import { UpgradesService } from '../../services/api/upgrades.service.js';
+import { getBaseVersion } from '../../utils.js';
 
 const { useState, useEffect } = React;
 
@@ -48,7 +49,7 @@ const Dashboard = () => {
 		fetchData();
 		registerToEvents();
 
-		checkForUpgrades(systemInfo.hostname);
+		checkForUpgrades(systemInfo.hostname, getBaseVersion(systemInfo.version));
 	}, []);
 
 	const registerToEvents = () => {
@@ -80,14 +81,16 @@ const Dashboard = () => {
 		});
 	};
 
-	const checkForUpgrades = async(hostname) => {
+	const checkForUpgrades = async(hostname, currentBaseVersion) => {
 		const possibleUpgrades = await UpgradesService.getPossibleUpgradesByHostnames([hostname], [consts.components.MANAGEMENT]);
-		const versions = possibleUpgrades.join(', ');
+		const uniquePossibleUpgrades = [...new Set(possibleUpgrades)];
+		const displayablePossibleUpgrades = uniquePossibleUpgrades.filter(version => getBaseVersion(version) !== currentBaseVersion);
+		const versions = displayablePossibleUpgrades.join(', ');
 		const nextVersionKey = `upgradeDismissed-${versions}`;
 		const isAlertDismissed = localStorage.getItem(nextVersionKey);
 
-		if (possibleUpgrades.length && !isAlertDismissed) {
-			infoAlert(<span>New {possibleUpgrades.length > 1 ? 'versions' : 'version'} available: {versions}. <a href="/upgrades">
+		if (displayablePossibleUpgrades.length && !isAlertDismissed) {
+			infoAlert(<span>New {displayablePossibleUpgrades.length > 1 ? 'versions' : 'version'} available: {versions}. <a href="/upgrades">
 				<strong>Click to upgrade</strong></a>
 			</span>, {
 				timeout: 0,
