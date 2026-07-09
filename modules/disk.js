@@ -1806,10 +1806,10 @@ scope.updateVolumesAfterReinstate = (segmentPairsByVolume, reservedSegmentsByVol
 						return cb();
 					}
 
+					calcResult.eventsToEmit.push(objectNotifier.events.volumeVersionChangeEvent.name);
 					calcResult.eventsToEmit.forEach((eventName) =>
 						events.emitEvent([events.getVolumeID(result.name)], objectNotifier.events[eventName], result));
 
-					volumeModule.sendVolumeUpdateToTomaByVolume(result);
 					cb();
 				});
 			}
