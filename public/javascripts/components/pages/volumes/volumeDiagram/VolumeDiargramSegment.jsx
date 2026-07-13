@@ -18,6 +18,7 @@ const segmentStatusToCaption = (status) => {
 		[consts.diskSegmentStatuses.ZEROING]: 'Zeroing',
 		[consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD]: 'Marked For Rebuild Old',
 		[consts.diskSegmentStatuses.MARKED_FOR_REBUILD]: 'Marked For Rebuild',
+		[consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING]: 'Marked For Rebuild Pending',
 		[consts.diskSegmentStatuses.REMAP]: 'Remap',
 		[consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA]: 'Under Recovery',
 		[consts.diskSegmentStatuses.REPLACEMENT]: 'Replacement',
@@ -36,13 +37,14 @@ const segmentStatusToHealth = (status) => {
 		consts.diskSegmentStatuses.INITIALIZING,
 		consts.diskSegmentStatuses.ZEROING,
 		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD,
-		consts.diskSegmentStatuses.MARKED_FOR_REBUILD
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD,
+		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING,
+		consts.diskSegmentStatuses.REPLACEMENT
 	].includes(status)) {
 		return 'primary';
 	} else if ([
 		consts.diskSegmentStatuses.REMAP,
 		consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA,
-		consts.diskSegmentStatuses.REPLACEMENT
 	].includes(status)) {
 		return 'yellow';
 	} else if ([

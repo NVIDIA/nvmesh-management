@@ -23,7 +23,9 @@ const { events } = require('../objectNotifier.js');
 const { delay } = require('./testUtils/common.js');
 const { UpdatePRaidReportBuilder, PRaidReport } = require('./kafkaMessages/fromTOMA/tomaMessageBuilders.js');
 const { SegmentZeroingProgress } = require('./kafkaMessages/fromTOMA/segmentZeroingProgress.js');
-const { reportAllSegmentsOnline, sendPRaidUpdate } = require('./testUtils/volumeUtils.js');
+const { reportAllSegmentsOnline, sendPRaidUpdate, sendPRaidReportWithStatuses,
+	getAllVolumeSegments, getSegmentsByStatus, assertVolumeStatusAndAction, assertSegmentCount,
+	bringRaid1ToMarkedForRebuild, assertMarkedForRebuildAcceptsDirectNormalReport } = require('./testUtils/volumeUtils.js');
 
 const allSegmentOnline = [
 	consts.diskSegmentStatuses.NORMAL,
@@ -73,6 +75,7 @@ describe('Volume Statuses and Actions', () => {
 		});
 		let volume = new VolumeRAID10('v1');
 		let cachedDBVolume = null;
+		let replacementSegUUID = null;
 
 		it('Should stay Initializing-Unavailable after a single pRaid online report ', (done) => {
 			volumeCollection.findOne({ _id: volume.name }, (err, dbVolume) => {
@@ -214,136 +217,60 @@ describe('Volume Statuses and Actions', () => {
 					assert(dbVolume);
 					assert.strictEqual(dbVolume.status, consts.volumeStatuses.ONLINE);
 					assert.strictEqual(dbVolume.action, consts.volumeActions.MARKED_FOR_REBUILD);
-					done();
-				});
-			});
-		});
-
-		it('Should change to MarkedForRebuild-Degraded after toma reports replacement', (done) => {
-			dbVolume = cachedDBVolume;
-
-			let pRaid = dbVolume.chunks[0].pRaids[0];
-
-			pRaid.diskSegments.forEach(s => {
-				if (s.status == consts.diskSegmentStatuses.MARKED_FOR_REBUILD)
-					s.status = consts.diskSegmentStatuses.REPLACEMENT;
-				else
-					s.status = consts.diskSegmentStatuses.NORMAL;
-			});
-
-			let pRaidReport = PRaidReport.fromPRaid(pRaid)
-				.incPRaidMajorVersion();
-
-			let msg = UpdatePRaidReportBuilder.fromTarget(targets[0])
-				.addPRaidReport(pRaidReport)
-				.build();
-
-			volumeModule.handlePRaidStatusMessage(msg, function() {
-				volumeCollection.findOne({ _id: volume.name }, (err, dbVolume) => {
-					assert(!err);
-					assert(dbVolume);
 					cachedDBVolume = dbVolume;
-					assert.strictEqual(dbVolume.status, consts.volumeStatuses.DEGRADED);
-					assert.strictEqual(dbVolume.action, consts.volumeActions.MARKED_FOR_REBUILD);
+					const replacementSeg = getSegmentsByStatus(getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD)[0];
+					assert(replacementSeg, 'Expected a markedForRebuild replacement segment after rebuild start');
+					replacementSegUUID = replacementSeg.uuid;
 					done();
 				});
 			});
 		});
 
-		it('Should keep MarkedForRebuild-Degraded after toma reports dead - dead not saved to the DB', (done) => {
-			dbVolume = cachedDBVolume;
+		it('Should change to MarkedForRebuild-Degraded after toma reports the replacement segment', async() => {
+			let dbVolume = await volumeCollection.findOne({ _id: volume.name });
 
-			let pRaid = dbVolume.chunks[0].pRaids[0];
+			// The replacement segment carries a brand-new uuid, so TOMA's status for it is authoritative and accepted
+			await sendPRaidReportWithStatuses(dbVolume, seg =>
+				seg.uuid === replacementSegUUID ? consts.diskSegmentStatuses.REPLACEMENT : seg.status,
+			targets[0]);
 
-			pRaid.diskSegments.forEach(s => {
-				if (s.status == consts.diskSegmentStatuses.MARKED_FOR_REBUILD)
-					s.status = consts.diskSegmentStatuses.DEAD;
-				else if (s.status == consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD)
-					s.status = consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD;
-				else
-					s.status = consts.diskSegmentStatuses.NORMAL;
-			});
-
-
-			let pRaidReport = PRaidReport.fromPRaid(pRaid)
-				.incPRaidMajorVersion();
-
-			let msg = UpdatePRaidReportBuilder.fromTarget(targets[0])
-				.addPRaidReport(pRaidReport)
-				.build();
-
-			volumeModule.handlePRaidStatusMessage(msg, function() {
-				volumeCollection.findOne({ _id: volume.name }, (err, dbVolume) => {
-					assert(!err);
-					assert(dbVolume);
-					cachedDBVolume = dbVolume;
-					assert.strictEqual(dbVolume.status, consts.volumeStatuses.DEGRADED);
-					assert.strictEqual(dbVolume.action, consts.volumeActions.MARKED_FOR_REBUILD);
-					done();
-				});
-			});
-		});
-
-		it('Should keep MarkedForRebuild-Degraded after toma reports replacement and deprecated', async() => {
-			dbVolume = cachedDBVolume;
-
-			let pRaid = dbVolume.chunks[0].pRaids[0];
-
-			pRaid.diskSegments.forEach(s => {
-				if (s.status == consts.diskSegmentStatuses.MARKED_FOR_REBUILD)
-					s.status = consts.diskSegmentStatuses.REPLACEMENT;
-				else if (s.status == consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD)
-					s.status = consts.diskSegmentStatuses.DEPRECATED;
-				else
-					s.status = consts.diskSegmentStatuses.NORMAL;
-			});
-
-			let pRaidReport = PRaidReport.fromPRaid(pRaid)
-				.incPRaidMajorVersion();
-
-			let msg = UpdatePRaidReportBuilder.fromTarget(targets[0])
-				.addPRaidReport(pRaidReport)
-				.build();
-
-			await new Promise(resolve => volumeModule.handlePRaidStatusMessage(msg, resolve));
 			dbVolume = await volumeCollection.findOne({ _id: volume.name });
-			assert(dbVolume);
 			cachedDBVolume = dbVolume;
-			assert.strictEqual(dbVolume.chunks[0].pRaids[0].diskSegments[0].status, consts.diskSegmentStatuses.NORMAL);
-			assert.strictEqual(dbVolume.chunks[0].pRaids[0].diskSegments[1].status, consts.diskSegmentStatuses.MARKED_FOR_REBUILD);
-			assert.strictEqual(dbVolume.status, consts.volumeStatuses.DEGRADED);
-			assert.strictEqual(dbVolume.action, consts.volumeActions.MARKED_FOR_REBUILD);
-			assert(dbVolume.chunks[0].pRaids[0].diskSegments.length < 4, 'Expected deprecated segment to be removed');
+			const replacement = getAllVolumeSegments(dbVolume).find(s => s.uuid === replacementSegUUID);
+			assert.strictEqual(replacement.status, consts.diskSegmentStatuses.REPLACEMENT, 'replacement status should be accepted');
+			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.MARKED_FOR_REBUILD);
+		});
+
+		it('Should stay MarkedForRebuild-Degraded after toma deprecates the old segment', async() => {
+			let dbVolume = await volumeCollection.findOne({ _id: volume.name });
+			const oldSegments = getSegmentsByStatus(getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+			assert(oldSegments.length, 'Expected a markedForRebuild_old segment to deprecate');
+
+			await sendPRaidReportWithStatuses(dbVolume, seg =>
+				seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD
+					? consts.diskSegmentStatuses.DEPRECATED
+					: seg.status,
+			targets[0]);
+
+			dbVolume = await volumeCollection.findOne({ _id: volume.name });
+			cachedDBVolume = dbVolume;
+			assertSegmentCount(getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD, 0);
+			const replacement = getAllVolumeSegments(dbVolume).find(s => s.uuid === replacementSegUUID);
+			assert.strictEqual(replacement.status, consts.diskSegmentStatuses.REPLACEMENT, 'replacement should still be in replacement');
+			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.MARKED_FOR_REBUILD);
 		});
 
 		it('Should change to Rebuilding-Degraded after toma reports under_recovery', async() => {
-			let pRaid = cachedDBVolume.chunks[0].pRaids[0];
-			let segmentOrderedStatuses = [];
-			let underRecoverySegUUID = null;
+			let dbVolume = await volumeCollection.findOne({ _id: volume.name });
 
-			pRaid.diskSegments.forEach(s => {
-				if (s.status == consts.diskSegmentStatuses.MARKED_FOR_REBUILD) {
-					segmentOrderedStatuses.push(consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA);
-					underRecoverySegUUID = s.uuid;
-				} else
-					segmentOrderedStatuses.push(consts.diskSegmentStatuses.NORMAL);
-			});
+			await sendPRaidReportWithStatuses(dbVolume, seg =>
+				seg.uuid === replacementSegUUID ? consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA : consts.diskSegmentStatuses.NORMAL,
+			targets[0]);
 
-			let pRaidReport = PRaidReport.fromPRaid(pRaid)
-				.setSegmentStatuses(segmentOrderedStatuses)
-				.incPRaidMajorVersion();
-
-			let msg = UpdatePRaidReportBuilder.fromTarget(targets[0])
-				.addPRaidReport(pRaidReport)
-				.build();
-
-			await new Promise(resolve => volumeModule.handlePRaidStatusMessage(msg, resolve));
 			dbVolume = await volumeCollection.findOne({ _id: volume.name });
-			assert(dbVolume);
 			cachedDBVolume = dbVolume;
-			assert.strictEqual(dbVolume.status, consts.volumeStatuses.DEGRADED);
-			assert.strictEqual(dbVolume.action, consts.volumeActions.REBUILDING);
-			let underRecoverySegment = dbVolume.chunks[0].pRaids[0].diskSegments.find(s => s.uuid == underRecoverySegUUID);
+			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.REBUILDING);
+			const underRecoverySegment = getAllVolumeSegments(dbVolume).find(s => s.uuid === replacementSegUUID);
 			assert.strictEqual(underRecoverySegment.status, consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA);
 		});
 
@@ -657,6 +584,29 @@ describe('Volume Statuses and Actions', () => {
 				.then(dbVolume => assert.strictEqual(dbVolume.status, consts.volumeStatuses.ONLINE));
 		});
 
+		it('Should derive markedForRebuild action from a replacement segment (even from a none baseline)', () => {
+			const replVol = new VolumeConcatenated('repl_action');
+
+			return replVol.save()
+				.then(result => assert(result.success, 'error: ' + errorUtils.getErrorChainString(result.err)))
+				.then(() => volumeCollection.updateOne({ _id: replVol._id }, {
+					$set: { 'chunks.0.pRaids.0.diskSegments.0.status': consts.diskSegmentStatuses.NORMAL }
+				}))
+				.then(() => new Promise((resolve, reject) =>
+					calculateAndUpdateVolumeStatus(replVol._id, null, err => err ? reject(err) : resolve())))
+				.then(() => volumeCollection.findOne({ _id: replVol._id }))
+				.then(dbVolume => assert.strictEqual(dbVolume.action, consts.volumeActions.NONE, 'baseline action should be none'))
+				// A replacement segment must drive the markedForRebuild action, not fall back to none
+				.then(() => volumeCollection.updateOne({ _id: replVol._id }, {
+					$set: { 'chunks.0.pRaids.0.diskSegments.0.status': consts.diskSegmentStatuses.REPLACEMENT }
+				}))
+				.then(() => new Promise((resolve, reject) =>
+					calculateAndUpdateVolumeStatus(replVol._id, null, err => err ? reject(err) : resolve())))
+				.then(() => volumeCollection.findOne({ _id: replVol._id }))
+				.then(dbVolume => assert.strictEqual(dbVolume.action, consts.volumeActions.MARKED_FOR_REBUILD,
+					'replacement segment should drive markedForRebuild action'));
+		});
+
 		it('Test status flow after evict', () => {
 			let dbVolume;
 			return Promise.resolve()
@@ -853,6 +803,32 @@ describe('Volume Statuses and Actions', () => {
 			return assertStatusAfterSegmentReport(
 				[consts.diskSegmentStatuses.DEAD, consts.diskSegmentStatuses.DEAD, consts.diskSegmentStatuses.DEAD],
 				consts.volumeStatuses.OFFLINE);
+		});
+	});
+
+	describe('#MarkedForRebuild accepts a direct normal report', function() {
+		let targets;
+
+		before(() => {
+			return setup.newSetup()
+				.then(() => targets = generateTargets(3))
+				.then(() => Promise.all(targets.map(t => t.save())));
+		});
+
+		async function bringRaid1ToMarkedForRebuildLocal(volumeName) {
+			return bringRaid1ToMarkedForRebuild({ volumeCollection, VolumeRAID1, volumeName, target: targets[0] });
+		}
+
+		it('accepts markedForRebuild -> normal in the full (deprecation) report path', async() => {
+			const volume = await bringRaid1ToMarkedForRebuildLocal('mfr_deprecation_path');
+			await assertMarkedForRebuildAcceptsDirectNormalReport(
+				() => volumeCollection.findOne({ _id: volume.name }), targets[0], { deprecationPath: true });
+		});
+
+		it('accepts markedForRebuild -> normal in the fast (no-deprecation) report path', async() => {
+			const volume = await bringRaid1ToMarkedForRebuildLocal('mfr_fast_path');
+			await assertMarkedForRebuildAcceptsDirectNormalReport(
+				() => volumeCollection.findOne({ _id: volume.name }), targets[0], { deprecationPath: false });
 		});
 	});
 });

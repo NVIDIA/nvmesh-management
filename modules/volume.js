@@ -1437,9 +1437,6 @@ scope.calculateAndUpdateVolumeStatus = function(volumeID, volume, callback) {
 
 			var $unset = {};
 
-			var isTransitionFromMarkedForRebuildToUnderRecovery = (status, pendingStatus) =>
-				status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD && pendingStatus === consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA;
-
 			function processPendingStatusesOnVolume(volume) {
 				volume.chunks.forEach((chunk, chunkIdx)=> {
 					chunk.pRaids.forEach((pRaid, pRaidIdx)=> {
@@ -1465,8 +1462,7 @@ scope.calculateAndUpdateVolumeStatus = function(volumeID, volume, callback) {
 
 								var segmentUpdatePath = 'chunks.$[].pRaids.$[].diskSegments.$[' + filterName + ']';
 
-								if (!isPersistentSegmentStatus(segment.status) ||
-									isTransitionFromMarkedForRebuildToUnderRecovery(segment.status, segment.pending.status))
+								if (!isPersistentSegmentStatus(segment.status))
 									$set[segmentUpdatePath + '.status'] = segment.pending.status;
 
 								$set[segmentUpdatePath + '.isDead'] = segment.pending.isDead;
@@ -1719,8 +1715,8 @@ function getPraidAction(effectiveSegments) {
 		pRaidAction = consts.volumeActions.EXTENDING;
 	else if (initializingSegments)
 		pRaidAction = consts.volumeActions.INITIALIZING;
-	else if (segmentsGroupedByStatus[consts.diskSegmentStatuses.MARKED_FOR_REBUILD] > 0)
-	// TODO: (PRAID_STATUS) - verify
+	else if (segmentsGroupedByStatus[consts.diskSegmentStatuses.MARKED_FOR_REBUILD] > 0 ||
+		segmentsGroupedByStatus[consts.diskSegmentStatuses.REPLACEMENT] > 0)
 		pRaidAction = consts.volumeActions.MARKED_FOR_REBUILD;
 	else if (!hasDeadDataSegment && segmentsGroupedByStatus[consts.diskSegmentStatuses.BOOTING] > 0)
 		pRaidAction = consts.volumeActions.BOOTING;
@@ -1991,11 +1987,8 @@ scope.updatePRaidDiskSegments = function(volume, pRaidToUpdate, user, lockedZone
 			dbPRaid.diskSegments = dbPRaid.diskSegments.filter((segment) => { return segment._id !== reportSegment.segmentID; });
 			shouldIncVolumeVersion = true;
 		} else if (reportSegment.status != consts.diskSegmentStatuses.DEAD) {
-			const isTransitionFromMarkedForRebuildToUnderRecovery = (status, pendingStatus) =>
-				status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD && pendingStatus === consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA;
-				// update segment status with status from reported segment
-			if (!isPersistentSegmentStatus(dbSegment.status) ||
-					isTransitionFromMarkedForRebuildToUnderRecovery(dbSegment.status, reportSegment.status))
+			// update segment status with status from reported segment
+			if (!isPersistentSegmentStatus(dbSegment.status))
 				dbSegment.status = reportSegment.status;
 
 			zeroDirtyBitsUponSegmentStatus(dbSegment, consts.diskSegmentStatuses.NORMAL);
@@ -3043,7 +3036,6 @@ scope.fetchVolumeByID = function(id, cb) {
 const isPersistentSegmentStatus = (status) => {
 	const persistentSegmentStatuses = [
 		consts.diskSegmentStatuses.REMAP,
-		consts.diskSegmentStatuses.MARKED_FOR_REBUILD,
 		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD,
 		consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING,
 	];

@@ -18,7 +18,9 @@ const {
 	reportAllSegmentsOnline, getAllVolumeSegments, getSegmentsByStatus,
 	sendPRaidReportWithStatuses, sendDeprecationReport,
 	assertVolumeStatusAndAction, assertSegmentCount, assertHasSegments,
-	assertFakeDriveSegmentsOnWire, assertUniqueSegmentUUIDsPerPRaid
+	assertFakeDriveSegmentsOnWire, assertUniqueSegmentUUIDsPerPRaid,
+	completeReinstateFormatToMarkedForRebuild,
+	assertMarkedForRebuildAcceptsDirectNormalReport
 } = require('./testUtils/volumeUtils.js');
 const {
 	evictDisk, reinstateDisks, evictDiskAndSyncTarget, getDiskFromDB, syncTargetDiskFromDB, findTargetWithDisk
@@ -96,6 +98,7 @@ describe('Reinstate Disks', () => {
 		let evictedDiskUUID;
 		let originalVersionBeforeReinstate;
 		let expectedReinstateSegmentCount;
+		let replacementSegUUIDs = [];
 
 		before(async() => {
 			const env = await setupReinstateEnvironment('reinstate-e2e-v1');
@@ -187,18 +190,12 @@ describe('Reinstate Disks', () => {
 		it('Should replace pending segments with markedForRebuild after format completes', async function() {
 			this.timeout(10000);
 
-			await syncTargetDiskFromDB(targets[0], evictedDiskID, true);
-			targets[0].messageSequence += 1;
-			await targets[0].sendReport();
-
-			await pollUntil(async() => {
-				const vol = await Volume.getFromDB(volume.name);
-				const segs = getAllVolumeSegments(vol);
-				return !segs.some(s => s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
-					&& segs.some(s => s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD);
+			const dbVolume = await completeReinstateFormatToMarkedForRebuild({
+				target: targets[0],
+				evictedDiskID,
+				getVolume: () => Volume.getFromDB(volume.name),
+				deprecateOldSegments: false
 			});
-
-			const dbVolume = await Volume.getFromDB(volume.name);
 			const segsAfterResume = getAllVolumeSegments(dbVolume);
 
 			assertSegmentCount(segsAfterResume, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, 0);
@@ -207,6 +204,7 @@ describe('Reinstate Disks', () => {
 			getSegmentsByStatus(segsAfterResume, consts.diskSegmentStatuses.MARKED_FOR_REBUILD).forEach(seg => {
 				assert.notStrictEqual(seg.diskUUID, evictedDiskUUID, 'Should have new post-format diskUUID');
 			});
+			replacementSegUUIDs = getSegmentsByStatus(segsAfterResume, consts.diskSegmentStatuses.MARKED_FOR_REBUILD).map(s => s.uuid);
 
 			const disk = await getDiskFromDB(evictedDiskID);
 			assert.strictEqual(disk.isOutOfService, false, 'Disk should not be isOutOfService after format');
@@ -225,23 +223,26 @@ describe('Reinstate Disks', () => {
 			let dbVolume = await Volume.getFromDB(volume.name);
 
 			await sendPRaidReportWithStatuses(dbVolume, seg => {
-				if (seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD) return consts.diskSegmentStatuses.REPLACEMENT;
+				if (replacementSegUUIDs.includes(seg.uuid)) return consts.diskSegmentStatuses.REPLACEMENT;
 				if (seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD) return consts.diskSegmentStatuses.DEPRECATED;
 				return seg.status;
 			}, targets[0]);
 
 			dbVolume = await Volume.getFromDB(volume.name);
 			assertSegmentCount(getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD, 0);
+			replacementSegUUIDs.forEach(uuid => {
+				const seg = getAllVolumeSegments(dbVolume).find(s => s.uuid === uuid);
+				assert.strictEqual(seg.status, consts.diskSegmentStatuses.REPLACEMENT, 'replacement status should be accepted');
+			});
 			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.MARKED_FOR_REBUILD);
 		});
 
 		it('Should transition to rebuilding after TOMA reports under_recovery', async() => {
 			let dbVolume = await Volume.getFromDB(volume.name);
 
-			await sendPRaidReportWithStatuses(dbVolume, seg => {
-				if (seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD) return consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA;
-				return consts.diskSegmentStatuses.NORMAL;
-			}, targets[0]);
+			await sendPRaidReportWithStatuses(dbVolume, seg =>
+				replacementSegUUIDs.includes(seg.uuid) ? consts.diskSegmentStatuses.UNDER_RECOVERY_TOMA : consts.diskSegmentStatuses.NORMAL,
+			targets[0]);
 
 			dbVolume = await Volume.getFromDB(volume.name);
 			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.REBUILDING);
@@ -853,6 +854,42 @@ describe('Reinstate Disks', () => {
 				'Volume should accumulate pending segments from both disks');
 
 			assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.REBUILD_REQUIRED);
+		});
+	});
+
+	describe('#Reinstated segment accepts a direct normal report', function() {
+		let targets;
+		let volume;
+		let evictedDiskID;
+		let evictedDiskUUID;
+
+		before(async() => {
+			const env = await setupReinstateEnvironment('rst-direct-normal');
+			targets = env.targets;
+			volume = env.volume;
+			evictedDiskID = env.firstSegment.diskID;
+			evictedDiskUUID = env.firstSegment.diskUUID;
+		});
+
+		it('Should return to online-none when TOMA reports normal directly on the reinstated segment', async function() {
+			this.timeout(10000);
+
+			await reinstateDisks([{ diskID: evictedDiskID, uuid: evictedDiskUUID }]);
+
+			await completeReinstateFormatToMarkedForRebuild({
+				target: targets[0],
+				evictedDiskID,
+				getVolume: () => Volume.getFromDB(volume.name),
+				assertFormatCommand: true
+			});
+
+			await assertMarkedForRebuildAcceptsDirectNormalReport(() => Volume.getFromDB(volume.name), targets[0], { deprecationPath: true });
+
+			const dbVolume = await Volume.getFromDB(volume.name);
+			const finalSegs = getAllVolumeSegments(dbVolume);
+			assertSegmentCount(finalSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD, 0);
+			assertSegmentCount(finalSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING, 0);
+			assertSegmentCount(finalSegs, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD, 0);
 		});
 	});
 

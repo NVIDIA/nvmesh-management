@@ -8,6 +8,9 @@ const consts = require('../../consts.js');
 const assert = require('assert');
 const { PRaidReport, SegmentReport, UpdatePRaidReportBuilder } = require('../kafkaMessages/fromTOMA/tomaMessageBuilders.js');
 const volumeModule = require('../../modules/volume.js');
+const { startVolumeRebuildByIdsAndUUIDs } = require('../../utils.js');
+const { syncTargetDiskFromDB, evictDisk } = require('./diskUtils.js');
+const { pollUntil } = require('./common.js');
 const utils = require('../../utils.js');
 
 exports.validateAllocatedBlocksAgainstCapacity = function(requestedCapacity, blocks, volume) {
@@ -153,6 +156,104 @@ exports.assertUniqueSegmentUUIDsPerPRaid = function(payload, context = '') {
 		assert.strictEqual(new Set(ids).size, ids.length,
 			`${context}TOMA must receive unique segmentIDs per pRaid; got duplicates: ${ids.join(', ')}`);
 	}));
+};
+
+exports.startVolumeRebuildByIdsAndUUIDsAsync = function(volumeRef, user) {
+	return new Promise((resolve, reject) => {
+		startVolumeRebuildByIdsAndUUIDs([volumeRef], user, logs => {
+			const response = logs[0].createApiResponse();
+			if (!response.success)
+				return reject(response);
+
+			resolve(logs);
+		});
+	});
+};
+
+exports.reportReplacementNormalAndDeprecateOld = function(dbVolume, target) {
+	return exports.sendPRaidReportWithStatuses(dbVolume, seg =>
+		seg.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD
+			? consts.diskSegmentStatuses.DEPRECATED
+			: consts.diskSegmentStatuses.NORMAL,
+	target);
+};
+
+exports.assertMarkedForRebuildAcceptsDirectNormalReport = async function(getVolume, target, { deprecationPath }) {
+	let dbVolume = await getVolume();
+
+	if (!deprecationPath) {
+		const oldSegments = exports.getSegmentsByStatus(exports.getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+		await exports.sendDeprecationReport(dbVolume, oldSegments, target);
+		dbVolume = await getVolume();
+		exports.assertSegmentCount(exports.getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD, 0);
+	}
+
+	const replacementSeg = exports.getSegmentsByStatus(exports.getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD)[0];
+	assert(replacementSeg, 'Expected a markedForRebuild replacement segment');
+
+	if (deprecationPath)
+		await exports.reportReplacementNormalAndDeprecateOld(dbVolume, target);
+	else
+		await exports.sendPRaidReportWithStatuses(dbVolume, () => consts.diskSegmentStatuses.NORMAL, target);
+
+	dbVolume = await getVolume();
+	const committed = exports.getAllVolumeSegments(dbVolume).find(s => s.uuid === replacementSeg.uuid);
+	assert.strictEqual(committed.status, consts.diskSegmentStatuses.NORMAL, 'replacement must accept the direct normal report');
+	exports.assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.ONLINE, consts.volumeActions.NONE);
+	return dbVolume;
+};
+
+exports.completeReinstateFormatToMarkedForRebuild = async function({
+	target, evictedDiskID, getVolume, deprecateOldSegments = true, assertFormatCommand = false
+}) {
+	let dbVolume = await getVolume();
+
+	if (deprecateOldSegments) {
+		const oldSegments = exports.getSegmentsByStatus(exports.getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD);
+		await exports.sendDeprecationReport(dbVolume, oldSegments, target);
+	}
+
+	if (assertFormatCommand) {
+		const formatMsg = await target.readMessageFromCommandsTopic();
+		assert.strictEqual(formatMsg?.type, consts.kafkaMessageTypes.ManagementToTOMA.formatDrive, 'Format should auto-trigger after deprecation');
+	}
+
+	await syncTargetDiskFromDB(target, evictedDiskID, true);
+	target.messageSequence += 1;
+	await target.sendReport();
+
+	await pollUntil(async() => {
+		const vol = await getVolume();
+		const segs = exports.getAllVolumeSegments(vol);
+		return !segs.some(s => s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD_PENDING)
+			&& segs.some(s => s.status === consts.diskSegmentStatuses.MARKED_FOR_REBUILD);
+	});
+
+	dbVolume = await getVolume();
+	exports.assertVolumeStatusAndAction(dbVolume, consts.volumeStatuses.DEGRADED, consts.volumeActions.MARKED_FOR_REBUILD);
+	return dbVolume;
+};
+
+exports.bringRaid1ToMarkedForRebuild = async function({ volumeCollection, VolumeRAID1, volumeName, target }) {
+	const volume = new VolumeRAID1(volumeName);
+	const result = await volume.save();
+	assert(result.success, 'Failed to create volume');
+
+	let dbVolume = await volumeCollection.findOne({ _id: volume.name });
+	volume.uuid = dbVolume.uuid;
+
+	await exports.reportAllSegmentsOnline(dbVolume, target);
+
+	dbVolume = await volumeCollection.findOne({ _id: volume.name });
+	const seg = dbVolume.chunks[0].pRaids[0].diskSegments[0];
+	await evictDisk({ diskID: seg.diskID, uuid: seg.diskUUID }, false, volume.createdBy);
+	await exports.startVolumeRebuildByIdsAndUUIDsAsync({ _id: volume._id, uuid: volume.uuid }, volume.createdBy);
+
+	dbVolume = await volumeCollection.findOne({ _id: volume.name });
+	assert.strictEqual(dbVolume.action, consts.volumeActions.MARKED_FOR_REBUILD, 'Expected volume action markedForRebuild after rebuild start');
+	assert(exports.getSegmentsByStatus(exports.getAllVolumeSegments(dbVolume), consts.diskSegmentStatuses.MARKED_FOR_REBUILD).length,
+		'Expected a markedForRebuild replacement segment after rebuild start');
+	return volume;
 };
 
 exports.sendPRaidUpdate = function(pRaidReports, leader) {

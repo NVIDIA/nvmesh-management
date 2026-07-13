@@ -11,9 +11,9 @@ const { evictDiskByDiskIDsAndUUIDs, reinstateDrives } = require('../../modules/d
 const ADMIN_USER = consts.ADMIN_USER;
 const DISK_SYNC_PROPERTIES = ['uuid', 'reappearingCounter', 'formatRequestCounter', 'activeFormatRequestCounter', 'version', 'isOutOfService', 'status'];
 
-exports.evictDisk = function(disk, isAutoEvict) {
+exports.evictDisk = function(disk, isAutoEvict = false, user = ADMIN_USER) {
 	return new Promise((resolve, reject) => {
-		evictDiskByDiskIDsAndUUIDs([disk], ADMIN_USER, isAutoEvict, null, null, null, logs => {
+		evictDiskByDiskIDsAndUUIDs([disk], user, isAutoEvict, null, null, null, logs => {
 			const response = logs[0].createApiResponse();
 			if (response.error)
 				return reject(new Error(`Evict failed: ${JSON.stringify(response.error)}`));
