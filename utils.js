@@ -4385,7 +4385,7 @@ scope.commitReclaimRemovals = function(removals, cb) {
 		serverCollection.updateOne(
 			{ 'disks.diskID': seg.diskID },
 			{
-				$pull: { 'disks.$.diskSegments': { _id: seg._id } },
+				$pull: { 'disks.$.diskSegments': { uuid: seg.uuid } },
 				$inc: { 'disks.$.availableBlocks': blocks, 'disks.$.version': 1 },
 				$set: { 'disks.$.largestSegmentAvailable': { blocks: 0, lbs: 0, lbe: 0 } }
 			},
@@ -4401,7 +4401,7 @@ scope.commitReclaimRemovals = function(removals, cb) {
 
 // Commits pending-replace segments: atomically swaps original with replacements and updates
 // reservedUUID on derived segments in a single pipeline update per replacement.
-// `replacementItems` is an array of { diskID, originalDiskSegmentID, replacements: [...], freedBlocks }.
+// `replacementItems` is an array of { diskID, originalDiskSegmentUUID, replacements: [...], freedBlocks }.
 scope.commitReclaimReplacements = function(replacementItems, callback) {
 	const db = app.get('db');
 	const serverCollection = db.collection('server');
@@ -4438,7 +4438,7 @@ scope.commitReclaimReplacements = function(replacementItems, callback) {
 														{ $map: {
 															input: { $filter: {
 																input: '$$disk.diskSegments',
-																cond: { $ne: ['$$this._id', item.originalDiskSegmentID] }
+																cond: { $ne: ['$$this.uuid', item.originalDiskSegmentUUID] }
 															} },
 															as: 'seg',
 															in: {
@@ -4806,14 +4806,14 @@ scope.shrinkReservedSpaceVolume = function(vpgId, targetCapacityGB, cb) {
 		// No segments are removed/added, no availableBlocks changes. If management crashes here,
 		// sanity rolls back by simply unsetting the flags.
 		function markPendingOnDisks(callback) {
-			function setPendingReclaimOnSegment(diskID, segmentId, pendingReclaim, cb) {
+			function setPendingReclaimOnSegment(diskID, segmentUUID, pendingReclaim, cb) {
 				serverCollection.updateOne(
-					{ 'disks.diskID': diskID, 'disks.diskSegments._id': segmentId },
+					{ 'disks.diskID': diskID, 'disks.diskSegments.uuid': segmentUUID },
 					{ $set: { 'disks.$[disk].diskSegments.$[seg].pendingReclaim': pendingReclaim } },
 					{
 						arrayFilters: [
 							{ 'disk.diskID': diskID },
-							{ 'seg._id': segmentId }
+							{ 'seg.uuid': segmentUUID }
 						]
 					},
 					(err) => {
@@ -4828,7 +4828,7 @@ scope.shrinkReservedSpaceVolume = function(vpgId, targetCapacityGB, cb) {
 			async.series([
 				function markRemovals(cb) {
 					async.eachSeries(segmentsToRemove, (diskSegment, nextSegment) => {
-						setPendingReclaimOnSegment(diskSegment.diskID, diskSegment._id, {
+						setPendingReclaimOnSegment(diskSegment.diskID, diskSegment.uuid, {
 							vpgId,
 							type: consts.segmentPendingReclaimTypes.REMOVAL
 						}, nextSegment);
@@ -4836,7 +4836,7 @@ scope.shrinkReservedSpaceVolume = function(vpgId, targetCapacityGB, cb) {
 				},
 				function markReplacements(cb) {
 					async.eachSeries(segmentReplacements, (replacement, nextSegment) => {
-						setPendingReclaimOnSegment(replacement.original.diskID, replacement.original._id, {
+						setPendingReclaimOnSegment(replacement.original.diskID, replacement.original.uuid, {
 							vpgId,
 							type: consts.segmentPendingReclaimTypes.REPLACE,
 							replacements: replacement.replacements,
@@ -4886,7 +4886,7 @@ scope.shrinkReservedSpaceVolume = function(vpgId, targetCapacityGB, cb) {
 
 			const replacementItems = segmentReplacements.map(segmentReplacement => ({
 				diskID: segmentReplacement.original.diskID,
-				originalDiskSegmentID: segmentReplacement.original._id,
+				originalDiskSegmentUUID: segmentReplacement.original.uuid,
 				replacements: segmentReplacement.replacements,
 				freedBlocks: segmentReplacement.freedBlocks
 			}));

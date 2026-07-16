@@ -2769,7 +2769,7 @@ scope.checkAndRecoverReclaimingReservedVolumes = function(cb) {
 					.filter(r => r.diskSegment.pendingReclaim.type === consts.segmentPendingReclaimTypes.REPLACE)
 					.map(r => ({
 						diskID: r.diskID,
-						originalDiskSegmentID: r.diskSegment._id,
+						originalDiskSegmentUUID: r.diskSegment.uuid,
 						replacements: r.diskSegment.pendingReclaim.replacements,
 						freedBlocks: r.diskSegment.pendingReclaim.freedBlocks
 					}));
@@ -2808,7 +2808,7 @@ scope.checkAndRecoverReclaimingReservedVolumes = function(cb) {
 					{ $unwind: '$disks' },
 					{ $unwind: '$disks.diskSegments' },
 					{ $match: { 'disks.diskSegments.pendingReclaim.vpgId': vpgId } },
-					{ $project: { diskID: '$disks.diskID', segmentId: '$disks.diskSegments._id' } }
+					{ $project: { diskID: '$disks.diskID', segmentUUID: '$disks.diskSegments.uuid' } }
 				]).toArray((err, diskSegments) => {
 					if (err)
 						return cb(new MongoError(err).log());
@@ -2817,7 +2817,7 @@ scope.checkAndRecoverReclaimingReservedVolumes = function(cb) {
 						serverCollection.updateOne(
 							{ 'disks.diskID': diskSegment.diskID },
 							{ $unset: { 'disks.$.diskSegments.$[seg].pendingReclaim': 1 } },
-							{ arrayFilters: [{ 'seg._id': diskSegment.segmentId }] },
+							{ arrayFilters: [{ 'seg.uuid': diskSegment.segmentUUID }] },
 							(err) => {
 								if (err)
 									new MongoError(err).log();
