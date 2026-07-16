@@ -4265,7 +4265,7 @@ scope.forceDeleteDiskSegments = function(diskSegmentsToRemove, cb) {
 				if (delta) delta++;
 
 				serverCollection.updateMany({ 'disks.diskID': ds.diskID }, {
-					$pull: { 'disks.$.diskSegments': { _id: ds._id } },
+					$pull: { 'disks.$.diskSegments': { uuid: ds.uuid } },
 					$inc: {
 						'disks.$.availableBlocks': (ds.fromReserved || ds.wasFromReserved) ? 0 : delta,
 						'disks.$.version': 1
