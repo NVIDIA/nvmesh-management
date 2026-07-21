@@ -1,0 +1,25 @@
+# .security-triage.yaml
+# Persists security-triage decisions and exposure classifications across runs of
+# the security skills. Commit this file so decisions are shared across the team.
+version: "1.0"
+project: "NVMesh Management"
+last_updated: "2026-07-19T00:00:00Z"
+
+repository_exposure_classification:
+  visibility: "Public"
+  basis: "Apache-2.0 licensed; published as an open-source mirror on a public host (github.com/NVIDIA/nvmesh-management); SECURITY.md written to public-safe detail"
+  confirmed_by: "Ido Yehiam"
+  date: "2026-07-19"
+
+service_exposure_classification:
+  tier: "External / Regulated"
+  confidence: "high"
+  basis: "externally distributed, customer-deployed enterprise storage control-plane; authenticates users; handles credentials, encryption keys, and TLS material; production security boundary for a storage cluster"
+  confirmed_by: "Ido Yehiam"
+  date: "2026-07-19"
+
+false_positives: []
+
+accepted_risks: []
+
+suppressed_cves: []
