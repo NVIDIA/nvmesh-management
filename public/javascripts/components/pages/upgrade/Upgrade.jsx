@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React, consts, moment */
 
 import { events, SocketService } from '../../services/socket.service.js';
@@ -72,20 +67,11 @@ const Upgrade = () => {
 			reloadUpgrade();
 
 			// update upgrade step status in table
-			tableRef.current?.updateRow(payload._id, {
-				status: payload.status,
-				response: payload.response,
-				lastExecTryError: payload.lastExecTryError
-			});
+			tableRef.current?.updateRow(payload._id, { status: payload.status, response: payload.response });
 
 			const currentStep = upgradeStepRef.current;
 			if (currentStep?._id === payload._id) {
-				setUpgradeStep(prev => ({
-					...prev,
-					status: payload.status,
-					response: payload.response,
-					lastExecTryError: payload.lastExecTryError
-				}));
+				setUpgradeStep(prev => ({ ...prev, status: payload.status, response: payload.response }));
 			}
 		});
 	};
@@ -290,8 +276,8 @@ const UpgradeDetails = ({ upgrade }) => (
 					</tr>
 					<tr>
 						<th>Skip Machines on Failure</th>
-						<td>{upgrade.skipMachinesOnFailure
-							? <i className="fa fa-check text-success"></i>
+						<td>{upgrade.skipMachinesOnFailure 
+							? <i className="fa fa-check text-success"></i> 
 							: <i className="fa fa-times text-danger"></i>}
 						</td>
 					</tr>

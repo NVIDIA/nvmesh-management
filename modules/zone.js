@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -669,8 +673,7 @@ scope.getZonesByVolumes = function(volumes) {
 };
 
 scope.enforceLockedZoneSetEqualtyOrExit = (alreadyLockedZones, wishfulZonesToLock, errorLogSystemMessage) => {
-	if ((alreadyLockedZones && alreadyLockedZones.size !== wishfulZonesToLock.size)
-		|| ![...wishfulZonesToLock].every((zone) => alreadyLockedZones.has(zone))) {
+	if (![...wishfulZonesToLock].every((zone) => alreadyLockedZones.has(zone))) {
 		// we have unmatched locked zones (not all of the zones were locked) - bailing out
 		errorLogSystemMessage.log();
 		process.exit(1);

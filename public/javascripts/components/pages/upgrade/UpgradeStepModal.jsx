@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React, consts */
 
 import Modal from '../../core/Modal.jsx';
@@ -46,9 +41,9 @@ const UpgradeStep = ({
 								<div className="flex-row">
 									<UpgradeStepStatus status={upgradeStep.status}/>
 									{upgradeStep.status === consts.upgradeStepStatuses.FAILED &&
-										<button
-											id="markAsCompletedButton"
-											className="btn btn-primary"
+										<button 
+											id="markAsCompletedButton" 
+											className="btn btn-primary" 
 											onClick={() => UpgradeStepsService.markAsCompleted(upgradeStep._id)}
 											disabled={upgradeStep.status !== consts.upgradeStepStatuses.FAILED}>
 											Mark as Completed
@@ -57,17 +52,6 @@ const UpgradeStep = ({
 								</div>
 							</td>
 						</tr>
-						{upgradeStep.status === consts.upgradeStepStatuses.PENDING && upgradeStep.lastExecTryError && (
-							<tr>
-								<th>Pending Reason:</th>
-								<td>
-									<div className="alert alert-warning pending-reason-alert">
-										<i className="fa fa-exclamation-triangle"></i>&nbsp;
-										{upgradeStep.lastExecTryError}
-									</div>
-								</td>
-							</tr>
-						)}
 						<tr>
 							<th>Timeout (in seconds):</th>
 							<td>{upgradeStep.command?.timeout || 'N/A'}</td>
@@ -115,14 +99,14 @@ const UpgradeStep = ({
 
 				{upgradeStep.response && <div className="section">
 					<h1>Response</h1>
-
+					
 					{upgradeStep.response.verificationCommand?.exitCode === 0 &&
 						<>
 							<p><strong>Verification Command verified successfully</strong></p>
 						</>
 					}
 
-					{upgradeStep.response.command?.isTimeout &&
+					{upgradeStep.response.command?.isTimeout && 
 					<p><strong className="text-danger">
 						<i className="fa fa-clock-o"></i> Command timed out after {upgradeStep.command?.timeout} seconds
 					</strong></p>}

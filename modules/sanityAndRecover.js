@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -167,6 +171,7 @@ scope.run = cb => {
 	//
 	// Examples where it's used: `checkAndRemovePendingVolumes`, `checkAndRemoveToBeExtendedVolumes`, `checkPendingAttachments`, `checkForIncompleteSnapshots`
 	async.series([
+		checkForUnusedTopics,
 		scope.checkAndRemovePendingUpgrades,
 		scope.checkAndRemovePendingVolumes,
 		scope.checkAndRemoveToBeExtendedVolumes,
@@ -190,9 +195,8 @@ scope.run = cb => {
 		scope.checkLastReservationVersionSentToTOMA,
 		scope.checkLastEmulationAttachmentsVersionSentToClient,
 		scope.checkAndResumeStuckUpgrades,
+		cleanupUnusedTopics,
 		dbUpgradeModule.upgradeDBIfNeeded,
-		scope.addAvailableSpaceZoneRankingCriteriaToDB,
-		scope.verifySegmentStatusAfterEvict
 	], err => {
 		if (err)
 			logger.sysDEBUG(`Sanity and Recover encountered an error: ${err}`);
@@ -203,6 +207,178 @@ scope.run = cb => {
 		cb();
 	});
 };
+
+let checkForUnusedTopicsTime, topicsToOffsetsInfoFound;
+
+function checkForUnusedTopics(callback) {
+	let unusedTopicsFound;
+	let skip;
+
+	async.series([
+		cb => {
+			const db = app.get('db');
+			const upgradeCollection = db.collection('upgrade');
+
+			upgradeCollection.findOne({ status: consts.upgradeStatuses.IN_PROGRESS }, { _id: 1 }, (err, upgrade) => {
+				if (err)
+					return cb(new MongoError(err));
+
+				if (upgrade) {
+					logger.sysDEBUG(`Upgrade ${upgrade._id} is in progress, skipping checkForUnusedTopics`);
+					skip = true;
+					return cb();
+				}
+
+				cb();
+			});
+		},
+		cb => {
+			if (skip)
+				return cb();
+
+			kafkaModule.getUnusedTopics((err, unusedTopics) => {
+				if (err)
+					return cb(err);
+
+				if (!unusedTopics.length) {
+					logger.sysDEBUG('No unused topics found, skipping checkForUnusedTopics');
+					skip = true;
+					return cb();
+				}
+
+				unusedTopicsFound = unusedTopics;
+				cb();
+			});
+		},
+		cb => {
+			if (skip)
+				return cb();
+
+			kafkaModule.getOffsetsInformationByTopics(unusedTopicsFound, (err, offsetsInfo) => {
+				if (err)
+					return cb(err);
+
+				if (!Object.keys(offsetsInfo).length) {
+					logger.sysDEBUG('No offsets info found, skipping checkForUnusedTopics');
+					skip = true;
+					return cb();
+				}
+
+				logger.sysDEBUG(`Found ${Object.keys(offsetsInfo).length} potential topics to delete`);
+				topicsToOffsetsInfoFound = offsetsInfo;
+				checkForUnusedTopicsTime = new Date();
+				cb();
+			});
+		}
+	], err => {
+		if (err)
+			new SystemMessage(systemMessages.CHECK_FOR_UNUSED_TOPICS_FAILED).addInfo(Entities.Error, err).log();
+
+		callback();
+	});
+}
+
+function cleanupUnusedTopics(callback) {
+	let unusedTopicsFound;
+	let skip;
+
+	async.series([
+		cb => {
+			if (!checkForUnusedTopicsTime) {
+				logger.sysDEBUG('checkForUnusedTopics was skipped, skipping cleanupUnusedTopics');
+				skip = true;
+				return cb();
+			}
+
+			async.whilst(
+				whilstCb => {
+					const timeDiff = new Date() - checkForUnusedTopicsTime;
+					const shouldWait = timeDiff < consts.SECONDS_TO_WAIT_BETWEEN_CHECK_AND_CLEANUP_UNUSED_TOPICS * 1000;
+					logger.sysDEBUG(`checkForUnusedTopics was called ${timeDiff / 1000} seconds ago, ${shouldWait ? 'waiting' : 'starting'} cleanup`);
+					whilstCb(null, shouldWait);
+				},
+				whilstCb => setTimeout(() => whilstCb(null, true), consts.SECONDS_INTERVAL_BETWEEN_CLEANUP_UNUSED_TOPICS_TIME_PASSED * 1000),
+				() => {
+					checkForUnusedTopicsTime = null;
+					cb();
+				}
+			);
+		},
+		cb => {
+			if (skip)
+				return cb();
+
+			kafkaModule.getUnusedTopics((err, unusedTopics) => {
+				if (err)
+					return cb(err);
+
+				if (!unusedTopics.length) {
+					logger.sysDEBUG('No unused topics found, skipping cleanupUnusedTopics');
+					skip = true;
+					return cb();
+				}
+
+				unusedTopicsFound = unusedTopics;
+				cb();
+			});
+		},
+		cb => {
+			if (skip)
+				return cb();
+
+			kafkaModule.getOffsetsInformationByTopics(unusedTopicsFound, (err, offsetsInfo) => {
+				if (err)
+					return cb(err);
+
+				if (!Object.keys(offsetsInfo).length) {
+					logger.sysDEBUG('No offsets info found, skipping cleanupUnusedTopics');
+					skip = true;
+					return cb();
+				}
+
+				// find all topics where offsets did not change since last check
+				const topicsToDelete = Object.keys(topicsToOffsetsInfoFound)
+					.filter(topic => {
+						const topicPartitions = Object.keys(offsetsInfo[topic] || {});
+						if (!topicPartitions.length) {
+							logger.sysDEBUG(`${topic} was detected in checkForUnusedTopics but is missing or has no partitions during cleanupUnusedTopics`);
+							return false;
+						}
+
+						return topicPartitions.every(partition => topicsToOffsetsInfoFound[topic][partition] === offsetsInfo[topic][partition]);
+					});
+
+				if (!topicsToDelete.length) {
+					logger.sysDEBUG('No topics to delete, skipping cleanupUnusedTopics');
+					skip = true;
+					return cb();
+				}
+
+				kafkaModule.deleteTopics(topicsToDelete, err => {
+					if (err)
+						return cb(err);
+
+					const deletedUpstreamTopics = topicsToDelete.filter(kafkaModule.isUpstreamTopicByName);
+					if (deletedUpstreamTopics.length) {
+						const ids = deletedUpstreamTopics
+							.filter(topic => topic.includes(consts.topicPrefix.ZONE)) // default/management topics don't require an ID
+							.map(topic => events.getZoneID(topic.slice(consts.topicPrefix.ZONE.length, topic.indexOf('.'))));
+
+						events.emitEvent(ids, objectNotifier.events.removedUpstreamTopicEvent, { topics: deletedUpstreamTopics });
+					}
+
+					cb();
+				});
+			});
+		}
+	], err => {
+		if (err)
+			new SystemMessage(systemMessages.CLEANUP_UNUSED_TOPICS_FAILED).addInfo(Entities.Error, err).log();
+
+		callback();
+	});
+}
+
 
 function getDeletedVolumesWithExistingDiskSegmentsPipeline(segmentUUIDS) {
 	return [
@@ -706,7 +882,7 @@ function getMongoTimeoutQuery() {
 
 /*
 This function determines whether an entity was:
-1. Created by the current management in a previous boot or by another management in previous boot.
+1. Created by the current management in a previous boot.
 2. Created by a now inactive management.
 */
 function categorizeStaleEntities(entities, cb, getHandledBy = entity => entity.handledBy) {
@@ -720,17 +896,14 @@ function categorizeStaleEntities(entities, cb, getHandledBy = entity => entity.h
 			handledBy.managementId === app.get('managementId') &&
 			handledBy.bootVersion < app.get('bootVersion');
 
-		const isCreatedByOtherDeadMgmt = handledBy =>
+		const isCreatedByDeadMgmt = handledBy =>
 			managementsState[handledBy.managementId] === undefined ||
 			managementsState[handledBy.managementId].status === consts.managementStatuses.DOWN &&
 			managementsState[handledBy.managementId].bootVersion === handledBy.bootVersion;
 
-		const isCreatedByOtherMgmtInPrevBoot = handledBy =>
-			managementsState[handledBy.managementId].bootVersion > handledBy.bootVersion;
 
 		let entitiesToDeleteCreatedByThisMgmt = [];
-		let entitiesToDeleteCreatedByOtherDeadMgmt = [];
-		let entitiesToDeleteCreatedByOtherMgmtInPrevBoot = [];
+		let entitiesToDeleteCreatedByOtherMgmt = [];
 
 		entities.forEach(entity => {
 			const handledBy = getHandledBy(entity);
@@ -740,58 +913,28 @@ function categorizeStaleEntities(entities, cb, getHandledBy = entity => entity.h
 					.addInfo(Entities.Content, entity).log();
 				return;
 			}
-
 			if (isCreatedByMeInPrevBoot(handledBy))
 				entitiesToDeleteCreatedByThisMgmt.push(entity);
-			else if (isCreatedByOtherDeadMgmt(handledBy))
-				entitiesToDeleteCreatedByOtherDeadMgmt.push(entity);
-			else if (isCreatedByOtherMgmtInPrevBoot(handledBy))
-				entitiesToDeleteCreatedByOtherMgmtInPrevBoot.push(entity);
+			else if (isCreatedByDeadMgmt(handledBy))
+				entitiesToDeleteCreatedByOtherMgmt.push(entity);
 		});
 
-		const entitiesToDeleteCreatedByMgmtInPrevBoot = [...entitiesToDeleteCreatedByThisMgmt, ...entitiesToDeleteCreatedByOtherMgmtInPrevBoot];
-		cb(entitiesToDeleteCreatedByMgmtInPrevBoot, entitiesToDeleteCreatedByOtherDeadMgmt);
+		cb(entitiesToDeleteCreatedByThisMgmt, entitiesToDeleteCreatedByOtherMgmt);
 	});
 }
 
 scope.checkAndRemovePendingUpgrades = function(cb) {
 	async.waterfall([
-		function getPendingUpgrades(callback) {
-			utils.loadCollection('upgrade', { filter: { isPending: true } }, callback);
+		(cb) => {
+			getStaleEntitiesQuery({ isPending: true }, 'handledBy', 'dateModified', cb);
 		},
-		function categorizeUpgrades(pendingUpgrades, callback) {
-			if (!pendingUpgrades.length)
-				return callback(null, [], []);
-
-			categorizeStaleEntities(pendingUpgrades,
-				(upgradesToDeleteCreatedByMgmtInPrevBoot, upgradesToDeleteCreatedByOtherDeadMgmt) => {
-					callback(null, upgradesToDeleteCreatedByMgmtInPrevBoot, upgradesToDeleteCreatedByOtherDeadMgmt);
-				});
+		(query, cb) => {
+			utils.loadCollection('upgrade', { filter: query }, cb);
 		},
-		function deletePendingUpgrades(
-			upgradesToDeleteCreatedByMgmtInPrevBoot,
-			upgradesToDeleteCreatedByOtherDeadMgmt,
-			callback
-		) {
-			const defaultQuery = upgrade => ({ _id: upgrade._id, isPending: true });
-			const query = getDeleteStaleEntitiesQuery(
-				defaultQuery,
-				upgradesToDeleteCreatedByMgmtInPrevBoot,
-				upgradesToDeleteCreatedByOtherDeadMgmt
-			);
+		(upgrades, cb) => {
+			if (!upgrades.length) return cb();
 
-			if (!query)
-				return callback();
-
-			utils.loadCollection('upgrade', { filter: query }, (err, upgrades) => {
-				if (err)
-					return callback(err);
-
-				if (!upgrades.length)
-					return callback();
-
-				upgradeModule.deleteUpgrades(upgrades, callback);
-			});
+			upgradeModule.deleteUpgrades(upgrades, cb);
 		}
 	], cb);
 };
@@ -802,41 +945,15 @@ scope.checkAndResumeStuckUpgrades = function(cb) {
 	const upgradeCollection = db.collection('upgrade');
 
 	async.waterfall([
-		function getRunningUpgradeConfVersions(callback) {
-			confVersionCollection.find({ runningUpgrade: { $exists: true } }).toArray((err, confVersions) => {
-				if (err)
-					return callback(new MongoError(err).log());
-
-				callback(null, confVersions);
-			});
+		(cb) => {
+			getStaleEntitiesQuery({ runningUpgrade: { $exists: true } }, 'runningUpgrade.createdBy', 'runningUpgrade.dateModified', cb);
 		},
-		function categorizeConfVersions(confVersions, callback) {
-			if (!confVersions.length)
-				return callback(null, [], []);
-
-			const getHandledBy = entity => entity.runningUpgrade.createdBy;
-			categorizeStaleEntities(confVersions,
-				(confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt) => {
-					callback(null, confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt);
-				},
-				getHandledBy);
-		},
-		function getStaleConfVersion(confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt, callback) {
-			const defaultQuery = confVersion => ({ _id: confVersion._id, runningUpgrade: { $exists: true } });
-			const getHandledBy = entity => entity.runningUpgrade.createdBy;
-			const query = getDeleteStaleEntitiesQuery(
-				defaultQuery, confVersionsCreatedByMgmtInPrevBoot, confVersionsCreatedByOtherDeadMgmt,
-				'runningUpgrade.createdBy', getHandledBy
-			);
-			
-			if (!query)
-				return callback(true);
-
+		(query, cb) => {
 			confVersionCollection.findOne(query, (err, confVersion) => {
 				if (err)
-					return callback(new MongoError(err).log());
+					err = new MongoError(err).log();
 
-				callback(null, confVersion);
+				cb(err, confVersion);
 			});
 		},
 		(confVersionDoc, cb) => {
@@ -894,28 +1011,20 @@ scope.checkAndRemovePendingVolumes = function(cb) {
 				return callback(null, [], []);
 
 			categorizeStaleEntities(pendingVolumes,
-				(volumesToDeleteCreatedByMgmtInPrevBoot, volumesToDeleteCreatedByOtherDeadMgmt) => {
-					callback(null, volumesToDeleteCreatedByMgmtInPrevBoot, volumesToDeleteCreatedByOtherDeadMgmt);
+				(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt) => {
+					callback(null, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
 				});
 		},
-		function deletePendingVolumes(
-			volumesToDeleteCreatedByMgmtInPrevBoot,
-			volumesToDeleteCreatedByOtherDeadMgmt,
-			callback
-		) {
+		function deletePendingVolumes(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt, callback) {
+			if (!volumesToDeleteCreatedByThisMgmt.length && !volumesToDeleteCreatedByOtherMgmt.length)
+				return callback();
+
 			const defaultQuery = volume => ({
 				uuid: volume.uuid,
 				status: consts.volumeStatuses.PENDING
 			});
 
-			const query = getDeleteStaleEntitiesQuery(
-				defaultQuery,
-				volumesToDeleteCreatedByMgmtInPrevBoot,
-				volumesToDeleteCreatedByOtherDeadMgmt
-			);
-
-			if (!query)
-				return callback();
+			const query = getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
 
 			deleteVolumesByQuery(
 				query,
@@ -927,37 +1036,56 @@ scope.checkAndRemovePendingVolumes = function(cb) {
 	], err => cb(err));
 };
 
-function getDeleteStaleEntitiesQuery(
-	defaultQuery,
-	entitiesToDeleteCreatedByMgmtInPrevBoot,
-	entitiesToDeleteCreatedByOtherDeadMgmt,
-	handledByPath = 'handledBy',
-	getHandledBy = entity => entity.handledBy) {
-	if (!entitiesToDeleteCreatedByMgmtInPrevBoot.length && !entitiesToDeleteCreatedByOtherDeadMgmt.length)
-		return null;
+function getStaleEntitiesQuery(defaultQuery, handledByPath, dateModifiedPath, cb) {
+	const db = app.get('db');
+	const managementClusterCollection = db.collection('managementCluster');
 
-	const matchHandledBy = entity => {
-		const handledBy = getHandledBy(entity);
-		return {
-			[`${handledByPath}.managementId`]: handledBy.managementId,
-			[`${handledByPath}.bootVersion`]: handledBy.bootVersion
-		};
-	};
+	const handledBy = utils.getHandlingMgmtParams();
 
-	const queryForEntityCreatedByMgmtInPrevBoot = entity => ({
+	managementClusterCollection.find({}).toArray((err, managementCluster) => {
+		if (err)
+			return cb(new MongoError(err).log());
+
+		const managementsState = utils.getMgmtClusterState(managementCluster);
+
+		return cb(null, {
+			...defaultQuery,
+			$or: [
+				{
+					[dateModifiedPath]: getMongoTimeoutQuery().dateModified,
+					[`${handledByPath}.managementId`]: {
+						$in: Object.values(managementsState).filter(m => m.status === consts.managementStatuses.DOWN).map(m => m._id)
+					}
+				},
+				{
+					[`${handledByPath}.managementId`]: handledBy.managementId,
+					[`${handledByPath}.bootVersion`]: { $lt: handledBy.bootVersion }
+				}
+			]
+		});
+	});
+}
+
+function getDeleteStaleEntitiesQuery(defaultQuery, entitiesToDeleteCreatedByThisMgmt, entitiesToDeleteCreatedByOtherMgmt) {
+	const matchHandledBy = entity => ({
+		'handledBy.managementId': entity.handledBy.managementId,
+		'handledBy.bootVersion': entity.handledBy.bootVersion
+	});
+
+	const queryForEntityCreatedByThisMgmt = entity => ({
 		...defaultQuery(entity),
 		...matchHandledBy(entity)
 	});
 
-	const queryForEntityCreatedByOtherDeadMgmt = entity => ({
-		...queryForEntityCreatedByMgmtInPrevBoot(entity),
+	const queryForEntityCreatedByOtherMgmt = entity => ({
+		...queryForEntityCreatedByThisMgmt(entity),
 		...getMongoTimeoutQuery()
 	});
 
 	return {
-		$or: entitiesToDeleteCreatedByMgmtInPrevBoot
-			.map(queryForEntityCreatedByMgmtInPrevBoot)
-			.concat(entitiesToDeleteCreatedByOtherDeadMgmt.map(queryForEntityCreatedByOtherDeadMgmt))
+		$or: entitiesToDeleteCreatedByThisMgmt
+			.map(queryForEntityCreatedByThisMgmt)
+			.concat(entitiesToDeleteCreatedByOtherMgmt.map(queryForEntityCreatedByOtherMgmt))
 	};
 }
 
@@ -1031,32 +1159,20 @@ scope.checkAndRemoveToBeExtendedVolumes = function(cb) {
 						return callback(null, [], []);
 
 					categorizeStaleEntities(extentionVolumes,
-						(volumesToDeleteCreatedByMgmtInPrevBoot, volumesToDeleteCreatedByOtherDeadMgmt) => {
-							callback(
-								null,
-								volumesToDeleteCreatedByMgmtInPrevBoot,
-								volumesToDeleteCreatedByOtherDeadMgmt
-							);
+						(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt) => {
+							callback(null, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
 						});
 				},
-				function deleteExtentionVolumes(
-					volumesToDeleteCreatedByMgmtInPrevBoot,
-					volumesToDeleteCreatedByOtherDeadMgmt,
-					callback
-				) {
+				function deleteExtentionVolumes(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt, callback) {
+					if (!volumesToDeleteCreatedByThisMgmt.length && !volumesToDeleteCreatedByOtherMgmt.length)
+						return callback();
+
 					const defaultQuery = volume => ({
 						uuid: volume.uuid,
 						isExtension: true
 					});
 
-					const query = getDeleteStaleEntitiesQuery(
-						defaultQuery,
-						volumesToDeleteCreatedByMgmtInPrevBoot,
-						volumesToDeleteCreatedByOtherDeadMgmt
-					);
-
-					if (!query)
-						return callback();
+					const query = getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
 
 					deleteVolumesByQuery(query,
 						systemMessages.SANITY_AUTO_REMOVE_IS_EXTENSION_VOLUME_FAILED,
@@ -1663,7 +1779,7 @@ function isFollowingSegmentsOverlapping(firstSegment, secondSegment) {
 function calculateDiskUsableBlocks(disk) {
 	function sum(a, b) { return a + b; }
 	function mapSegmentBlockSize(segment) { return segment.lbe - segment.lbs + 1; }
-	// filter only nvmesh data segment and not from reserved
+	// filter only excelero data segment and not from reserved
 	function filterDataOnly(segment) {
 		return (!segment.owner || segment.owner === consts.segmentOwners.NVMESH) && segment.type === consts.segmentTypes.DATA && !segment.fromReserved;
 	}
@@ -1731,35 +1847,21 @@ function getIncompleteSnapshots(initialMatchQuery, pipeline, cb) {
 				return callback(null, [], []);
 
 			categorizeStaleEntities(incompleteSnapshots,
-				(volumesToDeleteCreatedByMgmtInPrevBoot, volumesToDeleteCreatedByOtherDeadMgmt) => {
-					callback(
-						null,
-						volumesToDeleteCreatedByMgmtInPrevBoot,
-						volumesToDeleteCreatedByOtherDeadMgmt
-					);
+				(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt) => {
+					callback(null, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt);
 				});
 		},
-		function getStaleIncompleteSnapshots(
-			volumesToDeleteCreatedByMgmtInPrevBoot,
-			volumesToDeleteCreatedByOtherDeadMgmt,
-			callback
-		) {
+		function getStaleIncompleteSnapshots(volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt, callback) {
+			if (!volumesToDeleteCreatedByThisMgmt.length && !volumesToDeleteCreatedByOtherMgmt.length)
+				return callback();
+
 			const defaultQuery = volume => ({
 				uuid: volume.uuid,
 				...initialMatchQuery
 			});
 
-			const query = getDeleteStaleEntitiesQuery(
-				defaultQuery,
-				volumesToDeleteCreatedByMgmtInPrevBoot,
-				volumesToDeleteCreatedByOtherDeadMgmt
-			);
-
-			if (!query)
-				return callback();
-
 			const staleSnapshotsMatch = {
-				$match: query
+				$match: getDeleteStaleEntitiesQuery(defaultQuery, volumesToDeleteCreatedByThisMgmt, volumesToDeleteCreatedByOtherMgmt)
 			};
 			const staleSnapshotsPipeline = [staleSnapshotsMatch, ...incompleteSnapshotsPipeline.slice(1)];
 
@@ -2116,12 +2218,8 @@ scope.checkPendingAttachments = callback => {
 
 							categorizeStaleEntities(
 								client.pendingAttachments,
-								(
-									pendingAttachmentsToDeleteCreatedByMgmtInPrevBoot,
-									pendingAttachmentsToDeleteCreatedByOtherDeadMgmt
-								) => {
-									const pendingAttachments = pendingAttachmentsToDeleteCreatedByMgmtInPrevBoot
-										.concat(pendingAttachmentsToDeleteCreatedByOtherDeadMgmt);
+								(pendingAttachmentsToDeleteCreatedByThisMgmt, pendingAttachmentsToDeleteCreatedByOtherMgmt) => {
+									const pendingAttachments = pendingAttachmentsToDeleteCreatedByThisMgmt.concat(pendingAttachmentsToDeleteCreatedByOtherMgmt);
 									const pendingAttachmentsUUIDs = pendingAttachments.map(pendingAttachment => pendingAttachment.uuid);
 									const isStaleAttachment = attachment => pendingAttachmentsUUIDs.includes(attachment.uuid);
 
@@ -2319,267 +2417,6 @@ scope.checkLastEmulationAttachmentsVersionSentToClient = cb => {
 				clientModule.updateLastMessageSentToClient(umClient, currentTopicName, attachmentsForUpdateEmulationMessage, nextClient);
 			});
 		}, cb);
-	});
-};
-
-// this code should only run and exists on 3.4.0
-scope.addAvailableSpaceZoneRankingCriteriaToDB = (cb) => {
-	var db = app.get('db');
-	var globalSettingsCollection = db.collection('globalSettings');
-
-	globalSettingsCollection.updateOne(
-		{ 'zoneRanking.criterias.availableSpace': { $exists: 0 } },
-		{ $set: { 'zoneRanking.criterias.availableSpace': 100 }, $inc: { version: 1 } },
-		(err, result) => {
-			if (err) {
-				new MongoError(err).log();
-			} else if (result.modifiedCount) {
-				events.emitEvent(null, objectNotifier.events.generalSettingsChangeEvent);
-			}
-
-			cb(err);
-		}
-	);
-};
-
-const getVerifySegmentStatusAfterEvictByZonePipeline = (zone) => {
-	const validDiskSegmentStatusesAfterEvict = [consts.diskSegmentStatuses.REMAP, consts.diskSegmentStatuses.MARKED_FOR_REBUILD_OLD];
-	const redundantRaidLevels = [
-		consts.RAIDLevel.MIRRORED_RAID_1,
-		consts.RAIDLevel.STRIPED_AND_MIRRORED_RAID_10,
-		consts.RAIDLevel.ERASURE_CODING,
-		consts.RAIDLevel.STRIPED_ERASURE_CODING
-	];
-
-	const pipeline = [
-		{ $match: { zone, 'disks.isOutOfService': true } },
-		// keep only isOutOfService disks to avoid unnecessary unwinds and map only diskSegments that are data segments
-		{
-			$project: {
-				disks: {
-					$map: {
-						input: { $filter: { input: '$disks', as: 'disk', cond: { $eq: ['$$disk.isOutOfService', true] } } },
-						as: 'disk',
-						in: {
-							diskID: '$$disk.diskID',
-							diskSegments: {
-								$map: {
-									input: {
-										$filter: {
-											input: '$$disk.diskSegments',
-											as: 'segment',
-											cond: { $eq: ['$$segment.type', consts.segmentTypes.DATA] }
-										}
-									},
-									as: 'segment',
-									in: { _id: '$$segment._id', volumeName: '$$segment.volumeName', zone: '$$segment.zone' }
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		{ $unwind: '$disks' },
-		{ $addFields: { diskID: '$disks.diskID' } },
-		// remove disks with no relevant segments
-		{ $match: { $expr: { $gt: [{ $size: '$disks.diskSegments' }, 0] } } },
-		{
-			$lookup: {
-				from: 'volume',
-				let: { volumeNames: { $setUnion: ['$disks.diskSegments.volumeName', []] }, segmentIDs: '$disks.diskSegments._id' },
-				pipeline: [
-					{ $match: { $expr: { $in: ['$_id', '$$volumeNames'] } } },
-					{
-						$project: {
-							// flatten chunks.pRaids.diskSegments and filter by segmentIDs
-							relevantSegments: {
-								$reduce: {
-									input: '$chunks',
-									initialValue: [],
-									in: {
-										$concatArrays: ['$$value', {
-											$reduce: {
-												input: '$$this.pRaids',
-												initialValue: [],
-												in: {
-													$concatArrays: ['$$value', {
-														$filter: {
-															input: '$$this.diskSegments',
-															as: 'ds',
-															cond: { $in: ['$$ds._id', '$$segmentIDs'] }
-														}
-													}]
-												}
-											}
-										}]
-									}
-								}
-							},
-							action: 1,
-							type: 1,
-							RAIDLevel: 1
-						}
-					},
-					// keep only segments that requires update
-					{
-						$project: {
-							processedSegments: {
-								$filter: {
-									input: {
-										$map: {
-											input: '$relevantSegments',
-											as: 'seg',
-											in: {
-												$let: {
-													vars: { isDeprecate: { $eq: ['$action', consts.volumeActions.MARKED_FOR_DELETION] } },
-													in: {
-														$let: {
-															vars: {
-																isInvalid: {
-																	$and: [
-																		{ $not: '$$isDeprecate' },
-																		{ $not: { $in: ['$$seg.status', validDiskSegmentStatusesAfterEvict] } },
-																		{ $in: ['$RAIDLevel', redundantRaidLevels] }
-																	]
-																}
-															},
-															in: { isInvalid: '$$isInvalid', isDeprecate: '$$isDeprecate', segmentData: '$$seg' }
-														}
-													}
-												}
-											}
-										}
-									},
-									as: 'processedSegment',
-									// keep only segments that requires update
-									cond: { $or: ['$$processedSegment.isInvalid', '$$processedSegment.isDeprecate'] }
-								}
-							}
-						}
-					},
-					// remove volumes with no segments to update
-					{ $match: { $expr: { $gt: [{ $size: '$processedSegments' }, 0] } } }
-				],
-				as: 'volumeLookupResult'
-			}
-		},
-		// remove disks where no updates are needed
-		{ $match: { $expr: { $gt: [{ $size: '$volumeLookupResult' }, 0] } } },
-		{
-			$project: {
-				diskID: 1,
-				volumeDiskSegments: {
-					$reduce: {
-						input: '$volumeLookupResult',
-						initialValue: { withInvalidStatuses: [], toDeprecate: [] },
-						in: {
-							withInvalidStatuses: {
-								$concatArrays: [
-									'$$value.withInvalidStatuses',
-									{
-										$map: {
-											input: { $filter: { input: '$$this.processedSegments', as: 'seg', cond: '$$seg.isInvalid' } },
-											as: 'item',
-											in: '$$item.segmentData'
-										}
-									}
-								]
-							},
-							toDeprecate: {
-								$concatArrays: [
-									'$$value.toDeprecate',
-									{
-										$map: {
-											input: { $filter: { input: '$$this.processedSegments', as: 'seg', cond: '$$seg.isDeprecate' } },
-											as: 'item',
-											in: '$$item.segmentData'
-										}
-									}
-								]
-							}
-						}
-					}
-				}
-			}
-		}
-	];
-
-	return pipeline;
-};
-
-// Look for volume segments that were not updated after disk eviction and fix it
-scope.verifySegmentStatusAfterEvict = (callback) => {
-	zoneModule.getZones([], (err, zones) => {
-		if (err)
-			return callback(err);
-
-		const db = app.get('db');
-		const serverCollection = db.collection('server');
-
-		async.eachSeries(zones.map(zone => zone._id), (zone, nextZone) => {
-			async.series([
-				cb => lockModule.acquireLockByZone(zone, cb),
-				cb => {
-					const pipeline = getVerifySegmentStatusAfterEvictByZonePipeline(zone);
-
-					serverCollection.aggregate(pipeline).toArray((err, disks) => {
-						if (err)
-							return cb(new MongoError(err).log());
-
-						if (!disks.length)
-							return cb();
-
-						logger.sysDEBUG(`Handling ${disks.length} evicted disks with volume in zone ${zone} that need to be updated`);
-
-						async.eachSeries(disks, (disk, nextDisk) => {
-							const { diskID, volumeDiskSegments } = disk;
-							const { withInvalidStatuses, toDeprecate } = volumeDiskSegments;
-
-							logger.sysDEBUG(`Disk ${diskID} in zone ${zone} has ${withInvalidStatuses.length} segments `
-								+ `with invalid statuses and ${toDeprecate.length} segments to deprecate`);
-
-							async.series([
-								(cb) => {
-									if (!withInvalidStatuses || !withInvalidStatuses.length)
-										return cb();
-
-									const invalidStatusSegmentIDs = withInvalidStatuses.map(segment => segment._id);
-
-									invalidStatusSegmentIDs.reduce(
-										(acc, segmentID) => acc.addInfo(Entities.DiskSegment.UUID, segmentID),
-										new SystemAdminMessage(systemMessages.SANITY_SEGMENTS_WITH_INVALID_STATUS_FOUND)
-											.addInfo(Entities.Drive.ID, diskID)
-											.addInfo(Entities.Target.zone, zone)).log();
-
-									diskModule.updateVolumesAfterEvict(
-										{ diskSegments: withInvalidStatuses },
-										invalidStatusSegmentIDs,
-										new Set([zone]),
-										() => cb()
-									);
-								},
-								(cb) => {
-									if (!toDeprecate || !toDeprecate.length)
-										return cb();
-
-									toDeprecate.reduce(
-										(acc, segment) => acc
-											.addInfo(Entities.DiskSegment.UUID, segment.id)
-											.addInfo(Entities.Volume.type, segment.volType)
-											.addInfo(Entities.PRaid.UUID, segment.pRaidUUID),
-										new SystemAdminMessage(systemMessages.SANITY_SEGMENTS_TO_DEPRECATE_FOUND)
-											.addInfo(Entities.Drive.ID, diskID)
-											.addInfo(Entities.Target.zone, zone)).log();
-
-									volumeModule.deprecateSegments(toDeprecate, zone, consts.SYSTEM_USER, cb);
-								},
-							], nextDisk);
-						}, cb);
-					});
-				}
-			], err => lockModule.releaseLockByZone(zone, () => nextZone(err)));
-		}, callback);
 	});
 };
 

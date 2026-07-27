@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React */
 import useQueryParams from '../../useQueryParams.hook.js';
 import Input from '../../core/Input.jsx';
@@ -24,7 +19,7 @@ const LoginForm = () => {
 
 	return (
 		<form action="/login" method="post" role="form">
-			<img className="nvmesh-logo" src="/images/NVMeshLogoLogin.png" alt="NVMesh Logo"/>
+			<img id="nvmeshLogo" src="/images/NVMeshLogoLogin.png" alt="NVMesh Logo"/>
 			<div className="form-group">
 				<i className="icon fa fa-user placeholder-icon"></i>
 				<Input placeholder="Username"

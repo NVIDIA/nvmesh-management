@@ -1,7 +1,13 @@
 #!/usr/bin/python3
+##############################################################################
+#  Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.               #
+#                                                                            #
+#  This file is part of Excelero NVMesh software.                            #
+#                                                                            #
+#  Unauthorized copying of this file, via any medium is strictly prohibited  #
+#  Proprietary and confidential                                              #
+##############################################################################
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
 
 import sys, subprocess, json, os.path, os, fcntl
 from abc import ABCMeta, abstractmethod
@@ -959,18 +965,14 @@ def collect_host_logs():
 
     create_initial_collection_dir_and_info()
 
-    is_mgmt_installed = DistributionMGR.isPackageInstalled(DistributionMGR.NVMESH_MANAGEMENT_PKG) == True
-
     if args.DUMP_BLOCKED_TASKS_STATE:
         print_to_stdout("Dumping uninterruptible (blocked) tasks state...")
         prepare_env_for_log_collection()
     print_to_stdout("Creating log files...")
     create_log_files()
-
-    if is_mgmt_installed:
-        print_to_stdout("Collecting management stats...")
-        collect_mgmt_stats()
-    print_to_stdout("Copying nvmesh system files...")
+    print_to_stdout("Collecting management stats...")
+    collect_mgmt_stats()
+    print_to_stdout("Copying excelero system files...")
     copy_sys_files(args.COPY_SOURCES)
     print_to_stdout("Collecting nvme and network interfaces interrupts and information...")
     collect_nvme_and_network_interrupts_and_logs()
@@ -1013,8 +1015,9 @@ def collect_host_logs():
         print_to_stdout("Collecting Toma core using gcore...")
         collect_toma_core_using_gcore()
 
-    if args.DUMP_DB and is_mgmt_installed:
-        dump_db_to_file()
+    if args.DUMP_DB:
+        if DistributionMGR.isPackageInstalled(DistributionMGR.NVMESH_MANAGEMENT_PKG) == True:
+            dump_db_to_file()
 
     if args.RUN_CLNT_ANALYZER:
         print_to_stdout("Running client analyzer...")

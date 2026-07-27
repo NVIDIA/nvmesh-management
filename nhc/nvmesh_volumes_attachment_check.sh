@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# NHC -- Validates that the passed volumes are attached and IO enabled on this node.
-
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
+# NHC -- Excelero - Validates that the passed volumes are attached and IO enabled on this node.
+#
+# /***************************************************************************
+#  * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+#  *
+#  * This file is part of Excelero NVMesh software.
+#  *
+#  * Unauthorized copying of this file, via any medium is strictly prohibited
+#  * Proprietary and confidential
+#  ****************************************************************************/
 source /etc/nhc/scripts/nvmesh_nhc_cache.sh
 
 declare NVMESH_DETACHED_VOLUMES=''

@@ -37,7 +37,8 @@ management_transfer_list="scripts/add_cluster_identification.js \
 				interop-db"
 
 utils_transfer_list="scripts/nvmesh_diag \
-			scripts/nvmesh_logs_collector"
+			scripts/nvmesh_logs_collector \
+			RPM/docker/kubernetes/examples/"
 
 nhc_transfer_list="nhc/nhc_files"
 

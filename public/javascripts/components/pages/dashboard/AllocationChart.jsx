@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React, c3, STATUS_COLORS */
 
 import CapacityService from '../../services/capacity.service.js';

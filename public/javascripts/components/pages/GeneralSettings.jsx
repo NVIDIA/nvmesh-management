@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React, consts */
 
 import ToggleButtonGroup from '../core/ToggleButtonGroup.jsx';
@@ -72,7 +67,7 @@ const GeneralSettings = () => {
 	}, []);
 
 	const save = async() => {
-		const email = consts.defaultEmail.replace(RegExp('\\+.*@'), '+' + customerName + '@');
+		const email = consts.defaultExceleroEmail.replace(RegExp('\\+.*@'), '+' + customerName + '@');
 
 		const [clusterIDRes, settingsRes, phoneHomeRes] = await Promise.all([
 			NvmeshMetadataService.updateClusterID(clusterID),
@@ -188,7 +183,7 @@ const GeneralSettings = () => {
 						</FormControl>
 
 						<div className="form-group">
-							<label>Send data to your home</label>
+							<label>Send data to Excelero</label>
 							<div>
 								<div className="form-group row">
 									<span className="col-md-4">Send logs</span>
@@ -284,7 +279,7 @@ const GeneralSettings = () => {
 						<div className="col-lg-4">
 							<label>Maximum JSON Size</label>
 							<p><small className="text-muted">The size of the largest JSON message supported by the Management
-								Server.<br/><span className="red">Do not modify this setting unless explicitly authorized by an SRE.</span></small>
+								Server.<br/><span className="red">Do not modify this setting unless explicitly authorized by Excelero.</span></small>
 							</p>
 						</div>
 						<div className="col-lg-8">
@@ -301,7 +296,7 @@ const GeneralSettings = () => {
 						<div className="col-lg-4">
 							<label>Reserved Blocks</label>
 							<p><small className="text-muted">The percentage of reserved blocks at the start of a managed NVMe
-								device. <br/><span className="red">Do not modify this setting unless explicitly authorized by an SRE.</span></small>
+								device. <br/><span className="red">Do not modify this setting unless explicitly authorized by Excelero.</span></small>
 							</p>
 						</div>
 						<div className="col-lg-8">
@@ -362,7 +357,7 @@ const GeneralSettings = () => {
 						<div className="col-lg-4">
 							<label>Disable Old Managements when in Upgrade Mode</label>
 							<p><small className="text-muted">When in upgrade mode, old managements will not accept new requests.
-								<br/><span className="red">Must be true unless explicitly authorized by an SRE.</span></small></p>
+								<br/><span className="red">Must be true unless explicitly authorized by Excelero.</span></small></p>
 						</div>
 						<div className="col-lg-8">
 							<Toggle isChecked={settings.disableOldManagements || false}

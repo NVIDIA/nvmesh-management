@@ -2,9 +2,9 @@ Name:                           nvmesh-utils
 Version:                        %{version}
 Release:                        %{release}
 Group:                          System Environment/Kernel
-Summary:                        "nvmesh-utils" by NVIDIA
+Summary:                        "nvmesh-utils" by Nvidia
 
-License:                        Apache-2.0
+License:                        Commercial Non OSI
 URL:                            http://www.nvidia.com
 Source0:                        %{name}
 Requires:                       %{requires}
@@ -16,9 +16,9 @@ AutoReqProv:                    no
 
 %description
 
-Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+© Copyright 2025 Nvidia Corporation. All rights reserved. This document contains the confidential and proprietary information of Nvidia Corporation, Inc. Do not reproduce or distribute without the prior written consent of Nvidia.
 
-"NVIDIA nvmesh-cli" components.
+"Nvidia nvmesh-cli" components.
         Branch: %{branch}
         Commit: %{commit_id}
 
@@ -39,6 +39,7 @@ fi
 %install
 mkdir -pv %{buildroot}/opt/nvmesh/cli
 mkdir -pv %{buildroot}/usr/bin
+mkdir -pv %{buildroot}/opt/nvmesh/kubernetes/examples
 
 cp -rf %{_builddir}/%{name}/* %{buildroot}/opt/nvmesh/cli/
 cp -rf %{_builddir}/%{name}/scripts/nvmesh_diag %{buildroot}/usr/bin
@@ -46,6 +47,7 @@ cp -rf %{_builddir}/nvmesh-utils/infrastructure/dist/infra %{buildroot}/opt/nvme
 ln -s /opt/nvmesh/infra/infra %{buildroot}/usr/bin/nvmesh
 ln -s /opt/nvmesh/infra/infra %{buildroot}/usr/bin/nvmesh_check
 cp -rf %{_builddir}/%{name}/scripts/nvmesh_logs_collector %{buildroot}/usr/bin
+cp -rf %{_builddir}/%{name}/RPM/docker/kubernetes/examples/* %{buildroot}/opt/nvmesh/kubernetes/examples
 
 echo "version=\"%{version}-%{release}\"" > %{buildroot}/opt/nvmesh/cli/version
 echo "commit=\"%{commit_id}\"" >> %{buildroot}/opt/nvmesh/cli/version
@@ -75,6 +77,7 @@ fi
 %attr(0755, -, -)/usr/bin/nvmesh_logs_collector
 /usr/bin/nvmesh
 /usr/bin/nvmesh_check
+/opt/nvmesh/kubernetes/examples
 
 %changelog
 * Wed Oct 7 2015 Nvidia

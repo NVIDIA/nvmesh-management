@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global angular,$,consts */
 
@@ -98,7 +102,7 @@ managementApp.controller('managementController', [
 				}
 			});
 			$http.get('/users/getPhoneHomeUser').success(function(data) {
-				if (data && data.email === consts.defaultEmail) {
+				if (data && data.email === consts.defaultExceleroEmail) {
 					controller.phoneHome = data;
 					$('#customerName').modal('show');
 				}
@@ -106,7 +110,7 @@ managementApp.controller('managementController', [
 		}
 
 		controller.saveCustomerName = function() {
-			controller.phoneHome.email = consts.defaultEmail.replace(RegExp('\\+.*@'), '+' + controller.customerName + '@');
+			controller.phoneHome.email = consts.defaultExceleroEmail.replace(RegExp('\\+.*@'), '+' + controller.customerName + '@');
 			$http.post('/users/update', [controller.phoneHome]).success(function(data) {
 				var $content = $('.content');
 				if (!data[0] || !data[0].success)

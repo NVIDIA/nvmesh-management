@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React */
 import LoginForm from './LoginForm.jsx';
 import ChangePasswordForm from './ChangePasswordForm.jsx';
@@ -12,16 +7,20 @@ const Login = () => {
 
 	return (
 		<div className="background">
+			<div className="logo-container">
+				<img id="exceleroLogo" src="/images/exceleroLogoLogin.svg" alt="Excelero Logo"/>
+			</div>
+
 			<div className="container">
 				{currentPath === '/login' && <LoginForm />}
 				{currentPath === '/login/changePassword' && <ChangePasswordForm />}
 			</div>
 
-			<div className="nvmesh-bar">
+			<div className="excelero-bar">
 				<div>
 					<span>With joint innovation from</span>
 					<span>
-						<img src="../images/excelero-logo.png" alt="NVMesh"/>
+						<img src="../images/excelero-logo.png" alt="Excelero"/>
 					</span>
 				</div>
 			</div>

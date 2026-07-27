@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 import setuptools
 
 setuptools.setup(
@@ -13,7 +10,7 @@ setuptools.setup(
     This is the management SDK
     ''',
     long_description_content_type="text/markdown",
-    url="https://gitlab.acme.com/management/management",
+    url="https://gitlab.excelero.com/management/management",
     packages=["NVMeshSDK"],
     classifiers=[
         "Programming Language :: Python :: 2.7",

@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -107,8 +111,6 @@ scope.handleKeepAlive = (message, mainCallback) => {
 			if (err) return callback(err);
 
 			currentTopics = topics;
-			const now = new Date();
-
 			const newUpgradeAgent = {
 				_id: message.upgradeAgentID,
 				uuid: uuid.v1(),
@@ -118,26 +120,24 @@ scope.handleKeepAlive = (message, mainCallback) => {
 				upgradeAgentData: message.payload,
 				status: consts.upgradeAgentStatus.ONLINE,
 				health: scope.getUpgradeAgentHealth(consts.upgradeAgentStatus.ONLINE, message.payload.health),
-				topics: currentTopics,
-				dateModified: now,
-				dateCreated: now,
-				lastReceivedKeepAlive: now
+				topics: currentTopics
 			};
 
-			upgradeAgentCollection.insertOne(newUpgradeAgent, (err) => {
-				if (err) {
-					const mongoError = new MongoError(err);
+			upgradeAgentCollection.insertOne(newUpgradeAgent,
+				{ $currentDate: { dateModified: true, dateCreated: true, lastReceivedKeepAlive: true } }, (err) => {
+					if (err) {
+						const mongoError = new MongoError(err);
 
-					if (mongoError.isDuplicateKeyError) {
-						logger.sysDEBUG(`upgrade agent ${message.upgradeAgentID} already exists - message may have been handled by another management`);
-						return callback();
+						if (mongoError.isDuplicateKeyError) {
+							logger.sysDEBUG(`upgrade agent ${message.upgradeAgentID} already exists - message may have been handled by another management`);
+							return callback();
+						}
+
+						return callback(mongoError);
 					}
 
-					return callback(mongoError);
-				}
-
-				callback(null, newUpgradeAgent);
-			});
+					callback(null, newUpgradeAgent);
+				});
 		});
 	};
 

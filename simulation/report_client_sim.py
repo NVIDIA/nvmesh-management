@@ -1,8 +1,5 @@
 #!/usr/bin/python
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 import requests
 import copy
 import time
@@ -17,7 +14,7 @@ USERNAME = "admin@nvidia.com"
 PASSWORD = "admin"
 
 reportClient = {
-	"client" : {"clientID" : "client1.acme.com", "client_status" : 1,
+	"client" : {"clientID" : "client1.excelero.com", "client_status" : 1,
 	"block_devices" : [
 		]
 	}
@@ -49,8 +46,8 @@ def startReporting(numberOfReports, sleep):
 	report = None
 	for i in range(numberOfReports):
 		print "PID: %s - Reporting report %d out of %d" % (os.getpid(), i+1, numberOfReports)
-		report = generateFakeReportClient(report or reportClient, generateGUID, "client-%s.acme.com" % os.getpid())
-		report["client"]["clientID"] = "nvme47.acme.com"
+		report = generateFakeReportClient(report or reportClient, generateGUID, "client-%s.excelero.com" % os.getpid())
+		report["client"]["clientID"] = "nvme47.excelero.com"
 		postReportClient(session, report)
 		generateGUID = False
 

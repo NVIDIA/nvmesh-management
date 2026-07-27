@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 const consts = require('../../consts');
 const { Entities } = require('../../modules/error');
 const { markVolumesForDeletion, saveVolumes } = require('../../modules/volume');

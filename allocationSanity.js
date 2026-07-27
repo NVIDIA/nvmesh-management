@@ -1,15 +1,20 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
+
 
 /* global app */
 var mongodb = require('mongodb-legacy').MongoClient;
 var express = require('express');
+var logger = require('./logger.js');
 var mongoDBModule = require('./modules/mongoDB.js');
 var sanityAndRecover = require('./modules/sanityAndRecover.js');
 var errorModule = require('./modules/error.js');
-var logger = require('./logger.js'); // It is imported here to avoid circular dependency
 
 // eslint-disable-next-line no-global-assign
 app = express();

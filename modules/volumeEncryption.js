@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -551,9 +555,6 @@ scope.runEncryptionCommand = (encryptionObj, command, cb) => {
 		const message = new SystemAdminMessage(systemMessage ? systemMessages.RUN_ENCRYPTION_COMMAND_FAILED : systemMessages.RUN_ENCRYPTION_COMMAND_SUCCESS)
 			.addInfo(Entities.Volume.ID, encryptionObj._id)
 			.addInfo(Entities.Volume.UUID, encryptionObj.uuid);
-
-		if (!systemMessage || executingTOMA)
-			message.addInfo(Entities.Target.executingTOMA, executingTOMA._id);
 
 		if (systemMessage)
 			message.addInfo(Entities.Error, systemMessage);

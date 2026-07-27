@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global app, log */
 
 const moment = require('moment');
@@ -110,7 +105,7 @@ exports.Target = class Target extends Entity {
 			TOMA → MGMT Keepalive { zone: ‘-1’ }
 			...
 		After zone approval
-			MGMT → TOMA UpdateTomaKeepaliveToken { nodeID: ‘nvme1.acme.com’, token: 1, zone: ‘2’ }
+			MGMT → TOMA UpdateTomaKeepaliveToken { nodeID: ‘nvme1.excelero.com’, token: 1, zone: ‘2’ }
 			TOMA → MGMT Keepalive { zone: ‘2’}
 			TOMA → MGMT reportTarget {zone: ‘2’, ...} 	(Due to zone change)
 		*/
@@ -142,20 +137,16 @@ exports.Target = class Target extends Entity {
 		return;
 	}
 
-	async sendReport() {
+	sendReport() {
 		let msg = ReportTargetBuilder.fromTarget(this).build();
 		log.debug(`sending report node_id=${msg.hostname} reportID=${msg.reportID} token=${msg.tomaToken} seq=${msg.messageSequence}`);
-		const err = await sendMessageToManagement(msg);
-		if (err)
-			throw new Error(`Failed to send report to management: ${err}`);
+		return sendMessageToManagement(msg);
 	}
 
 	async sendKeepAlive() {
 		log.debug(`TOMA sending keepalive node_id=${this.hostname} token=${this.tomaToken}`);
 		let msg = TomaKeepAliveBuilder.fromTarget(this).build();
-		const err = await sendMessageToManagement(msg);
-		if (err)
-			throw new Error(`Failed to send keepalive to management: ${err}`);
+		return sendMessageToManagement(msg);
 	}
 
 	async setUUID() {

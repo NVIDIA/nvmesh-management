@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 const hostnameRegex = /^([a-z](?:[a-z0-9-_.]*[a-z0-9]))$/i;
 const nicRegex = /^[a-z][a-z0-9_-]*$/i;
 
@@ -348,7 +343,7 @@ const scheme = {
 					name: 'MCS_LOGGING_VERBOSE_TYPES',
 					displayName: 'MCS Logging Verbose Types',
 					description: 'When logging level is verbose, controls which message types will be shown. '
-						+ 'Change only with direction from SREs',
+						+ 'Change only with direction from Excelero Customer Support',
 					type: 'choice',
 					numOfValues: '*',
 					translationFunction: function(values) {

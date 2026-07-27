@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -1092,23 +1096,6 @@ scope.evictDiskByDiskIDsAndUUIDsWithLogsWrapper = (disks, user, callback) => {
 	scope.evictDiskByDiskIDsAndUUIDs(disks, user, false, null, null, null, callback);
 };
 
-scope.updateVolumesAfterEvict = (disk, raidSegmentsIdsToRemap, zonesToLock, callback) => {
-	const raidSegments = disk.diskSegments.filter(s => raidSegmentsIdsToRemap.includes(s._id));
-
-	for (const segment of raidSegments) {
-		if (segment.status === consts.diskSegmentStatuses.DEAD)
-			segment.isDead = true;
-
-		logger.sysDEBUG(`setting REMAP for segment id: ${segment.uuid}`);
-		segment.status = consts.diskSegmentStatuses.REMAP;
-	}
-
-	if (raidSegments.length)
-		return volumeModule.updateVolumeDiskSegmentsAfterEvict(disk.diskSegments, null, zonesToLock, callback);
-
-	callback();
-};
-
 scope.evictDiskByDiskIDsAndUUIDs = function(disks, user, isAutoEvict, lockedZones, existingMessages, autoEvictReason, callback) {
 	var db = app.get('db');
 	var serverCollection = db.collection('server');
@@ -1135,7 +1122,6 @@ scope.evictDiskByDiskIDsAndUUIDs = function(disks, user, isAutoEvict, lockedZone
 			(callback) => {
 				if (disk.zone) {
 					zone = disk.zone;
-					zonesToLock.add(zone);
 					return callback();
 				}
 
@@ -1270,7 +1256,20 @@ scope.evictDiskByDiskIDsAndUUIDs = function(disks, user, isAutoEvict, lockedZone
 									if (shouldRetryEvict)
 										return callback();
 
-									scope.updateVolumesAfterEvict(disk, raidSegmentsIdsToRemap, zonesToLock, callback);
+									//Mark all the segments that are part of RAID10&RAID1 volumes for remap.
+									var raidSegments = disk.diskSegments.filter(function(s) { return raidSegmentsIdsToRemap.indexOf(s._id) > -1; });
+									raidSegments.forEach(function(segment) {
+										if (segment.status === consts.diskSegmentStatuses.DEAD)
+											segment.isDead = true;
+
+										logger.sysVERBOSE('diskSegments', 'setting REMAP for segment id: ' + segment.uuid);
+										segment.status = consts.diskSegmentStatuses.REMAP;
+									});
+
+									if (raidSegments && raidSegments.length)
+										volumeModule.updateVolumeDiskSegmentsAfterEvict(disk.diskSegments, null, zonesToLock, callback);
+									else
+										callback();
 								}
 							], function(err) {
 								callback(err, segmentsIdsToDeprecate);

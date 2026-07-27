@@ -1,8 +1,5 @@
 #!/usr/bin/python
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 import requests
 import copy
 import time
@@ -17,7 +14,7 @@ USERNAME = "admin@nvidia.com"
 PASSWORD = "admin"
 
 reportServer = {
-	"node" : {"node_id" : "test1.acme.com", "node_status" : 1,
+	"node" : {"node_id" : "test1.excelero.com", "node_status" : 1,
 	"nics" : [
 			{"nicID": "0xfe80000000000000e41d2d03001f9272", "protocol" : 1, "status" : 1, "guid" : "0xfe80000000000000001e670300932492", "pkey" : "ffff", "speed" : 1, "pci_root" : 1},
 			{"nicID": "0xfe80000000000000e41d2d03001f9271", "protocol" : 2, "status" : 1, "guid" : "0xfe80000000000000001e670300932491", "pkey" : "ffff", "speed" : 1, "pci_root" : 1}
@@ -76,7 +73,7 @@ def startReporting(numberOfReports, sleep):
 	report = None
 	for i in range(numberOfReports):
 		print "PID: %s - Reporting report %d out of %d" % (os.getpid(), i+1, numberOfReports)
-		report = generateFakeReportServer(report or reportServer, generateGUID, "target-%s.acme.com" % os.getpid())
+		report = generateFakeReportServer(report or reportServer, generateGUID, "target-%s.excelero.com" % os.getpid())
 		report["node"]["node_id"] = 'nvme47'
 		report["node_status"] = 1
 		postReportServer(session, report)

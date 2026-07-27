@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 const consts = require('../../consts.js');
 
 const classesScheme = { type: 'array', items: { $ref: consts.MANAGEMENT_DEFINITIONS + '/className.js' } };

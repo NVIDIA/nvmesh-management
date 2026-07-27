@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global app */
 const uuid = require('uuid');
 const kafkaModule = require('../../modules/kafka.js');
@@ -38,16 +33,13 @@ class KafkaMockQueue {
 				const err = new Error(`timed-out waiting for Kafka Message topic: ${this.topic} timeoutMS: ${timeoutMS}`);
 				console.log(err);
 				reject(err);
-				delete self.messageListeners[waitUUID];
 			}, timeoutMS);
 			self.messageListeners[waitUUID] = {
 				func: function NewMessage(msg) {
 					clearTimeout(timer);
 					resolve(msg);
 					delete self.messageListeners[waitUUID];
-				},
-				reject: reject,
-				timer: timer
+				}
 			};
 		});
 	}
@@ -72,15 +64,6 @@ class KafkaMockQueue {
 		} else {
 			this.q.push(msg);
 		}
-	}
-
-	destroy() {
-		Object.values(this.messageListeners).forEach(listener => {
-			clearTimeout(listener.timer);
-			listener.reject(new Error(`KafkaMockQueue destroyed for topic: ${this.topic}`));
-		});
-		this.messageListeners = {};
-		this.clear();
 	}
 
 	clear() {
@@ -111,10 +94,7 @@ exports.resetKafkaQueues = function() {
 };
 
 exports.resetKafkaQueue = function(topic) {
-	if (kafkaQueues[topic]) {
-		kafkaQueues[topic].destroy();
-		delete kafkaQueues[topic];
-	}
+	delete kafkaQueues[topic];
 };
 
 exports.initMockKafka = function() {
@@ -158,6 +138,16 @@ exports.mockKafkaModule = function() {
 		});
 		if (callback)
 			callback();
+	};
+
+	kafkaModule.deleteTopics = function(topicsToDelete, callback) {
+		log(`deleteTopics: ${JSON.stringify(topicsToDelete)}`);
+		topicsToDelete.forEach(topic => {
+			if (topic in kafkaQueues)
+				delete kafkaQueues[topic];
+		});
+
+		callback();
 	};
 
 	kafkaModule.deleteTopicRecords = function(topic, callback) {

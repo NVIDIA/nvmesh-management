@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* eslint-disable max-len */
 
 const consts = require('./consts');
@@ -31,7 +26,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	MONGO_CONNECTION_ERROR: {
-		message: 'Failed to connect to mongo, so shutting down; if mongo is up and restarting both management and mongo does not help, contact support.',
+		message: 'Failed to connect to mongo, so shutting down; if mongo is up and restarting both management and mongo does not help, contact Excelero support.',
 		id: 20010,
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
@@ -51,48 +46,53 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	MONGO_CONNECTION_CLOSED: {
-		message: 'Connection to mongo closed, so shutting down; if mongo is up and restarting both management and mongo does not help, contact support.',
+		message: 'Connection to mongo closed, so shutting down; if mongo is up and restarting both management and mongo does not help, contact Excelero support.',
 		id: 20011,
 		logLevel: consts.loggingLevel.ERROR,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_CONNECTION_ERROR: {
-		message: 'Connection to kafka closed, so shutting down; if kafka is up and restarting both management and kafka does not help, contact support.',
+		message: 'Connection to kafka closed, so shutting down; if kafka is up and restarting both management and kafka does not help, contact Excelero support.',
 		id: 3000,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_SEND_MESSAGE_ERROR: {
-		message: 'Failed to send a message to Kafka, contact support.',
+		message: 'Failed to send a message to Kafka, contact Excelero support.',
 		id: 3001,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_CREATE_TOPIC_ERROR: {
-		message: 'Failed to create Kafka topics, contact support.',
+		message: 'Failed to create Kafka topics, contact Excelero support.',
 		id: 3002,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_GENERIC_CONSUMER_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka consumer, contact support.',
+		message: 'Management received an unexpected generic error from Kafka consumer, contact Excelero support.',
 		id: 3003,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_COMMIT_OFFSET_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to commit offsets, contact support.',
+		message: 'Management received an unexpected generic error from Kafka while trying to commit offsets, contact Excelero support.',
 		id: 3004,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
+	KAFKA_DELETE_TOPICS_ERROR: {
+		message: 'Management received an unexpected generic error from Kafka while trying to delete topics, contact Excelero support.',
+		id: 3005,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
 	KAFKA_LIST_TOPICS_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to list topics, contact support.',
+		message: 'Management received an unexpected generic error from Kafka while trying to list topics, contact Excelero support.',
 		id: 3006,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_FETCH_OFFSETS_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to fetch offsets, contact support.',
+		message: 'Management received an unexpected generic error from Kafka while trying to fetch offsets, contact Excelero support.',
 		id: 3007,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	KAFKA_DELETE_RECORDS_ERROR: {
-		message: 'Management received an unexpected generic error from Kafka while trying to delete topic records, contact support.',
+		message: 'Management received an unexpected generic error from Kafka while trying to delete topic records, contact Excelero support.',
 		id: 3008,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
@@ -126,23 +126,8 @@ var systemMessages = {
 		id: 3014,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
-	CERT_CREATE_DIRECTORY_FAILED: {
-		message: 'Failed to create certificates directory, shutting down.',
-		id: 3018,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
-	CERT_COPY_FAILED: {
-		message: 'Failed to copy certificate, shutting down.',
-		id: 3019,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
-	CERT_READ_FAILED: {
-		message: 'Failed to read certificate, shutting down.',
-		id: 3020,
-		sysLogLevel: consts.loggingLevel.ERROR
-	},
 	APP_UNCAUGHT_EXCEPTION: {
-		message: 'An unexpected application error occurred in the management, shutting down, contact support.',
+		message: 'An unexpected application error occurred in the management, shutting down, contact Excelero support.',
 		id: 1000,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
@@ -155,11 +140,6 @@ var systemMessages = {
 		message: 'Completed a clean shutdown per user request.',
 		id: 1008,
 		sysLogLevel: consts.loggingLevel.INFO
-	},
-	APP_CERT_DIRECTORY_UNKNOWN: {
-		message: 'Unkown cert directory provided, shutting down.',
-		id: 1009,
-		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	APP_GENERAL_SETTINGS_LOAD_FAILED: {
 		message: 'Failed to load general settings; therefore, shutting down; see additional info for error information, fix and restart.',
@@ -197,7 +177,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	APP_MGMT_ID_VERIFY_FAILED: {
-		message: 'It seems that the identity of management based upon the IP address and port to use is inconsistent with that used previously, sleeping for 10 seconds and trying again, contact support if this persists.',
+		message: 'It seems that the identity of management based upon the IP address and port to use is inconsistent with that used previously, sleeping for 10 seconds and trying again, contact Excelero support if this persists.',
 		id: 1033,
 		sysLogLevel: consts.loggingLevel.WARNING
 	},
@@ -367,7 +347,7 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DBBACKUP_BACKUP_DUMP_FAILED: {
-		message: 'An unexpected error occurred while trying to generate a backup file, this may be a result of lack of storage space, contact support if the root cause is unclear.',
+		message: 'An unexpected error occurred while trying to generate a backup file, this may be a result of lack of storage space, contact Excelero if the root cause is unclear.',
 		id: 1069,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
@@ -382,143 +362,19 @@ var systemMessages = {
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DBBACKUP_RELEASE_LOCK_FAILED: {
-		message: 'An unexpected error occurred when completing a backup, contact support if this happens on subsequent backups.',
+		message: 'An unexpected error occurred when completing a backup, contact Excelero support if this happens on subsequent backups.',
 		id: 1075,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DBBACKUP_CLOSE_LOCK_FD_FAILED: {
-		message: 'An unexpected error occurred when completing a backup, contact support if this happens on subsequent backups.',
+		message: 'An unexpected error occurred when completing a backup, contact Excelero support if this happens on subsequent backups.',
 		id: 1076,
 		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DBBACKUP_EXEC_FCNTL_FAILED: {
-		message: 'An unexpected error occurred when doing a backup, contact support if this happens on subsequent backups.',
+		message: 'An unexpected error occurred when doing a backup, contact Excelero support if this happens on subsequent backups.',
 		id: 1077,
 		sysLogLevel: consts.loggingLevel.ERROR
-	},
-	SAVE_RELEASE_SUCCESS: {
-		message: 'Release saved successfully',
-		header: 'Release Saved',
-		id: 10771,
-		sysLogLevel: consts.loggingLevel.INFO,
-		logLevel: consts.loggingLevel.INFO
-	},
-	SAVE_RELEASE_FAILED: {
-		message: 'Release save failed',
-		header: 'Release Save Failed',
-		id: 10772,
-		sysLogLevel: consts.loggingLevel.ERROR,
-		logLevel: consts.loggingLevel.ERROR
-	},
-	MISSING_DISTRIBUTION_TYPES: {
-		message: 'Distribution type not found',
-		id: 10773,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	MISSING_PLATFORM_DEPENDENCIES: {
-		message: 'Platform dependency not found',
-		id: 10774,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	MISSING_PLATFORMS_DEPENDENCIES: {
-		message: 'Platforms dependencies not found',
-		id: 10775,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	FAILED_TO_CREATE_ENTITIES: {
-		message: 'Failed to create InteropDB entities',
-		id: 10776,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	FAILED_CREATE_UPDATE_RELEASE: {
-		message: 'Failed to create or update release',
-		id: 10777,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	MISSING_ARTIFACTS_IN_RELEASE: {
-		message: 'Artifacts not found in release',
-		id: 10778,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	MISSING_PLATFORMS_IN_ARTIFACT: {
-		message: 'Platforms not found in artifact',
-		id: 10779,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	MISSING_PLATFORMS_IN_ARTIFACTS: {
-		message: 'Platforms not found in artifacts',
-		id: 10780,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	MORE_THAN_ONE_ARTIFACT_BASE_VERSION_FOR_COMPONENT: {
-		message: 'More than one artifact base version for the same component',
-		id: 10781,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	MISSING_RELEASES: {
-		message: 'Releases not found',
-		id: 10782,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	COMPONENT_VERSION_NOT_FOUND: {
-		message: 'Component version not found',
-		id: 10783,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	ENRICH_VERSIONS_FOR_RELEASE_FAILED: {
-		message: 'Failed to enrich versions for release',
-		id: 10784,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	COMPONENT_VERSION_NOT_FOUND_IN_NEWLY_CREATED_COMPONENTS: {
-		message: 'Component version not found in newly created components',
-		id: 10785,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	ADD_NVMESH_PACKAGE_COMPATIBILITIES_FAILED: {
-		message: 'Failed to add nvmesh package compatibilities',
-		id: 10786,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	FAILED_TO_UPDATE_COMPONENTS: {
-		message: 'Failed to update components',
-		id: 10787,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	PREPARED_UPGRADE_SCENARIO_NOT_FOUND: {
-		message: 'Prepared upgrade scenario not found',
-		id: 10790,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	FAILED_TO_PREPARE_UPGRADE_SCENARIOS_FOR_UPDATE: {
-		message: 'Failed to prepare upgrade scenarios for update',
-		id: 10791,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	FAILED_TO_UPDATE_UPGRADE_SCENARIOS: {
-		message: 'Failed to update upgrade scenarios',
-		id: 10792,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	INCOMPLETE_ARTIFACTS_FOR_INHERITANCE: {
-		message: 'Incomplete artifacts for inheritance. All NVMesh package components must have artifacts when inheriting from a release.',
-		id: 10793,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_COMPONENT_NAME: {
-		message: 'Failed to lookup for upgrade scenario component name',
-		id: 10794,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_N_MINUS_1_COMPONENT_VERSION: {
-		message: 'Failed to lookup for upgrade scenario n-1 component version',
-		id: 10795,
-		sysLogLevel: consts.loggingLevel.ERROR,
-	},
-	FAILED_TO_LOOKUP_FOR_UPGRADE_SCENARIO_N_COMPONENT_VERSION: {
-		message: 'Failed to lookup for upgrade scenario n component version',
-		id: 10796,
-		sysLogLevel: consts.loggingLevel.ERROR,
 	},
 	OBJ_NOTIFIER_FAILED_TO_READ_BACKUPS_DIR: {
 		message: 'Failed to read backups from directory.',
@@ -1443,6 +1299,21 @@ var systemMessages = {
 		header: 'Limited MongoDB Feature',
 		logLevel: consts.loggingLevel.WARNING,
 		sysLogLevel: consts.loggingLevel.WARNING
+	},
+	KAFKA_GROUP_ID_NOT_FOUND: {
+		message: 'Kafka group ID not found',
+		id: 1955,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	CHECK_FOR_UNUSED_TOPICS_FAILED: {
+		message: 'Failed to check for unused topics',
+		id: 1956,
+		sysLogLevel: consts.loggingLevel.ERROR
+	},
+	CLEANUP_UNUSED_TOPICS_FAILED: {
+		message: 'Failed to cleanup unused topics',
+		id: 1957,
+		sysLogLevel: consts.loggingLevel.ERROR
 	},
 	DISK_FORMAT_FAILED: {
 		message: 'Failed to format drive',
@@ -3327,20 +3198,6 @@ var systemMessages = {
 		message: 'Found segments on drives without volumes.',
 		id: 16180,
 		sysLogLevel: consts.loggingLevel.WARNING
-	},
-	SANITY_SEGMENTS_WITH_INVALID_STATUS_FOUND: {
-		message: 'Handling volume segments with invalid statuses on drive that need to be remapped.',
-		header: 'Sanity Failed',
-		id: 16181,
-		logLevel: consts.loggingLevel.DEBUG,
-		sysLogLevel: consts.loggingLevel.DEBUG
-	},
-	SANITY_SEGMENTS_TO_DEPRECATE_FOUND: {
-		message: 'Handling volume segments to deprecate on drive that need to be deprecated.',
-		header: 'Sanity Failed',
-		id: 16182,
-		logLevel: consts.loggingLevel.DEBUG,
-		sysLogLevel: consts.loggingLevel.DEBUG
 	},
 	EXTEND_VOLUME_VERSION_FAILED: {
 		message: 'Failed to extend volume. It looks like the volume version changed during the extend operation. Please try again.',

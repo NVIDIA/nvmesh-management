@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React */
 
 import { ReleasesService } from '../../services/api/release.service.js';
@@ -84,11 +79,11 @@ const Releases = () => {
 	const createRelease = async(release) => {
 		const responses = await ReleasesService.create([release]);
 		if (responses[0].success) {
-			successAlert(`Release ${release.releaseName} created successfully`);
+			successAlert(`${release.version} Release created successfully`);
 			reloadTable();
 		} else {
 			const errorMsg = extractErrorMsg(responses[0].error);
-			errorAlert(`Failed to create Release ${release.releaseName} - ${errorMsg}`);
+			errorAlert(`Failed to create Release ${release.version} - ${errorMsg}`);
 		}
 	};
 

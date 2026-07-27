@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React */
 
 import Modal from '../../../core/Modal.jsx';
@@ -52,12 +47,12 @@ const VolumeDiagram = ({
 				<Tab header="Targets">
 					<VolumeDiagramTargets targets={mainVolumeDiagram.targets}/>
 				</Tab>
-				{mainVolumeDiagram.metadata && <Tab header="Metadata">
+				{mainVolumeDiagram.csiMetadata && <Tab header="CSI Metadata">
 					<table className="table">
-						{Object.entries(mainVolumeDiagram.metadata).map(([key, value]) => (
+						{Object.entries(mainVolumeDiagram.csiMetadata).map(([key, value]) => (
 							<tr key={key}>
 								<th className="col-3">{key}</th>
-								<td className="text-muted">{String(value)}</td>
+								<td className="text-muted">{value}</td>
 							</tr>
 						))}
 					</table>

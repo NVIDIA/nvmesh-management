@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 const { volumeAttachmentStatus, volumeAttachmentActions, kafkaMessageTypes } = require('../../consts');
 const { attachVolumes, attachSnapshot, handleUpdateAttachment, detachVolumes } = require('../../modules/client');
 const { Entities } = require('../../modules/error');

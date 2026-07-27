@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -394,7 +398,7 @@ scope.incClientAttachmentsVersion = function(dbClient, cb) {
 	// inc the client global attachmentsVersion
 	let incClientAttachmentsVersion = { attachmentsVersion: { $add: ['$attachmentsVersion', 1] } };
 
-	let query = { _id: clientID, attachmentsVersion: dbClient.attachmentsVersion };
+	let query = { _id: clientID };
 
 	clientCollection.findOneAndUpdate(
 		query,
@@ -403,14 +407,13 @@ scope.incClientAttachmentsVersion = function(dbClient, cb) {
 		],
 		{ returnDocument: 'after' },
 		(err, updatedClient) => {
-			if (err) {
-				err = addInfoToError(new MongoError(err)).log();
-				return cb(addInfoToError(new SystemMessage(systemMessages.INC_ATTACHMNETS_VERSION_FAILED, err)).log());
-			}
+			if (err || !updatedClient) {
+				if (err)
+					err = addInfoToError(new MongoError(err)).log();
+				else
+					err = addInfoToError(new SystemMessage(systemMessages.CLIENT_NOT_FOUND));
 
-			if (!updatedClient) {
-				logger.sysDEBUG(`incClientAttachmentsVersion: ${clientID} was not found or updated with a new attachmentsVersion`);
-				return cb();
+				return cb(addInfoToError(new SystemMessage(systemMessages.INC_ATTACHMNETS_VERSION_FAILED, err)).log());
 			}
 
 			logger.sysDEBUG(`incClientAttachmentsVersion: ${clientID} attachmentsVersion (dbAV) updated from `
@@ -491,13 +494,13 @@ scope.resendClientAttachDetachCommands = function(dbClient, cb) {
 			});
 		},
 		(callback) => {
-			if (!dbClient || !volumesToAttach.length)
+			if (!volumesToAttach.length)
 				return callback();
 
 			sendConfigurationToAttachVolumes(dbClient, volumesToAttach, originID, callback);
 		},
 		(callback) => {
-			if (!dbClient || !volumesToDetach.length)
+			if (!volumesToDetach.length)
 				return callback();
 
 			scope.processVolumesToDetach(volumesToDetach, err => {
@@ -1311,8 +1314,7 @@ function sendConfigurationToAttachVolumes(client, volumesToAttach, originID, cb)
 			const attachingVolumes = volumesToAttach.map(vol => ({
 				...vol,
 				attachmentsVersionRef: client.attachmentsVersion,
-				referenceIDs: client.attachments[vol.uuid].referenceIDs,
-				version: client.attachments[vol.uuid].version
+				referenceIDs: client.attachments[vol.uuid].referenceIDs
 			}));
 
 			setAttachmentOnConfigResponses(clientConfigResponse, attachingVolumes);
@@ -1678,11 +1680,7 @@ scope.detachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 							let attachmentsWithMissingRefId = [];
 
 							requestedVolumesWithRefID.forEach(volume => {
-								const originalAttachment = originalClient?.attachments?.[volume.uuid];
-								if (originalAttachment?.pending)
-									return;
-
-								const refIDs = originalAttachment?.referenceIDs ?? [];
+								const refIDs = originalClient?.attachments?.[volume.uuid]?.referenceIDs ?? [];
 								const isRefIDsExist = refIDs.includes(volume.referenceID);
 
 								if (!isRefIDsExist)
@@ -1795,15 +1793,6 @@ scope.detachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 					const wishfulState = originalClient.attachments;
 
 					let shouldExit;
-					
-					const volumesUUIDs = requestedVolumes.map(volume => volume.uuid);
-					const pendingAttachments = Object.values(wishfulState)
-						.filter(attachment => volumesUUIDs.includes(attachment.uuid) && attachment.pending)
-						.reduce((acc, currAttachment) => { return { ...acc, [currAttachment.uuid]: currAttachment }; }, {});
-
-					logger.sysDEBUG(`client ${clientID}, alreadyPendingAttachments`, pendingAttachments);
-					alreadyPendingAttachments = clonedVolumes.filter(volume => Object.keys(pendingAttachments).includes(volume.uuid));
-					requestedVolumes = requestedVolumes.filter(volume => !Object.keys(pendingAttachments).includes(volume.uuid));
 
 					const detachedVolumes = requestedVolumes.filter(volume => !wishfulState[volume.uuid]);
 					shouldExit = handleFailedVolumes(detachedVolumes, systemMessages.VOLUME_NOT_ATTACHED);
@@ -1815,6 +1804,16 @@ scope.detachVolumes = (clientID, clientUUID, requestedVolumes, callback, isSnaps
 					shouldExit = handleFailedVolumes(attachmentsWithoutRequestedRefID, systemMessages.MISSING_REF_ID);
 					if (shouldExit)
 						return cb(true);
+
+					const volumesUUIDs = requestedVolumes.map(volume => volume.uuid);
+					let pendingAttachments = Object.values(wishfulState)
+						.filter(attachment => volumesUUIDs.includes(attachment.uuid) && attachment.pending)
+						.reduce((acc, currAttachment) => { return { ...acc, [currAttachment.uuid]: currAttachment }; }, {});
+
+					logger.sysDEBUG(`client ${clientID}, alreadyPendingAttachments`, pendingAttachments);
+					alreadyPendingAttachments = clonedVolumes.filter(volume => Object.keys(pendingAttachments).includes(volume.uuid));
+
+					requestedVolumes = requestedVolumes.filter(volume => !Object.keys(pendingAttachments).includes(volume.uuid));
 
 					cb();
 				}
@@ -2702,11 +2701,37 @@ function getHandleErrorsAndLogs(messages, clientID, clientUUID) {
 function clearPendingWishfulStateForFailedDetachment(clientID, failedDetachmentUUID, cb) {
 	const db = app.get('db');
 	const clientCollection = db.collection('client');
-	const pipeline = getClearOwnedPendingDetachPipeline([failedDetachmentUUID]);
+	const pathToAttachment = `attachments.${failedDetachmentUUID}`;
+
+	// if attachment has 'action' then only remove pending field
+	// if attachment has no action and has a pending then remove all the attachment from the wishful state object
+	const $set = {
+		[pathToAttachment]: {
+			$cond: {
+				if: {
+					$and: [
+						{ $ifNull: [`$${pathToAttachment}.action`, false] },
+						{ $ifNull: [`$${pathToAttachment}.pending`, false] }
+					]
+				},
+				then: `$${pathToAttachment}`,
+				else: {
+					$cond: {
+						if: { $ifNull: [`$${pathToAttachment}.pending`, false] },
+						then: '$$REMOVE',
+						else: `$${pathToAttachment}`
+					}
+				}
+			}
+		}
+	};
 
 	clientCollection.updateOne(
 		{ _id: clientID },
-		pipeline,
+		[
+			{ $set: $set },
+			{ $unset: [`${pathToAttachment}.pending`] },
+		],
 		err => {
 			if (err)
 				new MongoError(err).log();
@@ -2718,11 +2743,19 @@ function clearPendingWishfulStateForFailedDetachment(clientID, failedDetachmentU
 function clearPendingForFailedUpdateAttachmentStatus(clientID, attachmentUUID, cb) {
 	const db = app.get('db');
 	const clientCollection = db.collection('client');
-	const pipeline = getClearOwnedPendingDetachPipeline([attachmentUUID]);
+	const pathToAttachment = `attachments.${attachmentUUID}`;
+	const { managementId, bootVersion } = utils.getHandlingMgmtParams();
 
 	clientCollection.updateOne(
-		{ _id: clientID },
-		pipeline,
+		{
+			_id: clientID,
+			[`${pathToAttachment}.pending.action`]: consts.volumeAttachmentActions.DETACHING,
+			[`${pathToAttachment}.pending.handledBy.managementId`]: managementId,
+			[`${pathToAttachment}.pending.handledBy.bootVersion`]: bootVersion
+		},
+		[
+			{ $unset: [`${pathToAttachment}.pending`] },
+		],
 		err => {
 			if (err)
 				new MongoError(err).log();
@@ -2731,78 +2764,49 @@ function clearPendingForFailedUpdateAttachmentStatus(clientID, attachmentUUID, c
 		});
 }
 
-function getClearOwnedPendingAttachPipeline(attachmentsUUID) {
-	return getClearOwnedPendingPipeline(attachmentsUUID, consts.volumeAttachmentActions.ATTACHING);
-}
-
-function getClearOwnedPendingDetachPipeline(attachmentsUUID) {
-	return getClearOwnedPendingPipeline(attachmentsUUID, consts.volumeAttachmentActions.DETACHING);
-}
-
-// Builds a pipeline that clears `pending` for each attachment whose pending
-// action matches `action` AND whose pending was set by the current mgmt boot.
-// The handledBy CAS prevents a failed cleanup on this mgmt from removing a
-// pending entry that was just created by a concurrent operation on a different mgmt
-function getClearOwnedPendingPipeline(attachmentsUUID, action) {
-	const handledBy = utils.getHandlingMgmtParams();
-	return buildClearPendingPipeline(attachmentsUUID, action, handledBy);
-}
-
 scope.getClearWishfulStatePendingAttachAttachmentsPipeline = (attachmentsUUID) => {
-	return buildClearPendingPipeline(attachmentsUUID, consts.volumeAttachmentActions.ATTACHING, null);
-};
-
-// if attachment has top-level `action` then only the matching `pending` field is removed
-// if attachment has no `action` and matches the pending CAS, the entire attachment is removed from the wishful state.
-function buildClearPendingPipeline(attachmentsUUID, action, handledBy) {
-	const $set = {};
-
+	// if attachment has an action then only remove pending field
+	// if attachment has no action and has a pending then remove all the attachment from the wishful state object
+	let updatePipelineStages = { $set: {}, $unset: [] };
 	attachmentsUUID.forEach(attachmentUUID => {
 		const pathToAttachment = `attachments.${attachmentUUID}`;
-		const predicates = [
-			{ $ifNull: [`$${pathToAttachment}.pending`, false] },
-			{ $eq: [`$${pathToAttachment}.pending.action`, action] }
-		];
 
-		if (handledBy) {
-			predicates.push({ $eq: [`$${pathToAttachment}.pending.handledBy.managementId`, handledBy.managementId] });
-			predicates.push({ $eq: [`$${pathToAttachment}.pending.handledBy.bootVersion`, handledBy.bootVersion] });
-		}
-
-		const isMatchingPending = { $and: predicates };
-
-		$set[pathToAttachment] = {
+		updatePipelineStages.$set[pathToAttachment] = {
 			$cond: {
-				if: { $and: [isMatchingPending, { $ifNull: [`$${pathToAttachment}.action`, false] }] },
-				then: {
-					$arrayToObject: {
-						$filter: {
-							input: { $objectToArray: `$${pathToAttachment}` },
-							as: 'field',
-							cond: { $ne: ['$$field.k', 'pending'] }
-						}
-					}
+				if: {
+					$and: [
+						{ $ifNull: [`$${pathToAttachment}.action`, false] },
+						{ $ifNull: [`$${pathToAttachment}.pending`, false] }
+					]
 				},
+				then: `$${pathToAttachment}`,
 				else: {
 					$cond: {
-						if: isMatchingPending,
+						if: { $ifNull: [`$${pathToAttachment}.pending`, false] },
 						then: '$$REMOVE',
 						else: `$${pathToAttachment}`
 					}
 				}
 			}
 		};
+
+		updatePipelineStages.$unset.push(`${pathToAttachment}.pending`);
 	});
 
-	return [{ $set }];
-}
+	const pipeline = [
+		{ $set: updatePipelineStages.$set },
+		{ $unset: updatePipelineStages.$unset }
+	];
+
+	return pipeline;
+};
 
 function clearPendingWishfulStateForFailedAttachments(clientID, failedAttachments, cb) {
 	const db = app.get('db');
 	const clientCollection = db.collection('client');
 	const attachmentsUUID = failedAttachments.map(attachment => attachment.uuid);
 
-	const pipeline = getClearOwnedPendingAttachPipeline(attachmentsUUID);
+	const pipeline = scope.getClearWishfulStatePendingAttachAttachmentsPipeline(attachmentsUUID);
 
 	clientCollection.updateOne({ _id: clientID }, pipeline, err => {
 		if (err)
@@ -3127,8 +3131,7 @@ function getRemoveRefIDsPipeline(requestedVolumesWithRefID) {
 		.map(volume => {
 			const pathToAttachment = `attachments.${volume.uuid}`;
 			const isLastRefID = { $eq: [{ $size: { $ifNull: [`$${pathToAttachment}.referenceIDs`, []] } }, 1] };
-			const isPending = { $ifNull: [`$${pathToAttachment}.pending`, false] };
-			const canRemoveRefID = { $and: [{ $not: isLastRefID }, { $not: isPending }] };
+			const canRemoveRefID = { $not: isLastRefID };
 
 			return [
 				...getAttachmentVersionsForRefIdUpdatePipeline(canRemoveRefID, pathToAttachment),

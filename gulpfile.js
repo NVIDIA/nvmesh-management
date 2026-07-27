@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 const gulp = require('gulp');
 const sass = require('gulp-sass')(require('sass'));
 const eslint = require('gulp-eslint');

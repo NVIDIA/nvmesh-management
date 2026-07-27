@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React, consts */
 
 import { AppContext } from '../pages/App.jsx';
@@ -51,7 +46,7 @@ const TopNavbar = () => {
 									<a target="_blank" href={consts.restAPIURL} data-pjax="false" rel="noreferrer">REST API</a>
 								</li>
 								<li>
-									<a target="_blank" href="TBD" data-pjax="false" rel="noreferrer">Release Notes</a>
+									<a target="_blank" href="https://www.excelero.com/release-notes" data-pjax="false" rel="noreferrer">Release Notes</a>
 								</li>
 							</ul>
 						</li>

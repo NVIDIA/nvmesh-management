@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global app,log,describe,before,it */
 const assert = require('assert');
 
@@ -285,7 +280,7 @@ describe('Configuration Profiles', () => {
 				});
 			})
 				.then(async function() {
-					let msg = await (await client.getAgentQueue()).readMessageOrWait();
+					let msg = await (await client.getAgentQueue()).readMessageOrWait();				
 					assert.strictEqual(msg.type, consts.kafkaMessageTypes.ManagementToAgent.updateConfigProfile);
 
 					assert(msg.payload);
@@ -612,20 +607,6 @@ describe('Configuration Profiles', () => {
 			await setup.newSetup();
 			await client1.save();
 			await client2.save();
-
-			// Wait for async fire-and-forget operations from client.save() to complete.
-			// These operations assign Cluster Default to nodes without a profile.
-			const maxRetries = 7;
-			let attempts = 0;
-			while (attempts < maxRetries) {
-				attempts++;
-				let nodeConfigs = await nodeConfigurationCollection.find({ _id: { $in: [client1.id, client2.id] } }).toArray();
-				let allHaveClusterDefault = nodeConfigs.length === 2 &&
-					nodeConfigs.every(c => c.desiredProfile?.name === consts.configurationProfile.defaults.CLUSTER_DEFAULT);
-				if (allHaveClusterDefault) break;
-				await new Promise(r => setTimeout(r, 100));
-			}
-
 			let result = await promiseSaveProfile(testProfile);
 			assert(result.success);
 			testProfile.uuid = result.uuid;
@@ -634,7 +615,7 @@ describe('Configuration Profiles', () => {
 			log.debug('finished setup');
 		});
 
-		it('Nodes from deleted profile should revert to Cluster Default', async() => {
+		it('Nodes from deleted profile should revet to Cluster Default', async() => {
 			// Verify nodes profile is testProfile
 			let nodeConfigs = await nodeConfigurationCollection.find({ _id: { $in: [client1.id, client2.id] } }).toArray();
 			nodeConfigs.forEach(c => {

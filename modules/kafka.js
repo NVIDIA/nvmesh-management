@@ -1,13 +1,18 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
 var scope = {};
 module.exports = scope;
 
+var fs = require('fs');
 var async = require('async');
 const { Kafka, logLevel: kafkaLogLevel, AclResourceTypes, AclOperationTypes, AclPermissionTypes, ResourcePatternTypes } = require('kafkajs');
 const { Backoff } = require('../models/backoff.js');
@@ -26,7 +31,6 @@ var { MongoError, SystemMessage, Entities, InteropDBError } = require('./error.j
 
 const { metrics, isMetricsEnabled } = require('./openTelemetry.js');
 const { trace, context } = require('@opentelemetry/api');
-const cert = require('./cert.js');
 
 let isRecycleProducerInProgress = false;
 let lastConsumerRecycleTime = null;
@@ -222,13 +226,7 @@ scope.createTopics = (topics, callback) => {
 		try {
 			// createTopics will resolve to true if topics were created successfully or false if all of them already exists.
 			// The method will throw exceptions in case of errors
-			const params = {
-				topics: topics.map(topic => ({
-					topic: topic.name,
-					numPartitions: topic.numPartitions,
-					configEntries: topic.configEntries || []
-				}))
-			};
+			const params = { topics: topics.map(topic => ({ topic: topic.name, numPartitions: topic.numPartitions })) };
 			topicsCreated = await scope.runKafkaCommand(admin.createTopics, [params]);
 
 			if (!topicsCreated)
@@ -403,6 +401,31 @@ scope.getUpgradeAgentGroupID = (upgradeAgentID) => {
 	return `UPGRADE_AGENT_${upgradeAgentID}`;
 };
 
+scope.deleteTopics = (topicsToDelete, callback) => {
+	let err;
+
+	(async() => {
+		const kafkaAdmin = app.get('kafkaAdmin');
+
+		logger.sysDEBUG(`Going to delete topics: ${topicsToDelete}`);
+
+		try {
+			await scope.runKafkaCommand(kafkaAdmin.deleteTopics, [{ topics: topicsToDelete }]);
+		} catch (ex) {
+			if (ex?.cause?.code === consts.kafkaErrors.UNKNOWN_TOPIC_OR_PARTITION)
+				logger.sysDEBUG(`We tried to delete the topics ${topicsToDelete} but at least one does not exist.`);
+			else
+				err = new SystemMessage(systemMessages.KAFKA_DELETE_TOPICS_ERROR)
+					.addInfo(Entities.Error, ex)
+					.addInfo(Entities.KafkaTopics, topicsToDelete)
+					.log();
+
+		} finally {
+			callback(err);
+		}
+	})();
+};
+
 scope.deleteTopicRecords = (topic, callback) => {
 	let err;
 
@@ -462,14 +485,12 @@ function buildKafkaTLSOptions(kafkaOptions, kafkaConfiguration) {
 	if (!kafkaConfiguration.transport.keyFile)
 		throw new Error('TLS enabled but missing kafkaConnection.transport.keyFile configuration!');
 
-	const activeCertSubDir = cert.prepareCertSubDir('kafka');
-
 	kafkaOptions.ssl = {};
-	kafkaOptions.ssl.cert = [cert.getCertFile(activeCertSubDir, kafkaConfiguration.transport.certFile, consts.CERT_TYPES.CERT, 'utf-8')];
-	kafkaOptions.ssl.key = [cert.getCertFile(activeCertSubDir, kafkaConfiguration.transport.keyFile, consts.CERT_TYPES.KEY, 'utf-8')];
+	kafkaOptions.ssl.cert = [fs.readFileSync(kafkaConfiguration.transport.certFile, 'utf-8')];
+	kafkaOptions.ssl.key = [fs.readFileSync(kafkaConfiguration.transport.keyFile, 'utf-8')];
 
 	if (kafkaConfiguration.transport.CAFile)
-		kafkaOptions.ssl.ca = [cert.getCertFile(activeCertSubDir, kafkaConfiguration.transport.CAFile, consts.CERT_TYPES.CA, 'utf-8')];
+		kafkaOptions.ssl.ca = [fs.readFileSync(kafkaConfiguration.transport.CAFile, 'utf-8')];
 
 	if (kafkaConfiguration.transport.passphrase)
 		kafkaOptions.ssl.passphrase = kafkaConfiguration.transport.passphrase;
@@ -500,50 +521,6 @@ scope.connect = (callback) => {
 			callback(err);
 		}
 	})();
-};
-
-scope.getSubscribableTopics = (callback) => {
-	async.parallel([
-		cb => {
-			const rpmVersion = utils.getVRPartsObj(app.get('rpmVersion')).version;
-			scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, null, topics => {
-				cb(null, topics);
-			});
-		},
-		cb => {
-			scope.getZoneUpstreamTopics((err, upstreamTopicsByZone) => {
-				if (err)
-					return cb(err);
-
-				cb(null, Object.values(upstreamTopicsByZone).flat());
-			});
-		}
-	], (err, [managementTopics, zoneTopics]) => {
-		if (err)
-			return callback(err, []);
-
-		callback(null, [...managementTopics, ...zoneTopics]);
-	});
-};
-
-scope.getZoneUpstreamTopics = (callback) => {
-	const db = app.get('db');
-	const configurationVersionCollection = db.collection('configurationVersion');
-
-	configurationVersionCollection.find({}, { projection: { topics: 1 } }).toArray((err, configurationVersions) => {
-		if (err)
-			return callback(new MongoError(err).log());
-
-		const upstreamTopicsByZone = {};
-
-		configurationVersions.forEach(configurationVersion => {
-			if (configurationVersion.topics) {
-				const upstreamTopics = Object.values(configurationVersion.topics).filter(scope.isUpstreamTopicByName);
-				upstreamTopicsByZone[configurationVersion._id] = upstreamTopics;
-			}
-		});
-		callback(null, upstreamTopicsByZone);
-	});
 };
 
 scope.initTopics = (callback) => {
@@ -584,13 +561,20 @@ function initManagementTopics(callback) {
 }
 
 function initZoneTopics(callback) {
-	scope.getZoneUpstreamTopics((err, upstreamTopicsByZone) => {
-		if (err)
-			return callback(err);
+	const db = app.get('db');
+	const configurationVersionCollection = db.collection('configurationVersion');
 
-		Object.entries(upstreamTopicsByZone).forEach(([zoneID, upstreamTopics]) => {
-			events.emitEvent([events.getZoneID(zoneID)], objectNotifier.events.newUpstreamTopicEvent, { topics: upstreamTopics });
+	configurationVersionCollection.find({}, { projection: { topics: 1 } }).toArray((err, configurationVersions) => {
+		if (err)
+			return callback(new MongoError(err).log());
+
+		configurationVersions.forEach(configurationVersion => {
+			if (configurationVersion.topics) {
+				const upstreamTopics = Object.values(configurationVersion.topics).filter(scope.isUpstreamTopicByName);
+				events.emitEvent([events.getZoneID(configurationVersion._id)], objectNotifier.events.newUpstreamTopicEvent, { topics: upstreamTopics });
+			}
 		});
+
 		callback();
 	});
 }
@@ -678,16 +662,9 @@ scope.getManagementTopicsToCreate = (rpmVersion, callback) => {
 	const GLOBAL_SETTINGS = app.get('globalSettings');
 
 	scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, '1', topicNames => {
-		const configEntries = [
-			{ name: 'cleanup.policy', value: 'compact,delete' },
-			{ name: 'segment.bytes', value: String(consts.kafka.LOG_COMPACTION.SEGMENT_BYTES) },
-			{ name: 'segment.ms', value: String(consts.kafka.LOG_COMPACTION.SEGMENT_MS) }
-		];
-
 		const topics = topicNames.map(name => ({
 			name,
 			numPartitions: GLOBAL_SETTINGS.kafka.partitionsFactorForManagementTopics,
-			configEntries: name.includes(consts.topicSuffix.MANAGEMENT_KEEPALIVE) ? configEntries : [],
 			ACL: {
 				allowedHost: '*',
 				principal: '*',
@@ -1169,6 +1146,7 @@ async function disconnectProducer() {
 	}
 }
 
+
 scope.recycleConsumer = callback => {
 	(async() => {
 		logger.sysWARNING('Going to recycle consumer');
@@ -1183,7 +1161,6 @@ scope.recycleConsumer = callback => {
 		logger.sysDEBUG(`recycleConsumer:: disconnected consumers ${error ? error.toString() : ''}`);
 
 		if (!error) {
-			logger.sysDEBUG('recycleConsumer:: Initializing new consumer');
 			error = await scope.initConsumers();
 			logger.sysDEBUG('recycleConsumer:: initConsumers finished');
 		}
@@ -1196,12 +1173,12 @@ scope.recycleConsumer = callback => {
 	})();
 };
 
-scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, requestID = uuid.v4(), retrying = false) => {
+scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, requestID = uuid.v4()) => {
 	const currentConsumer = app.get('kafkaConsumer');
 	const currentConsumerId = currentConsumer?.customConsumerInstanceID;
 	const currentConsumerSubscribedTopics = currentConsumer?.subscribedTopics || new Set();
 	const loggingInfo = `requestingConsumerId: ${requestingConsumerId}, currentConsumerId: ${currentConsumerId}, runTimeID: ${requestID}`;
-	const retryRequestConsumerRecycle = () => scope.requestConsumerRecycle(requestingConsumerId, callback, requestID, true);
+	const retryRequestConsumerRecycle = () => scope.requestConsumerRecycle(requestingConsumerId, callback, requestID);
 
 	logger.sysDEBUG(`Got a recycle consumer request, ${loggingInfo}`);
 
@@ -1211,8 +1188,7 @@ scope.requestConsumerRecycle = (requestingConsumerId, callback = () => {}, reque
 			return callback();
 		}
 
-		if (consumerIdOnRecycle && (consumerIdOnRecycle > requestingConsumerId || (!retrying && consumerIdOnRecycle === requestingConsumerId))
-			&& utils.isEqualSet(currentConsumerSubscribedTopics, scope.subscribableTopics)) {
+		if (consumerIdOnRecycle && consumerIdOnRecycle >= requestingConsumerId && utils.isEqualSet(currentConsumerSubscribedTopics, scope.subscribableTopics)) {
 			logger.sysDEBUG(`Recycle for consumer is already in progress, continuing... , ${loggingInfo}`);
 			return callback();
 		}
@@ -1252,13 +1228,10 @@ scope.clearRecycleConsumerCooldown = () => {
 };
 
 async function recycleProducer() {
-	logger.sysDEBUG('recycleProducer:: Disconnecting existing producer');
+	logger.sysDEBUG('Going to recycle producer');
+
 	await disconnectProducer();
-
-	logger.sysDEBUG('recycleProducer:: Initializing new producer');
 	await initProducer();
-
-	logger.sysDEBUG('recycleProducer:: Producer recycled successfully');
 }
 
 async function recycleProducerIfNeeded(currentProducer) {
@@ -1339,7 +1312,7 @@ scope.GCTomaTopics = (versionDocument, callback) => {
 
 	let maximumHardwareOffset = -1;
 
-	targetCollection.find({ zone: versionDocument._id }, { projection: { topics: 1 } }).toArray((err, targets) => {
+	targetCollection.find({ zone: versionDocument.zone }, { projection: { topics: 1 } }).toArray((err, targets) => {
 		if (err)
 			return callback(new MongoError(err).log());
 
@@ -1431,10 +1404,7 @@ scope.GCUpgradeAgentsTopics = (callback) => {
 scope.GCManagementZoneTopics = (versionDocument, callback) => {
 	const { topics } = versionDocument;
 	const groupID = consts.kafka.MANAGEMENT_GROUP_ID;
-	const managementZoneTopics = [
-		topics[consts.topicSuffix.MANAGEMENT_LOW],
-		topics[consts.topicSuffix.MANAGEMENT_PRIORITY],
-	];
+	const managementZoneTopics = [topics[consts.topicSuffix.MANAGEMENT_LOW], topics[consts.topicSuffix.MANAGEMENT_PRIORITY]];
 
 	scope.deleteCommittedRecords(groupID, managementZoneTopics, callback);
 };
@@ -1642,7 +1612,7 @@ scope.runKafkaCommand = async(commandFn, args = [], options = {}) => {
 };
 
 scope.isUpstreamTopicByName = topicName => {
-	const managementTopicsSuffixes = [consts.topicSuffix.MANAGEMENT_LOW, consts.topicSuffix.MANAGEMENT_PRIORITY, consts.topicSuffix.MANAGEMENT_KEEPALIVE];
+	const managementTopicsSuffixes = [consts.topicSuffix.MANAGEMENT_LOW, consts.topicSuffix.MANAGEMENT_PRIORITY];
 	return managementTopicsSuffixes.some(suffix => topicName.includes(suffix));
 
 };
@@ -1714,6 +1684,159 @@ scope.mapTopicNamesToTopicSuffix = (topics) => {
 		acc[topicSuffix] = topic;
 		return acc;
 	}, {});
+};
+
+// this function should return a set of topics that are owned by nvmesh/management only
+function getOwnedExistingTopics(callback) {
+	scope.listTopics((err, topics) => {
+		if (err)
+			return callback(err);
+
+		const interestTopicsSuffixes = Object.values(consts.topicSuffix);
+		const interestTopics = topics.filter(topic => interestTopicsSuffixes.some(suffix => topic.includes(suffix)));
+
+		callback(null, new Set(interestTopics));
+	});
+}
+
+function getTopicsInUseByCollectionName(collectionName, callback) {
+	const db = app.get('db');
+	const collection = db.collection(collectionName);
+
+	const pipeline = [
+		{ '$project': { topicValues: { '$objectToArray': '$topics' } } },
+		{ '$unwind': '$topicValues' },
+		{ '$project': { _id: 0, topic: '$topicValues.v' } },
+		{ '$group': { _id: null, uniqueTopics: { '$addToSet': '$topic' } } },
+		{ '$project': { _id: 0, uniqueTopics: 1 } },
+	];
+
+	collection.aggregate(pipeline).toArray((err, results) => {
+		if (err)
+			return callback(new MongoError(err).log());
+
+		const topics = results[0]?.uniqueTopics || [];
+		callback(null, new Set(topics));
+	});
+}
+
+function getManagementTopicsInUse(callback) {
+	const db = app.get('db');
+	const managementClusterCollection = db.collection('managementCluster');
+	const query = { rpmVersion: { $exists: true } };
+	const projection = { _id: 0, rpmVersion: 1 };
+
+	managementClusterCollection.find(query, { projection }).toArray((err, results) => {
+		if (err)
+			return callback(new MongoError(err).log());
+
+		const topicsInUse = new Set();
+		const rpmVersions = [...new Set(results.map(result => utils.getVRPartsObj(result.rpmVersion).version))];
+
+		async.each(rpmVersions, (rpmVersion, cb) => {
+			scope.getTopicNames(consts.components.MANAGEMENT, rpmVersion, null, null, null, topics => {
+				topicsInUse.add(...topics);
+				cb();
+			});
+		}, () => callback(null, topicsInUse));
+	});
+}
+
+function getTopicsInUse(callback) {
+	async.parallel([
+		cb => getTopicsInUseByCollectionName(consts.dbCollections.CLIENT, cb),
+		cb => getTopicsInUseByCollectionName(consts.dbCollections.TARGET, cb),
+		cb => getTopicsInUseByCollectionName(consts.dbCollections.UPGRADE_AGENT, cb),
+		cb => getTopicsInUseByCollectionName(consts.dbCollections.CONFIGURATION_VERSION, cb),
+		cb => getManagementTopicsInUse(cb)
+	], (err, topicsSetsInUse) => {
+		if (err)
+			return callback(err);
+
+		const topicsInUse = new Set(topicsSetsInUse.flatMap(set => [...set]));
+		callback(null, topicsInUse);
+	});
+}
+
+scope.getUnusedTopics = (callback) => {
+	async.parallel({
+		existing: getOwnedExistingTopics,
+		inUse: getTopicsInUse,
+	}, (err, topicsBySource) => {
+		if (err)
+			return callback(err);
+
+		const unusedTopics = [...topicsBySource.existing].filter(topic => !topicsBySource.inUse.has(topic));
+		callback(null, unusedTopics);
+	});
+};
+
+function getGroupIdForTopic(topicName) {
+	const [prefix] = topicName.split('.');
+	const mcsConsumingSuffixes = [
+		consts.topicSuffix.CLIENT_MAIN,
+		consts.topicSuffix.AGENT_MAIN
+	];
+	const managementConsumingSuffixes = [
+		consts.topicSuffix.MANAGEMENT_LOW,
+		consts.topicSuffix.MANAGEMENT_PRIORITY
+	];
+	const leaderConsumingSuffixes = [
+		consts.topicSuffix.LEADER_INCREMENTAL_UPDATES,
+		consts.topicSuffix.LEADER_INCREMENTAL_TARGET_UPDATES
+	];
+
+	if (mcsConsumingSuffixes.some(suffix => topicName.includes(suffix)))
+		return scope.getMCSGroupID(prefix);
+
+	if (topicName.includes(consts.topicSuffix.TOMA_COMMANDS))
+		return scope.getTargetCommandGroupID(prefix);
+
+	if (topicName.includes(consts.topicSuffix.TOMA_HARDWARE_CONF))
+		return scope.getTargetHardwareGroupID(prefix);
+
+	if (managementConsumingSuffixes.some(suffix => topicName.includes(suffix)))
+		return consts.kafka.MANAGEMENT_GROUP_ID;
+
+	if (leaderConsumingSuffixes.some(suffix => topicName.includes(suffix))) {
+		const zoneID = prefix.replace(/\D/g, '');
+		return scope.getLeaderGroupID(zoneID);
+	}
+
+	if (topicName.includes(consts.topicSuffix.UPGRADE_AGENT_COMMANDS))
+		return scope.getUpgradeAgentGroupID(prefix);
+
+	new SystemMessage(systemMessages.KAFKA_GROUP_ID_NOT_FOUND).addInfo(Entities.KafkaTopics, topicName).log();
+}
+
+// return an object mapping topic names to their offsets information (which is an object mapping partition numbers to offsets)
+// i.e. { 'default.management.priority': { 0: 100, 1: 200 }, 'scale-1.client.main': { 0: 300, 1: 400 } }
+scope.getOffsetsInformationByTopics = (topicNames, callback) => {
+	const offsetsInfo = {};
+
+	const groupIdToTopics = topicNames.reduce((acc, topicName) => {
+		const groupId = getGroupIdForTopic(topicName);
+
+		if (!groupId)
+			return acc;
+
+		return {
+			...acc,
+			[groupId]: [...(acc[groupId] || []), topicName]
+		};
+	}, {});
+
+	async.each(Object.entries(groupIdToTopics), ([groupId, topics], cb) => {
+		scope.getGroupOffsets(groupId, topics, (err, offsets) => {
+			if (err)
+				return cb(err);
+
+			offsets.forEach(({ topic, partitions }) =>
+				offsetsInfo[topic] = Object.fromEntries(partitions.map(({ partition, offset }) => [partition, offset])));
+
+			cb();
+		});
+	}, err => callback(err, offsetsInfo));
 };
 
 module.exports = scope;

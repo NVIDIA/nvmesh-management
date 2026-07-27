@@ -1,8 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 const express = require('express');
 
 var { Entities } = require('../modules/error.js');
@@ -89,7 +92,7 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 * @apiParam {string} uuid The UUID of the upgrade agent.
 * @apiParamExample {json} Payload example
 * {
-*   "_id": "nvme31.acme.com"
+*   "_id": "nvme31.excelero.com"
 * }
 * @apiSuccess {boolean} success Whether the keepalive was successfully requested.
 * @apiSuccess {string} [error] Error message, if any.
@@ -97,7 +100,7 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 *{
 *      "success": true,
 *	   "uuid": "",
-*      "_id": "nvme31.acme.com",
+*      "_id": "nvme31.excelero.com",
 *      "error": null,
 *	   "payload": null
 * }
@@ -126,7 +129,7 @@ router.post('/keepalive', isAdminRole, function(req, res) {
 * @apiParam {string} delete.uuid The `UUID` of the `upgradeAgent` to delete.
 * @apiParamExample {string} Payload example
 * [{
-*		"_id": "nvme31.acme.com"
+*		"_id": "nvme31.excelero.com"
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
 * @apiSuccess {object} results success statuses
@@ -134,7 +137,7 @@ router.post('/keepalive', isAdminRole, function(req, res) {
 * [{
 *      "success": true,
 *	   "uuid": "",
-*      "_id": "nvme31.acme.com",
+*      "_id": "nvme31.excelero.com",
 *      "error": null,
 *	   "payload": null
 * }]*/

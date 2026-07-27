@@ -16,14 +16,9 @@ NVMeshCLI/dist
 *.css
 *.map
 .*
-!.github
-!.gitignore
-!.eslin*
 test/test.log
 public/javascripts/components_js
 /package-lock.json
 !/.babelrc.js
 public/javascripts/consts.js
 test/openTelemetry/metrics
-!.gitlab-ci.yml
-!.mocharc.json

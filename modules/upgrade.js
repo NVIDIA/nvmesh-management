@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -218,6 +222,8 @@ const shouldSkipComponent = (component, componentVersion, destinationVersionRele
 
 	if (generalSettings.forceUpgradeUpToDateComponents) return false;
 
+	if (!componentVersion) return true;
+	
 	if (isComponentVersionAlreadyInRelease(component, componentVersion, destinationVersionRelease)) {
 		logger.sysDEBUG(`NDU - Skipping upgrade for machine: ${hostname}, component: ${component}-${componentVersion} `
 			+ `because it is already in destination release ${destinationVersionRelease.version}`);
@@ -259,7 +265,7 @@ scope.getUpgradeSteps = (upgrade, cb) => {
 						const sourceVersion = getBaseVersion(mgmtVersion);
 						const upgradeType = consts.upgradeTypes.MANAGEMENT;
 
-						if (!mgmtVersion || shouldSkipComponent(component, mgmtVersion, destinationVersionRelease, machine.hostname)) {
+						if (shouldSkipComponent(component, mgmtVersion, destinationVersionRelease, machine.hostname)) {
 							return cb(null, []);
 						}
 
@@ -271,7 +277,7 @@ scope.getUpgradeSteps = (upgrade, cb) => {
 						const sourceVersion = getBaseVersion(upgradeAgentVersion);
 						const upgradeType = consts.upgradeTypes.UPGRADE_AGENT;
 
-						if (!upgradeAgentVersion || shouldSkipComponent(component, upgradeAgentVersion, destinationVersionRelease, machine.hostname)) {
+						if (shouldSkipComponent(component, upgradeAgentVersion, destinationVersionRelease, machine.hostname)) {
 							return cb(null, []);
 						}
 
@@ -290,7 +296,7 @@ scope.getUpgradeSteps = (upgrade, cb) => {
 						const sourceVersion = getBaseVersion(componentVersion);
 						const upgradeType = machine.isClientOnly ? consts.upgradeTypes.CLIENT_ONLY : consts.upgradeTypes.CLIENT_AND_TARGET;
 
-						if (!componentVersion || shouldSkipComponent(consts.components.CLIENT, componentVersion, destinationVersionRelease, machine.hostname)) {
+						if (shouldSkipComponent(consts.components.CLIENT, componentVersion, destinationVersionRelease, machine.hostname)) {
 							return cb(null, []);
 						}
 
@@ -1055,7 +1061,7 @@ scope.handleStepCannotBeExecuted = (step, err, cb) => {
 		]
 	}, {
 		$inc: { stepRetryCounter: 1 },
-		$set: { lastExecTryError: err.toString() }
+		$set: { lastExecTryError: err }
 	}, cb);
 };
 

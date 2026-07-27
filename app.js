@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -51,7 +55,6 @@ var lockModule = require('./modules/lock.js');
 var managementClusterModule = require('./modules/managementCluster.js');
 var dbUpgradeModule = require('./modules/dbUpgrade.js');
 var systemMessages = require('./systemMessages.js');
-var cert = require('./modules/cert.js');
 var ClientCertStrategy = require('./modules/clientCertStrategy').Strategy;
 var { Entities, MongoError, SystemMessage, SystemAdminMessage, InteropDBError, Differentiators } = require('./modules/error.js');
 
@@ -157,7 +160,7 @@ async function gracefulShutdown() {
 
 	new SystemMessage(systemMessages.APP_GRACEFUL_SHUTDOWN).log();
 
-	if (kafkaConsumer && !kafka.isConsumerPaused) {
+	if (!kafka.isConsumerPaused) {
 		await kafka.pauseConsumer();
 	}
 
@@ -240,25 +243,17 @@ process.on('SIGHUP', function() {
 
 function getServerOptions(configName, isMTLS) {
 	const serverTLSConfig = config.get(configName);
-	const subdirName = configName.split('.')[0];
-
-	if (!['websocket', 'server'].includes(subdirName)) {
-		new SystemMessage(systemMessages.APP_CERT_DIRECTORY_UNKNOWN).log();
-		process.exit(1);
-	}
-
-	const activeCertSubDir = cert.prepareCertSubDir(subdirName);
 
 	let options = {
-		key: cert.getCertFile(activeCertSubDir, serverTLSConfig.key, consts.CERT_TYPES.KEY),
-		cert: cert.getCertFile(activeCertSubDir, serverTLSConfig.cert, consts.CERT_TYPES.CERT)
+		key: fs.readFileSync(serverTLSConfig.key),
+		cert: fs.readFileSync(serverTLSConfig.cert)
 	};
 
 	if (serverTLSConfig.limitToSSLCipherSuites.length)
 		options.ciphers = serverTLSConfig.limitToSSLCipherSuites;
 
 	if (isMTLS) {
-		options.ca = cert.getCertFile(activeCertSubDir, serverTLSConfig.ca, consts.CERT_TYPES.CA);
+		options.ca = fs.readFileSync(serverTLSConfig.ca);
 		options.rejectUnauthorized = true; // if certificate is not signed by the CA then drop the connection
 		options.requestCert = true; // client have to send its own Cert
 	}
@@ -311,7 +306,7 @@ function doAfterDatabasesArePopulatedAndConnected() {
 
 		app.locals.user = 'placeholder';
 
-		app.set('APIVersion', '16');
+		app.set('APIVersion', '15');
 
 		utils.readVersionFile((err, version) => {
 			if (err || !version.changeID) {
@@ -631,8 +626,8 @@ function doAfterDatabasesArePopulatedAndConnected() {
 
 		//Configure PhoneHome email.
 		userCollection.updateOne(
-			{ _id: 'phoneHome@acme.com' },
-			{ $set: { email: config.get('supportEmail').toLowerCase() } },
+			{ _id: 'phoneHome@excelero.com' },
+			{ $set: { email: config.get('exceleroEmail').toLowerCase() } },
 			function(err) {
 				if (err)
 					new MongoError(err).log();

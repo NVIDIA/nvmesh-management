@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 managementconffile="/etc/nvmesh/management.js.conf"
 MDIR=/opt/nvmesh/management
 libraries=$MDIR/libraries
@@ -32,7 +29,7 @@ getMongoShellCommandLineArguments() {
 	local confName=$1
 	local forMongoDump=$2
 
-	commandLineArguments=$($nodetouse --eval "console.log(require('$MDIR/modules/mongoCMDLineArgsBuilder.js').buildMongoConnectionCommandlineArgsByConnectionName('$confName', '$forMongoDump'))" 2>/dev/null)
+	commandLineArguments=$($nodetouse --eval "console.log(require('$MDIR/modules/mongoCMDLineArgsBuilder.js').buildMongoConnectionCommandlineArgsByConnectionName('$confName', '$forMongoDump'))")
 }
 
 # this is a duplicate of the same function in services/nvmeshmgr service file

@@ -2,10 +2,10 @@ Name:				nvmesh-nhc
 Version:			%{version}
 Release:			%{release}
 Group:				System Environment/Kernel
-Summary:			"nvmesh-nhc" by NVIDIA
+Summary:			"nvmesh-nhc" by Excelero
 
-License:			Apache-2.0
-URL:				http://www.nvidia.com
+License:			Commercial Non OSI
+URL:				http://www.excelero.com
 Source0:			%{name}
 AutoReqProv: 			no
 
@@ -14,9 +14,9 @@ AutoReqProv: 			no
 
 %description
 
-Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+© Copyright 2015-2020 Excelero, Inc. All rights reserved. This document contains the confidential and proprietary information of Excelero, Inc. Do not reproduce or distribute without the prior written consent of Excelero.
 
-"NVIDIA nvmesh-nhc" components.
+"Excelero nvmesh-nhc" components.
 	Branch: %{branch}
 	Commit: %{commit_id}
 
@@ -56,5 +56,5 @@ fi
 /opt/nvmesh/nhc_files/
 
 %changelog
-* Wed Oct 7 2025 NVIDIA
-- Installing NVIDIA nvmesh-nhc
+* Wed Oct 7 2015 Excelero
+- Installing Excelero nvmesh-nhc

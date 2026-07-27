@@ -1,8 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -101,7 +104,7 @@ router.get('/server/:id', function(req, res) {
 * @apiParam {string} delete.uuid The `UUID` of the `server` to delete.
 * @apiParamExample {string} Payload example
 * [{
-*		"_id": "nvme50.acme.com",
+*		"_id": "nvme50.excelero.com",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
 *
@@ -112,7 +115,7 @@ router.get('/server/:id', function(req, res) {
 *
 * @apiSuccessExample Example data on success
 * [{
-*	"_id": "nvme50.acme.com",
+*	"_id": "nvme50.excelero.com",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
 *	"success": true,
 *	"error": null,
@@ -144,7 +147,7 @@ router.post('/delete', isAdminRole, function(req, res) {
 * @apiParam {string} evict.uuid The `UUID` of the `server` to evict.
 * @apiParamExample {string} Payload example
 * [{
-*		"_id": "nvme50.acme.com"
+*		"_id": "nvme50.excelero.com"
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
 *
@@ -155,7 +158,7 @@ router.post('/delete', isAdminRole, function(req, res) {
 *
 * @apiSuccessExample Example data on success
 * [{
-*	"_id": "nvme50.acme.com",
+*	"_id": "nvme50.excelero.com",
 *   "uuid": "f02abf10-6bfb-11ed-a62f-d1b4ca08eefb",
 *	"success": true,
 *	"error": null,
@@ -217,7 +220,7 @@ router.post('/availableMirrors/:capacity', function(req, res) {
 * @apiParamExample {string} Payload example
 * [{
 * 	"nicID": "0xfe80000000000000001e670300932499",
-*	"targetID": "nvme47.acme.com"
+*	"targetID": "nvme47.excelero.com"
 *	"targetUUID": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * }]
 * @apiSuccess {object} results success statuses
@@ -257,14 +260,14 @@ router.post('/deleteNic', isAdminRole, function(req, res) {
 * @apiParam {object} [filter] `Filter` before fetching. <small><i>--MongoDB filter obj.</i></small>
 * @apiParam {object} [sort] `Sort` before fetching. <small><i>--MongoDB sort obj.</i></small>
 * @apiParamExample {object[]} Example request
-* /servers/all/0/2?filter={"node_id":"nvme50.acme.com"}&sort={"node_status":-1}
+* /servers/all/0/2?filter={"node_id":"nvme50.excelero.com"}&sort={"node_status":-1}
 *
 * @apiSuccess {object[]} servers List of `servers`.
 *
 * @apiSuccessExample Example data on success
 * [{
 * 	"_id": "55d9dd3d1978c3ac4195d7ea",
-* 	"node_id": "nvme50.acme.com",
+* 	"node_id": "nvme50.excelero.com",
 * 	"node_status": 1,
 * 	"nics": [{
 * 		"nicID": "0xfe80000000000000f452140300f555e1"
@@ -342,7 +345,7 @@ router.post('/byRegex', function(req, res) {
 * {
 * 	"zoneID": "10",
 *	"targets": [{
-*		"_id": "nvme50.acme.com",
+*		"_id": "nvme50.excelero.com",
 *		"uuid": "05457a00-7a13-11ed-a3a5-2dd1199d2398",
 * 	}]
 * }

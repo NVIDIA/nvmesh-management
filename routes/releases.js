@@ -1,19 +1,21 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 const express = require('express');
 
 const consts = require('../consts.js');
 const utils = require('../utils.js');
 const systemMessages = require('../systemMessages.js');
-const { Entities, Differentiators } = require('../modules/error.js');
+const { Entities } = require('../modules/error.js');
 const { createAuditRequestLog } = require('../modules/log.js');
 const validateProjection = require('../middlewares/validateProjection.js');
 const releaseModule = require('../modules/release.js');
-const releaseBuilderModule = require('../modules/releaseBuilder.js');
 
 const router = express.Router();
 
@@ -89,6 +91,104 @@ router.get('/all/:page/:count', validateProjection, function(req, res) {
 
 		res.json(releases);
 	});
+});
+
+/**
+ * @apiVersion 1.0.0
+ * @api {post} /releases/save Save releases
+ * @apiName SaveReleases
+ * @apiGroup releases
+ * @apiDescription Save `releases`.
+ *
+ * @apiParam {object[]} releases List of `releases` to save.
+ * @apiParamExample {object[]} Example request
+ * [{
+  "version": "3.2.0-HF2",
+  "artifacts": [
+    {
+      "ID": 1,
+      "name": "nvmesh-target-3.1.0-1357.el8_6.x86_64.rpm",
+      "platforms": [
+        {
+          "ID": 1,
+          "name": "SetupName",
+          "description": "Setup description",
+          "archTypeID": 1,
+          "operatingSystemID": 1,
+          "kernelID": 8,
+          "ofedID": 4,
+          "ArtifactPlatform": {
+            "ID": 1,
+            "artifactID": 1,
+            "platformID": 1
+          }
+        },
+        {
+          "ID": 2,
+          "name": "name2",
+          "description": "new description2",
+          "archTypeID": 1,
+          "operatingSystemID": 1,
+          "kernelID": 9,
+          "ofedID": 5,
+          "ArtifactPlatform": {
+            "ID": 9,
+            "artifactID": 1,
+            "platformID": 2
+          }
+        }
+      ]
+    },
+    {
+      "ID": 2,
+      "name": "nvmesh-base-3.1.0-1357.el8_6.x86_64.rpm",
+      "platforms": [
+        {
+          "ID": 1,
+          "name": "SetupName",
+          "description": "Setup description",
+          "archTypeID": 1,
+          "operatingSystemID": 1,
+          "kernelID": 8,
+          "ofedID": 4,
+          "ArtifactPlatform": {
+            "ID": 2,
+            "artifactID": 2,
+            "platformID": 1
+          }
+        },
+        {
+          "ID": 2,
+          "name": "name2",
+          "description": "new description2",
+          "archTypeID": 1,
+          "operatingSystemID": 1,
+          "kernelID": 9,
+          "ofedID": 5,
+          "ArtifactPlatform": {
+            "ID": 10,
+            "artifactID": 2,
+            "platformID": 2
+          }
+        }
+      ]
+    }
+  ]
+}]
+ */
+router.post('/save', (req, res) => {
+	let releases = req.body;
+
+	let incomingRequestSystemAdminMessage = releases.map((release) => createAuditRequestLog(req, systemMessages.RELEASE_SAVE_REQUEST)
+		.addInfo(Entities.Release.ID, release.ID)
+		.addInfo(Entities.Release.name, release.version)
+	);
+
+	utils.handleRESTAndLog(
+		incomingRequestSystemAdminMessage,
+		cb => releaseModule.createReleases(releases, cb),
+		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Release.name, Entities.Release.ID)))
+	);
 });
 
 /**
@@ -173,106 +273,5 @@ router.get('/count', (req, res) => {
 	});
 });
 
-/**
- * @apiVersion 17.0.0
- * @api {post} /releases/save Save a release
- * @apiName SaveRelease
- * @apiGroup releases
- * @apiDescription Saves a release from a payload. This complex operation can perform the following actions:
- *
- * - **Platform Creation**: Creates new platforms, including their OS, kernel, OFED, and architecture definitions.
- * - **Artifact Association**: Creates and associates artifacts with new or existing platforms.
- * - **Release Management**: Creates a new release or updates an existing one by linking the specified artifacts (replacing the existing artifacts if any).
- * - **Component Compatibility Inheritance**: Inherits NVMesh package compatibilities from a previous release (`inheritRelationsFrom`).
- *   For each component in the new release, this process establishes its compatibility with other `NVMESH_PACKAGE` components based on the following logic:
- *   - The system first identifies the corresponding component in the release specified by `inheritRelationsFrom` (release `n-1`).
- *     If no corresponding component is found, the inheritance for that component is skipped.
- *   - It then adds compatibility with the latest version of related `NVMESH_PACKAGE` components from release `n-1`.
- *   - Subsequently, it attempts to add compatibility with the new version (`n`) of those components if they are part of the current save payload.
- *
- *   For each component in the previous release, this process will add compatibility with the new version (`n`) of that component.
- * - **Upgrade Scenario Inheritance**: Inherits and adapts upgrade scenarios from the `inheritRelationsFrom` release.
- *   - For a hotfix release, scenarios for the previous release (`n-2 -> n-1`) are adapted to target the new release (`n-2 -> n` and `n-1 -> n`).
- *   - For a standard release, scenarios for the previous release (`n-2 -> n-1`) are adapted for the new release (`n-1 -> n` and `n -> n`).
- *
- * **Important:** When `inheritRelationsFrom` is specified, artifacts for **all** NVMesh package components must be included in the payload
- * (nvmesh-client, nvmesh-management, nvmesh-target, nvmesh-upgrade-agent, nvmesh-interopdb, nvmesh-base, nvmesh-utils).
- *
- * **Note:** This endpoint will not update any other existing entities, with the exception of:
- *  - linking new artifacts to an existing release
- *  - linking new artifacts to an existing platform
- *  - updating the version of previous release nvmesh components to be compatible with the new release nvmesh components
- *
- * @apiParam {object[]} releases Array of release objects.
- * @apiParam {string} releases.releaseName Version of the release to save. Can be a new or an existing release.
- * @apiParam {string} [releases.inheritRelationsFrom] Version of an existing release to inherit component relationships and upgrade scenarios from.
- * @apiParam {boolean} [releases.createPlatforms=false] If true, new platform definitions and dependencies will be created.
- * @apiParam {object[]} releases.platforms Array of platform objects. If `createPlatforms` is true, platforms are created; otherwise,
- * existing platforms are updated with artifacts.
- * @apiParam {string} releases.platforms.name The name of the platform. If null, given artifacts will not be associated with any platform.
- * @apiParam {string[]} releases.platforms.artifacts Array of artifact names to associate with this platform.
- * @apiParam {object} [releases.platforms.os] Operating system definition. This object is required if `createPlatforms` is true.
- * @apiParam {string} [releases.platforms.os.distributionType] OS distribution type (e.g., 'ubuntu', 'rocky'). Required if `os` is provided.
- * @apiParam {string} [releases.platforms.os.version] OS version. Required if `os` is provided.
- * @apiParam {string} [releases.platforms.kernel] Kernel version for the platform. Required if `createPlatforms` is true.
- * @apiParam {string} [releases.platforms.ofed] OFED version for the platform. Required if `createPlatforms` is true.
- * @apiParam {string} [releases.platforms.arch] Platform architecture. Required if `createPlatforms` is true.
- *
- * @apiParamExample {json} Request Body Example:
- * [{
- *     "releaseName": "3.4.0",
- *     "inheritRelationsFrom": "3.3.2",
- *     "createPlatforms": false,
- *     "platforms": [
- *         {
- *             "name": "GFN1",
- *             "os": {
- *                 "distributionType": "rocky",
- *                 "version": "8.10"
- *             },
- *             "kernel": "4.18.0-553.51.1.el8.1746466718.fd884b6339.x86_64",
- *             "ofed": "24.10-2.1.8.0.101",
- *             "arch": "x86_64",
- *             "artifacts": [
- *                 "nvmesh-client-3.4.0-237.el8_10.1.1089.x86_64.rpm",
- *                 "nvmesh-target-3.4.0-237.el8_10.1.1089.x86_64.rpm",
- *                 "nvmesh-utils-3.4.0-237.el8_10.1.1089.x86_64.rpm",
- *                 "nvmesh-upgrade-agent-3.4.0-237.el8_10.1.1089.x86_64.rpm",
- *                 "nvmesh-management-3.4.0-237.el8_10.1.1089.x86_64.rpm",
- *                 "nvmesh-interopdb-3.4.0-237.el8_10.1.1089.x86_64.rpm",
- *                 "nvmesh-base-3.4.0-237.el8_10.1.1089.x86_64.rpm"
- *             ]
- *         }
- *     ]
- * }]
- *
- * @apiSuccessExample {json} Success-Response:
- * [{
- *     "_id": null,
- *     "uuid": null,
- *     "success": true,
- *     "error": null,
- *     "payload": null
- * }]
- */
-router.post('/save', (req, res) => {
-	const payload = req.body;
-
-	const incomingRequestSystemAdminMessage = payload.map((release) => {
-		const message = createAuditRequestLog(req, systemMessages.RELEASE_SAVE_REQUEST)
-			.addInfo(Entities.Release.name, release.releaseName, Differentiators.Destination);
-
-		if (release.inheritRelationsFrom)
-			message.addInfo(Entities.Release.name, release.inheritRelationsFrom, Differentiators.Source);
-
-		return message;
-	});
-
-	utils.handleRESTAndLog(
-		incomingRequestSystemAdminMessage,
-		cb => releaseBuilderModule.saveReleases(payload, cb),
-		systemAdminMessages => res.json(systemAdminMessages.map(m => m.createApiResponse(Entities.Release.name)))
-	);
-});
 
 module.exports = router;

@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
 
 if [[ ($# == 0) ||  "$1" =~ ^(-h|--help)$ ]] ; then
         echo -e "The util will restore a db to the management database \n"

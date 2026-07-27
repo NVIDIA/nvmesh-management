@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -2982,13 +2986,12 @@ scope.getAvailableSegments = function(minValue, maxValue, diskSegments) {
 		if (diskSegments.length > 1)
 			sortedDiskSegments = diskSegments.sort(function(a, b) { return a.lbs - b.lbs; });
 
-		for (let i = 0; i < sortedDiskSegments.length; i++) {
-			const ds = sortedDiskSegments[i];
+		sortedDiskSegments.forEach(function(ds, i) {
 			var blocksFromLeft = ds.lbs - minVal;
 			if (blocksFromLeft > 0) {
 				segments.push({
 					lbs: minVal,
-					lbe: Math.min(ds.lbs - 1, maxValue - 1)
+					lbe: ds.lbs - 1
 				});
 			}
 
@@ -2996,7 +2999,7 @@ scope.getAvailableSegments = function(minValue, maxValue, diskSegments) {
 				minVal = ds.lbe + 1;
 
 			if (maxValue <= minVal)
-				break;
+				return false;
 
 			//If last segment check for available blocks in the end of the disk.
 			if (diskSegments.length - 1 == i) {
@@ -3007,7 +3010,7 @@ scope.getAvailableSegments = function(minValue, maxValue, diskSegments) {
 						lbe: totalBlocks - 1
 					});
 			}
-		}
+		});
 	} else {
 		segments.push({
 			lbs: minValue,
@@ -5657,7 +5660,7 @@ scope.swapObjValues = (obj, key1, key2) => {
 	[obj[key1], obj[key2]] = [obj[key2], obj[key1]];
 };
 
-scope.sendStatsPeriodically = function(callback) {
+scope.sendStatsToExceleroPeriodically = function(callback) {
 	callback();
 	var minimumIntervalValue = 1000 * 60 * 60; // one hour
 	var sendStatsIntervalMS;
@@ -5667,14 +5670,14 @@ scope.sendStatsPeriodically = function(callback) {
 	if (sendStatsIntervalMS < minimumIntervalValue)
 		new SystemMessage(systemMessages.APP_STATS_CONF_PARSE_FAILED).log();
 
-	sendStatsHome(sendStatsIntervalMS);
+	sendStatsToExcelero(sendStatsIntervalMS);
 
 	setInterval(function() {
-		sendStatsHome(sendStatsIntervalMS);
+		sendStatsToExcelero(sendStatsIntervalMS);
 	}, sendStatsIntervalMS);
 };
 
-function sendStatsHome(sendStatsIntervalMS) {
+function sendStatsToExcelero(sendStatsIntervalMS) {
 	var db = app.get('db');
 	var userCollection = db.collection('user');
 
@@ -5694,10 +5697,10 @@ function sendStatsHome(sendStatsIntervalMS) {
 				data.errors = data.errors.slice(0, 50);
 			}
 
-			logger.sendMail([config.get('supportEmail')], 'Client Statistics', JSON.stringify(data), function(err, shouldLog) {
+			logger.sendMail([config.get('exceleroEmail')], 'Client Statistics', JSON.stringify(data), function(err, shouldLog) {
 				if (!err)
 					userCollection.updateOne(
-						{ _id: 'phoneHome@acme.com' },
+						{ _id: 'phoneHome@excelero.com' },
 						{ $set: { lastTimeSentStats: new Date() } },
 						function(err) {
 							if (err)
@@ -6072,7 +6075,8 @@ scope.getMgmtClusterState = mgmts => {
 };
 
 scope.iterativeConnect = (connectFunction, entity, maxConnectTries, timeBetweenConnectTries, callback) => {
-	let tries = 1;
+	let tries = 0;
+	let connected = false;
 	let error;
 
 	async.doWhilst((callback) => {
@@ -6082,18 +6086,19 @@ scope.iterativeConnect = (connectFunction, entity, maxConnectTries, timeBetweenC
 
 			if (err) {
 				error = err;
+				connected = false;
 
 				setTimeout(callback, timeBetweenConnectTries);
 			} else {
-				error = null;
+				connected = true;
 
 				callback();
 			}
 		});
 	}, (callback) => {
-		callback(null, error && tries <= maxConnectTries);
+		callback(null, !connected && tries <= maxConnectTries);
 	}, () => {
-		callback(error);
+		callback(tries === maxConnectTries ? error : null);
 	});
 };
 

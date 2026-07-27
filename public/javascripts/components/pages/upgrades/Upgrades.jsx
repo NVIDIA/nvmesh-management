@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React, consts */
 
 import FiltSortTable from '../../filtsort-table/FiltSortTable.jsx';
@@ -105,7 +100,7 @@ const Upgrades = () => {
 		value: row => minRedundancyLevelToLabel(row.minRedundancyLevel)
 	}, {
 		name: 'Machines',
-		field: 'machinesToUpgrade._id',
+		field: 'machinesToUpgrade',
 		placeholder: 'Search by Machines',
 		value: row => <ExpandableList
 			items={row.machinesToUpgrade}

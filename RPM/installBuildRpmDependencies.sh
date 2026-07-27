@@ -1,8 +1,5 @@
 #!/bin/bash -x
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 if [ "$EUID" -ne 0 ]; then
 	echo "Error: should be run as root"
 	exit 1

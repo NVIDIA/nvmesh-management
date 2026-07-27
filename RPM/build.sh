@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 usage() {
 	echo "Usage: $0 [--node <version>]"
 	echo "Supported versions: ${supported_node_versions[@]}"

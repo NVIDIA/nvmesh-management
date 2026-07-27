@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 # -*-Shell-script-*-
 #
 # This file contains functions to be used by nvmesh{mgr,stats}
@@ -153,8 +150,8 @@ getFieldFromManagementConfig() {
 getMongoShellCommandLineArguments() {
 	local confName=$1
 	local forMongoDump=$2
-	local copyCerts=true
-	commandLineArguments=$($nodetouse --eval "console.log(require('$MDIR/modules/mongoCMDLineArgsBuilder.js').buildMongoConnectionCommandlineArgsByConnectionName('$confName', '$forMongoDump', '$copyCerts'))")
+
+	commandLineArguments=$($nodetouse --eval "console.log(require('$MDIR/modules/mongoCMDLineArgsBuilder.js').buildMongoConnectionCommandlineArgsByConnectionName('$confName', '$forMongoDump'))")
 }
 
 fetch_management_cluster_from_config() {

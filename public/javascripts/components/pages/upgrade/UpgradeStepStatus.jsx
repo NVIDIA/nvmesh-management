@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global React, consts */
 
 export const statusToLabelMap = {
@@ -34,12 +29,10 @@ const statusToLabel = (upgrade) => {
 };
 
 const UpgradeStepStatus = ({ status }) => (
-	<span className="upgrade-step-status-container">
-		<span className={`label ${statusToClass(status)}`}>
-			{status === consts.upgradeStepStatuses.IN_PROGRESS && <span><i className="fa fa-cog fa-spin"></i>&nbsp;</span>}
-			{statusToLabel({ status })}
-		</span>
+	<span className={`label ${statusToClass(status)}`}>
+		{status === consts.upgradeStepStatuses.IN_PROGRESS && <span><i className="fa fa-cog fa-spin"></i>&nbsp;</span>}
+		{statusToLabel({ status })}
 	</span>
 );
 
-export default UpgradeStepStatus;
+export default UpgradeStepStatus; 

@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# NHC -- A cache for NVMesh failed checks.
-
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# NHC -- Excelero - A cache for NVMesh failed checks.
+#
+# /***************************************************************************
+#  * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+#  *
+#  * This file is part of Excelero NVMesh software.
+#  *
+#  * Unauthorized copying of this file, via any medium is strictly prohibited
+#  * Proprietary and confidential
+#  ****************************************************************************/
 
 export NVMESH_NHC_CACHE_DIR_PATH='/etc/nvmesh/nvmesh_nhc_fails_cache'
 export NVMESH_NHC_TRUE=100

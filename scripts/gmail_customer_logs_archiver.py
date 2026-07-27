@@ -1,8 +1,5 @@
 #!/usr/bin/env python2
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 import base64
 import json
 from datetime import datetime
@@ -26,7 +23,7 @@ from datetime import date, timedelta
 #		Go to https://console.developers.google.com login in with the new account, and create a new Project
 #
 #   Step 2: Enable gmail API and download credentials.json file:
-#			This stpe is only required if we need to configure this script to work with a new google account (this is already pre-configured to work with customer.stats@acme)
+#			This stpe is only required if we need to configure this script to work with a new google account (this is already pre-configured to work with customer.stats@excelero)
 # 			To enable gmail api please visit https://console.developers.google.com/apis/api/gmail.googleapis.com/overview
 #
 #	Step 3: Get credentials.json:

@@ -1,24 +1,19 @@
 Name:				nvmesh-management
 Version:			%{version}
 Release:			%{release}
-Summary:			"nvmesh-management" by NVIDIA
+Summary:			"nvmesh-management" by Nvidia
 
-License:			Apache-2.0
+License:			Commercial Non OSI
 URL:				http://www.nvidia.com
 Source0:			%{name}
-
-%if %{fast_dev_build}
-    # Disable OS Post-Install Scripts (strip/compress/byte-compile)
-    %global __os_install_post %{nil}
-%endif
 
 Requires:			%{requires}
 
 %description
 
-Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+© Copyright 2025 Nvidia Corporation. All rights reserved. This document contains the confidential and proprietary information of Nvidia Corporation. Do not reproduce or distribute without the prior written consent of Nvidia.
 
-"NVIDIA" nvmesh_management Web App
+"Excelero" nvmesh_management Web App
         Branch: %{branch}
         Commit: %{commit_id}
 	ChangeId: %{change_id}
@@ -28,10 +23,6 @@ Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 cp -rf %{_sourcedir}/%{name} %{_builddir}/
 
 %build
-%if %{fast_dev_build}
-    # Disable default stripping
-    %define __strip /bin/true
-%endif
 
 %pre
 # Ignore node_modules from shebang mangling.
@@ -46,7 +37,6 @@ mkdir -pv %{buildroot}/var/log/nvmesh/mgmtStats
 mkdir -pv %{buildroot}/var/run/nvmesh/nvmeshmgr
 mkdir -pv %{buildroot}/var/opt/nvmesh/backups
 mkdir -pv %{buildroot}/var/opt/nvmesh/mgr
-mkdir -pv %{buildroot}/var/run/nvmesh/tls/nvmeshmgr
 mkdir -pv %{buildroot}/lib/systemd/system
 mkdir -pv %{buildroot}/usr/bin
 mkdir -pv %{buildroot}/opt/nvmesh/interop-db
@@ -62,11 +52,6 @@ echo "commit=\"%{commit_id}\"" >> %{buildroot}/opt/nvmesh/management/version
 echo "changeID=\"%{change_id}\"" >> %{buildroot}/opt/nvmesh/management/version
 echo "branch=\"%{branch}\"" >> %{buildroot}/opt/nvmesh/management/version
 touch %{buildroot}/var/log/nvmesh/management.out
-
-%if %{fast_dev_build}
-    echo "Running manual strip (pruning node_modules)..."
-    find %{buildroot} -name node_modules -prune -o -type f \( -perm -u+x -o -name "*.so" \) -exec strip --strip-unneeded {} + || :
-%endif
 
 %post
 isUpgrade=$1
@@ -93,8 +78,9 @@ echo "$versionRelease" > /opt/nvmesh/management/dbVersion
 
 if [ $isUpgrade -eq 1 ]; then
 	/opt/nvmesh/management/installation-scripts-%{version}-%{release}/install
-	systemctl enable nvmeshmgr > /dev/null 2>&1
 fi
+
+systemctl enable nvmeshmgr > /dev/null 2>&1
 
 [ -f /var/opt/NVMesh/management-upgrade.err ] && mv /var/opt/NVMesh/management-upgrade.err /var/opt/nvmesh/
 [ -f /var/opt/NVMesh/mgr/management_id ] && mv /var/opt/NVMesh/mgr/management_id /var/opt/nvmesh/mgr/
@@ -123,5 +109,5 @@ exit 0
 %config(noreplace) /etc/nvmesh/management.js.conf
 
 %changelog
-* Tue Mar 5 2024 NVIDIA Corporation
-- Installing NVIDIA nvmesh_management
+* Tue Mar 5 2024 Nvidia Corporation
+- Installing Nvidia nvmesh_management

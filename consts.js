@@ -1,31 +1,20 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 var consts = {};
 
 consts.ADMIN_USER = 'admin@nvidia.com';
 consts.SYSTEM_USER = 'system@nvidia.com';
-consts.PHONE_HOME_USER = 'phoneHome@acme.com';
+consts.PHONE_HOME_USER = 'phoneHome@excelero.com';
 consts.defaultItemsPerPage = 10;
 consts.installDir = '/opt/nvmesh/management';
 consts.INTEROP_DB_RELATIVE_PATH = '../interop-db/InteropDB';
-consts.ACTIVE_CERT_DIR = '/var/run/nvmesh/tls/nvmeshmgr';
-
-// Certificate types
-consts.CERT_TYPES = {
-	KEY: 'key',
-	CERT: 'cert',
-	CA: 'ca'
-};
-
-// Standard filenames for certificate types in the active cert directory
-consts.CERT_TYPE_FILENAMES = {
-	[consts.CERT_TYPES.KEY]: 'key.key',
-	[consts.CERT_TYPES.CERT]: 'cert.crt',
-	[consts.CERT_TYPES.CA]: 'ca.crt'
-};
 
 // Use config to only update existing volumes, not attaching new volumes and not changing type of existing volume
 consts.MAGIC_CONFIG_UPDATE_TOKEN = 'F0AAAAAAAAAAAAA';
@@ -94,10 +83,6 @@ consts.kafka = {
 		DEBOUNCER_MINIMUM_WAIT: 5000,
 		INITIAL_BACKOFF: 2000,
 		MAX_BACKOFF: 10000
-	},
-	LOG_COMPACTION: {
-		SEGMENT_BYTES: 32000000, // 32 MB
-		SEGMENT_MS: 86400000 // 24 hours
 	}
 };
 
@@ -141,10 +126,14 @@ consts.topicSuffix = {
 	TOMA_HARDWARE_CONF: '.TOMA.hardwareConfiguration',
 	MANAGEMENT_PRIORITY: '.management.priority',
 	MANAGEMENT_LOW: '.management.low',
-	MANAGEMENT_KEEPALIVE: '.management.keepalive',
 	AGENT_MAIN: '.managementAgent.main',
 	CLIENT_MAIN: '.client.main',
 	UPGRADE_AGENT_COMMANDS: '.upgradeAgent.commands'
+};
+
+consts.topicPrefix = {
+	DEFAULT: 'default',
+	ZONE: 'zone'
 };
 
 consts.errno = {
@@ -155,10 +144,6 @@ consts.mongoErrors = {
 	DUPLICATE_KEY: 11000,
 	UNAUTHORIZED: 13,
 	NO_REPLICATION_ENABLED: 76
-};
-
-consts.sqliteErrors = {
-	UNIQUE_VIOLATION: 'unique violation'
 };
 
 consts.kafkaErrors = {
@@ -826,10 +811,10 @@ consts.defaultFormat = {
 	}
 };
 
-consts.userManualURL = 'TBD';
-consts.releaseNotesURL = 'TBD';
+consts.userManualURL = 'https://www.excelero.com/nvmesh-user-guide';
+consts.releaseNotesURL = 'https://www.excelero.com/release-notes';
 consts.restAPIURL = '/docs/index.html';
-consts.defaultEmail = 'customer.stats+customerName@acme.com';
+consts.defaultExceleroEmail = 'customer.stats+customerName@excelero.com';
 
 consts.HANDLE_TIMEDOUT_COMPONENT_INTERVAL = 5 * 1000; // 5 seconds
 
@@ -979,10 +964,6 @@ consts.entity = {
 	documentUpgradeInterceptor: 'Document Upgrade Interceptor',
 	release: 'Release',
 	artifact: 'Artifact',
-	archType: 'Arch Type',
-	distributionType: 'Distribution Type',
-	componentType: 'Component Type',
-	upgradeType: 'Upgrade Type',
 	upgradeStep: 'Upgrade Step',
 	upgradeScenario: 'Upgrade Scenario',
 	upgradeStepScenario: 'Upgrade Step Scenario'
@@ -1013,8 +994,7 @@ consts.operation = {
 	setEmulationMode: 'Set Emulation Mode',
 	execute: 'Execute',
 	markAsCompleted: 'Mark As Completed',
-	skipFailedMachine: 'Skip Failed Machine',
-	provision: 'Provision'
+	skipFailedMachine: 'Skip Failed Machine'
 };
 
 consts.componentsPages = {
@@ -1126,18 +1106,8 @@ consts.components = {
 	MANAGEMENT: 'nvmesh-management',
 	TARGET: 'nvmesh-target',
 	UPGRADE_AGENT: 'nvmesh-upgrade-agent',
-	INTEROP_DB: 'nvmesh-interopdb',
-	MONITOR: 'nvmesh-monitor',
-	BASE: 'nvmesh-base',
-	UTILS: 'nvmesh-utils'
+	INTEROP_DB: 'nvmesh-interopdb'
 };
-
-const componentNamesRegex = Object.values(consts.components).join('|');
-const baseVersionRegex = '[\\d+.]+';
-const rpmDebRegex = '\\.(rpm|deb)$';
-consts.artifactNameRegex = new RegExp(`^(${componentNamesRegex})[-_](${baseVersionRegex}).*${rpmDebRegex}`);
-
-consts.HOTFIX_RELEASE_SUBSTRING = 'HF';
 
 consts.thirdPartyLibs = {
 	LIBRDKAFKA: 'librdkafka'
@@ -1215,6 +1185,8 @@ consts.TOPIC_NAME_PLACEHOLDERS = {
 	ZONE: '<ZONE>'
 };
 
+consts.SECONDS_TO_WAIT_BETWEEN_CHECK_AND_CLEANUP_UNUSED_TOPICS = 60;
+consts.SECONDS_INTERVAL_BETWEEN_CLEANUP_UNUSED_TOPICS_TIME_PASSED = 10;
 consts.MAX_METADATA_SIZE = 256 * 1024;
 
 consts.preUpgradeCheckRelaxationsMode = {

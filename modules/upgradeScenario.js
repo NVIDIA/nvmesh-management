@@ -1,13 +1,8 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /* global app */
 
 const async = require('async');
 const systemMessages = require('../systemMessages.js');
-const { Entities, SystemMessage, SystemAdminMessage, InteropDBError } = require('../modules/error.js');
+const { Entities, SystemMessage, SystemAdminMessage } = require('../modules/error.js');
 const objectNotifier = require('../objectNotifier.js');
 const events = require('../events.js');
 
@@ -18,8 +13,7 @@ scope.getAllUpgrades = (queryObj, cb) => {
 
 	interopDB.getAllUpgrades(queryObj, (results) => {
 		if (results.error)
-			return cb(new SystemMessage(systemMessages.FAILED_TO_LOAD_UPGRADE_SCENARIOS)
-				.addInfo(Entities.Error, new InteropDBError(results.error)));
+			return cb(new SystemMessage(systemMessages.FAILED_TO_LOAD_UPGRADE_SCENARIOS).addInfo(Entities.Error, results.error));
 
 		cb(null, results.data || results);
 	});
@@ -43,8 +37,7 @@ scope.createUpgrades = (upgrades, callback) => {
 			let response;
 
 			if (!results.success)
-				response = new SystemAdminMessage(systemMessages.UPGRADE_SCENARIO_SAVE_REQUEST_FAILED)
-					.addInfo(Entities.Error, new InteropDBError(results.error));
+				response = new SystemAdminMessage(systemMessages.UPGRADE_SCENARIO_SAVE_REQUEST_FAILED).addInfo(Entities.Error, results.error);
 			else {
 				response = new SystemAdminMessage(systemMessages.UPGRADE_SCENARIO_SAVED);
 				events.emitEvent([events.getUpgradeScenarioID(upgradeID)], objectNotifier.events.newUpgradeScenarioEvent);
@@ -71,8 +64,7 @@ scope.updateUpgrades = (upgrades, callback) => {
 			let response;
 
 			if (!results.success)
-				response = new SystemAdminMessage(systemMessages.UPGRADE_SCENARIO_UPDATE_REQUEST_FAILED)
-					.addInfo(Entities.Error, new InteropDBError(results.error));
+				response = new SystemAdminMessage(systemMessages.UPGRADE_SCENARIO_UPDATE_REQUEST_FAILED).addInfo(Entities.Error, results.error);
 			else {
 				response = new SystemAdminMessage(systemMessages.UPGRADE_SCENARIO_UPDATED);
 				events.emitEvent([events.getUpgradeScenarioID(upgrade.ID)], objectNotifier.events.upgradeScenarioChangedEvent);
@@ -100,8 +92,7 @@ scope.deleteUpgrades = (upgrades, callback) => {
 			let response;
 
 			if (!results.success)
-				response = new SystemAdminMessage(systemMessages.UPGRADE_SCENARIO_DELETE_REQUEST_FAILED)
-					.addInfo(Entities.Error, new InteropDBError(results.error));
+				response = new SystemAdminMessage(systemMessages.UPGRADE_SCENARIO_DELETE_REQUEST_FAILED).addInfo(Entities.Error, results.error);
 			else {
 				response = new SystemAdminMessage(systemMessages.UPGRADE_SCENARIO_DELETED);
 				events.emitEvent([events.getUpgradeScenarioID(upgrade.ID)], objectNotifier.events.upgradeScenarioRemovedEvent);
@@ -125,8 +116,7 @@ scope.getAllUpgradeTypes = (cb) => {
 
 	interopDB.getAllUpgradeTypes((results) => {
 		if (results.error)
-			return cb(new SystemMessage(systemMessages.FAILED_TO_LOAD_UPGRADE_TYPES)
-				.addInfo(Entities.Error, new InteropDBError(results.error)));
+			return cb(new SystemMessage(systemMessages.FAILED_TO_LOAD_UPGRADE_TYPES).addInfo(Entities.Error, results.error));
 
 		cb(null, results.data || results);
 	});

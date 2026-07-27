@@ -211,7 +211,7 @@ input:-webkit-autofill {
 	}
 }
 
-.nvmesh-bar {
+.excelero-bar {
 	display:none;
 }
 
@@ -219,6 +219,17 @@ input:-webkit-autofill {
 	color: style_consts.$error;
 }
 
-.nvmesh-logo {
+#exceleroLogo {
+	width: 140px;
+    margin: auto;
+    position: absolute;
+    bottom: 0;
+    top: 0;
+    left: 0;
+	right: 0;
+	padding-bottom: 3px;
+}
+
+#nvmeshLogo {
 	width: 140px;
 }

@@ -1,7 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 var scope = {};
@@ -17,11 +21,9 @@ var generalSettingsModule = require('./modules/generalSettings.js');
 var consts = require('./consts.js');
 var logger = require('./logger.js');
 var utils = require('./utils');
-const kafkaModule = require('./modules/kafka.js');
 
 var { Entities, SystemMessage, MongoError, SystemAdminMessage } = require('./modules/error.js');
 var systemMessages = require('./systemMessages.js');
-const events = require('./events.js');
 
 scope.afterModuleLoaded = () => {
 	logger = require('./logger.js');
@@ -266,8 +268,7 @@ scope.events = {
 			_id: '_id',
 			upgradeID: 'upgradeID',
 			status: 'status',
-			response: 'response',
-			lastExecTryError: 'lastExecTryError'
+			response: 'response'
 		}
 	},
 
@@ -596,29 +597,6 @@ monitoredObjects[scope.events.newUpstreamTopicEvent.name] = {
 	}
 };
 
-monitoredObjects[scope.events.upstreamTopicChangeEvent.name] = {
-	getUpdatedObj: function(callback) {
-		kafkaModule.getSubscribableTopics((err, topics) => {
-			if (err)
-				return callback(err);
-
-			const currentSubscribableTopics = kafkaModule.subscribableTopics;
-			const newSubscribableTopics = new Set(topics);
-
-			if (!utils.isEqualSet(currentSubscribableTopics, newSubscribableTopics)) {
-				const current = [...currentSubscribableTopics].join(', ');
-				const next = [...newSubscribableTopics].join(', ');
-				logger.sysDEBUG(`subscribable topics changed, current: ${current}, new: ${next}`);
-
-				kafkaModule.subscribableTopics = newSubscribableTopics;
-				events.emitEvent(null, scope.events.upstreamTopicChangeEvent);
-			}
-
-			callback();
-		});
-	}
-};
-
 monitoredObjects[scope.events.interopDBVersionChangedEvent.name] = {
 	getUpdatedObj: function(callback) {
 		callback();
@@ -821,7 +799,6 @@ scope.isEmpty = function(obj) {
 };
 
 scope.updateCache = function(cb) {
-	logger.sysDEBUG('Updating all monitored objects cache');
 	async.each(Object.keys(monitoredObjects), scope.updateObject, cb || function() {});
 };
 

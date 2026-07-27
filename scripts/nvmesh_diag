@@ -1,7 +1,14 @@
 #!/usr/bin/env python2
 
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+##############################################################################
+#  Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.               #
+#                                                                            #
+#  This file is part of Excelero NVMesh software.                            #
+#                                                                            #
+#  Unauthorized copying of this file, via any medium is strictly prohibited  #
+#  Proprietary and confidential                                              #
+##############################################################################
+
 
 import argparse
 import subprocess
@@ -21,8 +28,9 @@ ROCEV2_TARGET_PORT = ("udp", 4791)
 MONGODB_PORT = ("tcp", 27017)
 RHEL_INBOX_DRIVERS = ['opensm-devel', 'ibutils-devel', 'infiniband-diags', 'librdmacm-utils', 'libibverbs-utils', 'libibumad']
 SLES_INBOX_DRIVERS = ["rdma-core", "librdmacm1", "libibmad5", "libibumad3"]
-NVMESH_MANAGEMENT_CONF = "/etc/nvmesh/management.js.conf"
-NVMESH_CONF = "/etc/nvmesh/nvmesh.conf"
+EXCELERO_MLXCONFIG_DB = "/etc/nvmesh/Excelero_mlxconfig.db"
+EXCELERO_MANAGEMENT_CONF = "/etc/nvmesh/management.js.conf"
+EXCELERO_CONF = "/etc/nvmesh/nvmesh.conf"
 DEFAULT_STATISTICS_PORT_COUNT = 5
 DEFAULT_NVMESH_MANAGEMENT_PORT = 4001
 CMD_GET_ARP="sysctl -n "
@@ -34,7 +42,7 @@ CMD_SET_TUNED_PARAMETERS = "tuned-adm profile latency-performance"
 CMD_SET_ONE_QP = "mlxconfig -d %s -b %s set ONE_QP_PER_RECOVERY=1"
 CMD_GET_ONE_QP = "mlxconfig -d %s -b %s -e query ONE_QP_PER_RECOVERY | grep ONE_QP_PER_RECOVERY"
 CMD_DISABLE_FIREWALL = ["systemctl stop firewalld", "systemctl disable firewalld"]
-CMD_SET_FIREWALL_FOR_NVMESH_MGMT_PORT = "firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 0 -p tcp --dport %s -j ACCEPT -m comment --comment NVMesh-Management"
+CMD_SET_FIREWALL_FOR_NVMESH_MGMT_PORT = "firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 0 -p tcp --dport %s -j ACCEPT -m comment --comment Excelero-Management"
 CMD_SET_FIREWALL_FOR_ROCEV2 = "firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 0 -p udp --dport " \
                               "4791 -j ACCEPT -m comment --comment RoCEv2-Target"
 CMD_SET_FIREWALL_FOR_MOGODB = "firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 0 -p tcp --dport 27017 " \
@@ -120,11 +128,11 @@ logging.debug("Storing output to: " + output.name)
 
 
 def is_management_node():
-    return os.path.isfile(NVMESH_MANAGEMENT_CONF)
+    return os.path.isfile(EXCELERO_MANAGEMENT_CONF)
 
 
 def is_client_node():
-    return os.path.isfile(NVMESH_CONF)
+    return os.path.isfile(EXCELERO_CONF)
 
 
 def get_cmd_output(cmd_to_execute):
@@ -356,25 +364,25 @@ def get_management_node_configuration_params():
     try:
         #config.port = 4000; config.webSocketServerPort = 4001;
         for param in ["config.port", "config.webSocketServerPort"]:
-            out = get_cmd_output(CMD_GET_CONF_VALUE % (NVMESH_MANAGEMENT_CONF, param))
+            out = get_cmd_output(CMD_GET_CONF_VALUE % (EXCELERO_MANAGEMENT_CONF, param))
             if out[0]:
-                print print_red("\tError: Could not parse %s from %s." % (param, NVMESH_MANAGEMENT_CONF))
+                print print_red("\tError: Could not parse %s from %s." % (param, EXCELERO_MANAGEMENT_CONF))
             else:
                 port = int(out[1].split("=")[1].split(";")[0].strip())
                 rv.append(("tcp", port))
         #config.statisticsPorts = [];
-        out = get_cmd_output(CMD_GET_CONF_VALUE % (NVMESH_MANAGEMENT_CONF, "config.statisticsPorts"))
+        out = get_cmd_output(CMD_GET_CONF_VALUE % (EXCELERO_MANAGEMENT_CONF, "config.statisticsPorts"))
         if out[0]:
-            print print_red("\tError: Could not parse config.statisticsPorts from %s." % NVMESH_MANAGEMENT_CONF)
+            print print_red("\tError: Could not parse config.statisticsPorts from %s." % EXCELERO_MANAGEMENT_CONF)
         else:
             port_string = out[1].split("=")[1].split(";")[0].strip()
             ports = eval(port_string)
             if not ports:
                 #config.statisticsCores = 5;
-                out = get_cmd_output(CMD_GET_CONF_VALUE % (NVMESH_MANAGEMENT_CONF, "config.statisticsCores"))
+                out = get_cmd_output(CMD_GET_CONF_VALUE % (EXCELERO_MANAGEMENT_CONF, "config.statisticsCores"))
 
                 if out[0]:
-                    print print_red("\tError: Could not parse config.statisticsCores from %s. Assuming 5 default ports." % NVMESH_MANAGEMENT_CONF)
+                    print print_red("\tError: Could not parse config.statisticsCores from %s. Assuming 5 default ports." % EXCELERO_MANAGEMENT_CONF)
 
                     number_of_ports = 5
                 else:
@@ -396,7 +404,7 @@ def get_client_node_configuration_params():
     add_default = False
     try:
         #MANAGEMENT_SERVERS="hostname:port,";
-        out = get_cmd_output(CMD_GET_CONF_VALUE % (NVMESH_CONF, "MANAGEMENT_SERVERS") + " | grep -v '# MANAGEMENT_SERVERS'")
+        out = get_cmd_output(CMD_GET_CONF_VALUE % (EXCELERO_CONF, "MANAGEMENT_SERVERS") + " | grep -v '# MANAGEMENT_SERVERS'")
         if out[0]:
             return rv
         list_of_servers = out[1].split("=")[1].split("\"")[1].split(",")
@@ -426,11 +434,11 @@ def check_iptables_output_with_ports(ports, model):
     all_ok = True
     for port in ports:
         if run_cmd("sudo firewall-cmd --query-port=%s/%s" % (port[1], port[0])):
-            print print_green("NVMesh Management port %s is configured." % port[1])
+            print print_green("Excelero Management port %s is configured." % port[1])
         else:
             print print_red(
                 "Not OK for NVMesh %s operations. "
-                "NVMesh Management port %s %s must be set and open!" % (model, port[0], port[1]))
+                "Excelero Management port %s %s must be set and open!" % (model, port[0], port[1]))
             if set_parameters is True:
                 if "y" in raw_input("Do you want to open port %s now?[Yes/No]: " % port[1]).lower():
                     print(run_cmd(CMD_SET_FIREWALL_FOR_PORT % port[1]))
@@ -440,11 +448,11 @@ def check_iptables_output_with_ports(ports, model):
             else:
                 all_ok = False
     if all_ok and ports:
-        print print_green("For NVMesh %s operations OK. All NVMesh Management ports are configured.\n" % model)
+        print print_green("For NVMesh %s operations OK. All Excelero Management ports are configured.\n" % model)
     elif all_ok:
-        print print_yellow("Unable to get required ports for NVMesh %s operations. Unable to determine NVMesh Management ports configuration.\n" % model)
+        print print_yellow("Unable to get required ports for NVMesh %s operations. Unable to determine Excelero Management ports configuration.\n" % model)
     else:
-        print print_red("Some required NVMesh Management Ports are not set and open, please review and fix.\n")
+        print print_red("Some required Excelero Management Ports are not set and open, please review and fix.\n")
     return all_ok
 
 
@@ -990,6 +998,38 @@ def get_and_veryfy_rdma_conf():
                     print print_red(hca + " guid information seems incorrect or missing. Please check!")
                 else:
                     print print_green(hca + " guid OK.")
+                if int(re.findall("mlx(\d)", hca)[0]) < 5:
+                    continue
+                else:
+                    if os.path.exists(EXCELERO_MLXCONFIG_DB):
+                        one_qp_per_recovery = re.sub("\s\s+", " ", (get_command_return_code(CMD_GET_ONE_QP % (hca, EXCELERO_MLXCONFIG_DB)).lstrip(" ")))
+                        if "-E-" in one_qp_per_recovery:
+                            print print_red(hca + " will not support RDDA due to firmware limitations on the HCA. If you intent to use RDDA, you "
+                                                  "have to update the firmware and enable ONE_QP_PER_RECOVERY on the HCA.")
+                        # split_output = [*, ONE_QP_PER_RECOVERY, Default, Current, Next Boot]
+                        split_output = one_qp_per_recovery.split(" ")
+                        if len(split_output) < 4:
+                            print print_red("Unable to determine ONE_QP_PER_RECOVERY value for " + hca + ".")
+                            continue
+                        for i, item in enumerate(split_output):
+                            if "ONE_QP_PER_RECOVERY" in item:
+                                index = i
+                                break
+                        if "True" in split_output[index + 2]:
+                            # Current
+                            print print_green(hca + " ready and configured for RDDA.")
+                        elif "True" in split_output[index + 3]:
+                            # Next Boot
+                            print print_yellow(hca + " is configured to support RDDA, but requires a reboot before it is valid.")
+                        elif "False" in split_output[index + 3]:
+                            # Next Boot
+                            print print_yellow(hca + " will support RDDA, but is not configured correctly. You have to enable ONE_QP_PER_RECOVERY in "
+                                                     "the Mellanox firmware if you want to use RDDA, and then reboot the node.")
+                        else:
+                            print print_red("Unable to determine ONE_QP_PER_RECOVERY value for " + hca + ".")
+                    else:
+                        print print_yellow("Cannot find or open the file %s, skipping the RDDA readiness check."
+                                     % EXCELERO_MLXCONFIG_DB)
             if verbose_mode is True:
                 print(get_command_return_code(CMD_GET_IBDEV2NETDEV))
         else:

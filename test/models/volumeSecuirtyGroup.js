@@ -1,14 +1,9 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 const { Entities } = require('../../modules/error');
 const { saveVSGs, updateVSGs, deleteVSGs } = require('../../modules/volumeSecurityGroup');
 const { Entity } = require('./entity');
 
 
-const user = { email: 'admin@acme.com' };
+const user = { email: 'admin@excelero.com' };
 
 exports.VolumeSecurityGroup = class VolumeSecurityGroup extends Entity {
 	constructor(name, keys) {

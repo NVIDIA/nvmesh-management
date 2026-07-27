@@ -1,8 +1,11 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
+/***************************************************************************
+ * Copyright (C) 2015-2020 Excelero, Inc. All Rights Reserved.
+ *
+ * This file is part of Excelero NVMesh software.
+ *
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ ****************************************************************************/
 
 /* global app */
 
@@ -516,18 +519,6 @@ router.get('/systemInfo', (req, res) => {
 	utils.getSystemInfo((systemInfo) => {
 		res.json(systemInfo);
 	});
-});
-
-/**
-* @apiVersion 1.0.0
-* @api {get} /consts Get serialized consts
-* @apiName getSerializedConsts
-* @apiGroup index
-* @apiDescription Get `serialized consts` of the management
-* @apiSuccess {Object} serializedConsts An object containing the serialized consts
-*/
-router.get('/consts', (req, res) => {
-	res.json(consts);
 });
 
 module.exports = router;
