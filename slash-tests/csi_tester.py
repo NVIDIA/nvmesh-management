@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # pylint: disable=line-too-long
 # pylint: disable=logging-fstring-interpolation,logging-not-lazy
 

@@ -3,6 +3,11 @@ name: commit
 description: Commit current changes following the NVMesh Management commit message format (JIRA + type/scope + title + body). Use when the user asks to commit current changes with a JIRA reference, or mentions this commit format.
 ---
 
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Commit
 
 Produces a commit that conforms to the project's commit message format and pushes it to a personal fork on request, optionally opening a merge request and transitioning JIRA tickets to "In Review".
